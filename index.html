@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nex-Estate CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f0f0f;--s:#1a1a1a;--s2:#222;--br:#2e2e2e;--or:#c8773a;--ors:rgba(200,119,58,.12);--tx:#f0ede8;--tm:#888;--td:#555;--gr:#4caf7d;--grs:rgba(76,175,125,.1);--re:#e05252;--res:rgba(224,82,82,.1);--bl:#5a9fd4;--pu:#9b7de8;--te:#3dbdaa;--go:#e8c84a;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-size:14px;}
+.layout{display:flex;min-height:100vh;}
+/* Sidebar */
+.side{width:210px;background:var(--s);border-right:1px solid var(--br);padding:20px 0;position:fixed;height:100vh;z-index:10;overflow-y:auto;}
+.content{flex:1;padding:26px;margin-left:210px;}
+.brand{padding:0 18px 22px;}.bn{font-size:15px;font-weight:600;}.bs{font-size:11px;color:var(--tm);font-family:'DM Mono',monospace;}
+.ng{padding:0 10px 12px;}.nl{font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--td);padding:0 8px 6px;text-transform:uppercase;}
+.ni{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--tm);font-size:13px;margin-bottom:2px;transition:background .15s;}
+.ni:hover{background:var(--s2);color:var(--tx);}
+.ni.on{font-weight:500;}
+.ni.on-b{background:var(--ors);color:var(--or);}
+.ni.on-t{background:rgba(61,189,170,.12);color:var(--te);}
+.ni.on-s{background:rgba(232,200,74,.12);color:var(--go);}
+.ni.on-p{background:rgba(155,125,232,.12);color:var(--pu);}
+.ni.on-r{background:rgba(76,175,125,.1);color:var(--gr);}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+/* Views */
+.vw{display:none;}.vw.active{display:block;}
+.vh{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+.vt{font-size:21px;font-weight:600;}.vsub{font-size:13px;color:var(--tm);margin-top:3px;}
+/* KPI cards */
+.kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
+.kc{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;}
+.kl{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;font-weight:500;margin-bottom:5px;}
+.kv{font-size:18px;font-weight:600;font-family:'DM Mono',monospace;}
+.ks{font-size:11px;color:var(--td);margin-top:3px;}
+/* Recap grid */
+.rg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px;}
+.rc{background:var(--s);border:1px solid var(--br);border-radius:10px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center;}
+.rn{font-size:13px;font-weight:500;}.rsb{font-size:11px;color:var(--tm);margin-top:2px;}
+.rv{font-family:'DM Mono',monospace;font-size:14px;font-weight:600;}
+.sl{font-size:11px;font-weight:600;color:var(--td);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;}
+/* Weekly box */
+.wb{background:var(--s);border:1.5px solid var(--te);border-radius:14px;padding:18px 20px;margin-bottom:20px;}
+.wbt{font-size:12px;font-weight:600;color:var(--te);margin-bottom:12px;text-transform:uppercase;letter-spacing:.08em;}
+.wn{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
+.wl{font-family:'DM Mono',monospace;font-size:12px;min-width:155px;text-align:center;color:var(--tm);}
+.nb2{background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px;font-family:'DM Sans',sans-serif;}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.cc{background:var(--s2);border:1px solid var(--br);border-radius:12px;padding:16px;}
+.ccn{font-size:14px;font-weight:600;margin-bottom:12px;}
+.ccr{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--br);font-size:13px;}
+.ccr:last-of-type{border-bottom:none;}
+.ccl{color:var(--tm);}.ccv{font-family:'DM Mono',monospace;font-weight:500;}
+.cct{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--s);}
+.cctl{font-size:13px;font-weight:600;}.cctv{font-family:'DM Mono',monospace;font-size:16px;font-weight:600;}
+/* Filter bar */
+.fb{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:12px;margin-bottom:12px;}
+.fr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.tabs{display:flex;gap:3px;background:var(--s2);border-radius:8px;padding:3px;}
+.tab{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;color:var(--tm);border:none;background:none;font-family:'DM Sans',sans-serif;}
+.tab.on{background:var(--or);color:#fff;}
+.tab.ont{background:var(--te);color:#fff;}
+.tab.ons{background:var(--go);color:#222;}
+.tab.onp{background:var(--pu);color:#fff;}
+.tab.onr{background:var(--gr);color:#fff;}
+.fsel,.fdt{background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;}
+.nc{display:flex;align-items:center;gap:6px;}
+.nv{font-family:'DM Mono',monospace;font-size:12px;min-width:110px;text-align:center;color:var(--tm);}
+/* Table */
+.tw{background:var(--s);border:1px solid var(--br);border-radius:14px;overflow:hidden;overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{padding:10px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--td);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--br);background:var(--s2);}
+tbody tr{border-bottom:1px solid var(--br);}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--s2);}
+td{padding:11px 12px;font-size:13px;vertical-align:middle;}
+.acts{display:flex;gap:4px;}
+.bedit{background:none;border:none;cursor:pointer;font-size:15px;padding:4px 5px;border-radius:4px;color:var(--tm);}
+.bedit:hover{background:rgba(90,159,212,.15);color:var(--bl);}
+.bdel{background:none;border:none;cursor:pointer;font-size:14px;padding:4px 5px;border-radius:4px;color:var(--td);}
+.bdel:hover{background:var(--res);color:var(--re);}
+/* Chips/badges */
+.ch{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;}
+.ch-menage{background:var(--ors);color:var(--or);}
+.ch-eau{background:rgba(90,159,212,.12);color:var(--bl);}
+.ch-elec{background:rgba(232,200,74,.12);color:var(--go);}
+.ch-credit{background:var(--res);color:var(--re);}
+.ch-loyer{background:var(--grs);color:var(--gr);}
+.ch-pension{background:rgba(155,125,232,.15);color:var(--pu);}
+.ch-famille{background:rgba(155,125,232,.1);color:var(--pu);}
+.ch-abo{background:rgba(90,159,212,.1);color:var(--bl);}
+.ch-loisir{background:rgba(200,119,58,.1);color:var(--or);}
+.ch-sante{background:rgba(76,175,125,.12);color:var(--gr);}
+.ch-alim{background:rgba(61,189,170,.1);color:var(--te);}
+.ch-serv{background:rgba(232,200,74,.12);color:var(--go);}
+.ch-autre{background:var(--s2);color:var(--tm);}
+.ch-dons{background:rgba(76,175,125,.15);color:var(--gr);}
+.ch-ok{background:var(--grs);color:var(--gr);}
+.ch-att{background:var(--ors);color:var(--or);}
+.ch-ann{background:var(--res);color:var(--re);}
+.ch-hakim{background:rgba(90,159,212,.12);color:var(--bl);}
+.ch-amal{background:rgba(155,125,232,.12);color:var(--pu);}
+.ch-rabiaa{background:rgba(61,189,170,.12);color:var(--te);}
+.ch-touria{background:rgba(232,200,74,.12);color:var(--go);}
+.ch-equipe{background:var(--s2);color:var(--tm);}
+.ch-rev{background:var(--grs);color:var(--gr);}
+.ch-airbnb{background:rgba(224,82,82,.12);color:var(--re);}
+.ch-booking{background:rgba(90,159,212,.12);color:var(--bl);}
+.ch-direct{background:var(--grs);color:var(--gr);}
+.ch-vrbo{background:rgba(155,125,232,.12);color:var(--pu);}
+.apt{font-size:11px;color:var(--tm);background:var(--s2);border-radius:4px;padding:2px 6px;font-family:'DM Mono',monospace;}
+.empty{text-align:center;padding:36px;color:var(--td);}
+/* Buttons */
+.ba{border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;}
+.ba:hover{opacity:.85;}
+.bab{background:var(--or);color:#fff;}
+.bat{background:var(--te);color:#fff;}
+.bas{background:var(--go);color:#222;}
+.bap{background:var(--pu);color:#fff;}
+.bar{background:var(--gr);color:#fff;}
+.ba-ghost{background:var(--s2);border:1px solid var(--br);color:var(--tm);}
+/* Chips selector */
+.chips-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
+.achip{background:var(--s2);border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;user-select:none;transition:all .15s;}
+.achip.sel{border-color:var(--or);background:var(--ors);color:var(--or);}
+/* Modal */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px;}
+.ov.hidden{display:none;}
+.mbox{background:var(--s);border:1px solid var(--br);border-radius:16px;width:100%;max-width:500px;padding:24px;max-height:92vh;overflow-y:auto;}
+.mt{font-size:17px;font-weight:600;margin-bottom:18px;}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.ff{grid-column:1/-1;}
+.fl{font-size:11px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;display:block;}
+.fi,.fse{width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;}
+.fi:focus,.fse:focus{border-color:var(--or);}
+.fi[readonly]{opacity:.6;cursor:default;}
+.fac{display:flex;gap:9px;justify-content:flex-end;margin-top:18px;}
+.bcan{background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bsave{border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.hidden{display:none!important;}
+/* Mobile nav */
+.mobnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--s);border-top:1px solid var(--br);padding:7px 0 13px;z-index:20;justify-content:space-around;}
+.mbt{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:var(--tm);font-size:9px;padding:3px 8px;border-radius:8px;}
+.mbt.on-b{color:var(--or);}.mbt.on-t{color:var(--te);}.mbt.on-s{color:var(--go);}.mbt.on-p{color:var(--pu);}.mbt.on-r{color:var(--gr);}
+.mic{font-size:19px;}
+/* Year nav */
+.ync{display:flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:2px 6px;}
+.ynv{font-family:'DM Mono',monospace;font-size:12px;min-width:42px;text-align:center;color:var(--or);font-weight:600;}
+.ynb{background:none;border:none;color:var(--tm);cursor:pointer;font-size:15px;padding:3px 5px;line-height:1;font-family:'DM Sans',sans-serif;}
+.ynb:hover{color:var(--or);}
+/* Circle KPIs */
+.circ-row{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
+.circ-card{background:var(--s);border:1px solid var(--br);border-radius:14px;padding:20px 22px;display:flex;align-items:center;gap:18px;flex:1;min-width:220px;}
+.circ-svg{flex-shrink:0;}
+.circ-info{display:flex;flex-direction:column;gap:4px;}
+.circ-lbl{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.09em;font-weight:600;}
+.circ-val{font-size:24px;font-weight:600;font-family:'DM Mono',monospace;line-height:1.1;}
+.circ-sub{font-size:11px;color:var(--td);}
+.circ-delta{font-size:11px;font-weight:500;margin-top:2px;}
+@media(max-width:700px){
+  .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
+  .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
+  .mobnav{display:flex;}.hm{display:none;}
+  .circ-card{min-width:0;}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- SIDEBAR -->
+<div class="side">
+  <div class="brand">
+    <div class="bn">Nex-Estate</div>
+    <div class="bs">CRM v2.1</div>
+    <div id="rate-disp" style="margin-top:8px;font-size:10px;color:var(--tm);font-family:'DM Mono',monospace;background:var(--s2);border-radius:6px;padding:5px 8px;text-align:center">1 EUR = — MAD</div>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+      <button onclick="exportData()" style="background:var(--gr);color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">💾 Sauvegarder</button>
+      <button onclick="document.getElementById('imp-file').click()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">📂 Restaurer</button>
+      <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importData(this)">
+    </div>
+  </div>
+  <div class="ng">
+    <div class="nl">Pilotage</div>
+    <div class="ni" id="ni-dash" onclick="goTo('dash')"><span class="dot"></span>Dashboard</div>
+  </div>
+  <div class="ng">
+    <div class="nl">Business</div>
+    <div class="ni on on-r" id="ni-resa" onclick="goTo('resa')"><span class="dot"></span>Réservations</div>
+    <div class="ni" id="ni-business" onclick="goTo('business')"><span class="dot"></span>Dépenses Business</div>
+    <div class="ni" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
+    <div class="ni" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
+  </div>
+  <div class="ng">
+    <div class="nl">Personnel</div>
+    <div class="ni" id="ni-perso" onclick="goTo('perso')"><span class="dot"></span>Dépenses Perso</div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+<!-- ═══ VIEW: DASHBOARD ═══ -->
+<div class="vw" id="vw-dash">
+  <div class="vh">
+    <div><div class="vt" style="background:linear-gradient(135deg,var(--or),var(--go));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Dashboard</div><div class="vsub">Pilotage des KPIs — tous les montants en MAD</div></div>
+  </div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="dtj" onclick="setPer('d','jour')">Jour</button>
+      <button class="tab" id="dts" onclick="setPer('d','semaine')">Semaine</button>
+      <button class="tab on" id="dtm" onclick="setPer('d','mois')">Mois</button>
+    </div>
+    <div id="d-nav"></div>
+    <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+  </div></div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div></div>
+    <div class="kc"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div></div>
+    <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div></div>
+    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div></div>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="d-com">0 MAD</div></div>
+    <div class="kc"><div class="kl">Dépenses business</div><div class="kv" style="color:var(--or)" id="d-dep">0 MAD</div></div>
+    <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div></div>
+    <div class="kc"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div></div>
+  </div>
+  <!-- Circle KPIs -->
+  <div class="circ-row">
+    <div class="circ-card">
+      <svg class="circ-svg" id="d-svg-occ" width="80" height="80" viewBox="0 0 80 80"></svg>
+      <div class="circ-info">
+        <div class="circ-lbl">Taux d'occupation</div>
+        <div class="circ-val" style="color:var(--te)" id="d-circ-occ">0 %</div>
+        <div class="circ-sub" id="d-circ-occ-det">0 / 0 nuits</div>
+        <div class="circ-delta" id="d-delta-occ" style="color:var(--td)"></div>
+      </div>
+    </div>
+    <div class="circ-card">
+      <svg class="circ-svg" id="d-svg-marge" width="80" height="80" viewBox="0 0 80 80"></svg>
+      <div class="circ-info">
+        <div class="circ-lbl">Marge nette</div>
+        <div class="circ-val" style="color:var(--or)" id="d-circ-marge">0 %</div>
+        <div class="circ-sub">Résultat / Revenus nets</div>
+        <div class="circ-delta" id="d-delta-marge" style="color:var(--td)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Taxe collectée</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Hors CA — argent État</div></div>
+    <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
+  </div>
+  <div class="sl">Revenus nets par appartement</div>
+  <div class="rg" id="d-recap-ap"></div>
+  <div class="sl" style="margin-top:18px">Répartition par source</div>
+  <div class="rg" id="d-recap-src"></div>
+</div>
+
+<!-- ═══ VIEW: RÉSERVATIONS ═══ -->
+<div class="vw active" id="vw-resa">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="ba ba-ghost" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
+      <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
+      <button class="ba bar" onclick="openModal('resa')">+ Ajouter</button>
+    </div>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
+    <div class="kc"><div class="kl">Revenus bruts</div><div class="kv" id="r-brut">0 MAD</div></div>
+    <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="r-com">0 MAD</div></div>
+    <div class="kc"><div class="kl">Nuits facturées</div><div class="kv" id="r-nuits">0</div></div>
+  </div>
+  <div class="sl">Revenus nets par appartement</div>
+  <div class="rg" id="r-recap"></div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="rtj" onclick="setPer('r','jour')">Jour</button>
+      <button class="tab" id="rts" onclick="setPer('r','semaine')">Semaine</button>
+      <button class="tab onr" id="rtm" onclick="setPer('r','mois')">Mois</button>
+    </div>
+    <div id="r-nav"></div>
+    <select class="fsel" id="r-fap" onchange="renderResa()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <select class="fsel" id="r-fsrc" onchange="renderResa()"><option value="">Toutes sources</option><option>Airbnb</option><option>Booking.com</option><option>Direct</option><option>VRBO</option></select>
+    <select class="fsel" id="r-ftype" onchange="renderResa()"><option value="">Tous types</option><option>RESERVATION</option><option>ANNULATION_PAYEE</option><option>ANNULATION_NON_PAYEE</option><option>RELOCATION</option><option>AIRCOVER</option><option>AJUSTEMENT</option><option>DIRECT</option></select>
+    <select class="fsel" id="r-fst" onchange="renderResa()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option></select>
+  </div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="r-tb"></tbody>
+  </table><div class="empty hidden" id="r-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div></div>
+  <div id="csv-prev" class="hidden" style="margin-top:16px">
+    <div class="sl">Aperçu import — vérifier avant de confirmer</div>
+    <div id="csv-prev-content"></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="ba bar" onclick="confirmCSV()">✅ Confirmer l'import</button>
+      <button class="ba ba-ghost" onclick="cancelCSV()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ VIEW: DÉPENSES BUSINESS ═══ -->
+<div class="vw" id="vw-business">
+  <div class="vh">
+    <div><div class="vt">Dépenses Business</div><div class="vsub">Ménage, charges, maintenance</div></div>
+    <button class="ba bab" onclick="openModal('business')">+ Ajouter</button>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl">Ménage</div><div class="kv" id="b-men">0 MAD</div></div>
+    <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
+    <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
+  </div>
+  <div class="sl">Ménage par appartement — mois en cours</div>
+  <div class="rg" id="b-recap"></div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
+      <button class="tab" id="bts" onclick="setPer('b','semaine')">Semaine</button>
+      <button class="tab on" id="btm" onclick="setPer('b','mois')">Mois</button>
+    </div>
+    <div id="b-nav"></div>
+    <select class="fsel" id="b-fap" onchange="renderBiz()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <select class="fsel" id="b-fcat" onchange="renderBiz()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
+    <select class="fsel" id="b-fmen" onchange="renderBiz()"><option value="">Toutes femmes de ménage</option><option>Amal</option><option>Rabiaa</option><option>Touria</option></select>
+    <select class="fsel" id="b-fst" onchange="renderBiz()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+  </div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="b-tb"></tbody>
+  </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
+</div>
+
+<!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
+<div class="vw" id="vw-taxe">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--te)">Taxe de séjour</div><div class="vsub">Collecte + récap paiement par femme de ménage</div></div>
+    <button class="ba bat" onclick="openModal('taxe')">+ Ajouter</button>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Collecté période</div><div class="kv" style="color:var(--te)" id="t-tot">0 MAD</div><div class="ks" id="t-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl">Par Hakim</div><div class="kv" id="t-hak">0 MAD</div></div>
+    <div class="kc"><div class="kl">Par l'équipe</div><div class="kv" id="t-eqp">0 MAD</div></div>
+    <div class="kc"><div class="kl">Non reversé</div><div class="kv" style="color:var(--re)" id="t-nr">0 MAD</div></div>
+  </div>
+  <!-- Récap hebdo -->
+  <div class="wb">
+    <div class="wbt">🧮 Récap paiement par femme de ménage</div>
+    <div class="wn">
+      <button class="nb2" onclick="shiftWk(-1)">‹</button>
+      <div class="wl" id="wk-lbl">Semaine</div>
+      <button class="nb2" onclick="shiftWk(1)">›</button>
+    </div>
+    <div class="cg" id="wk-cards"></div>
+  </div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="ttj" onclick="setPer('t','jour')">Jour</button>
+      <button class="tab" id="tts" onclick="setPer('t','semaine')">Semaine</button>
+      <button class="tab ont" id="ttm" onclick="setPer('t','mois')">Mois</button>
+    </div>
+    <div id="t-nav"></div>
+    <select class="fsel" id="t-fap" onchange="renderTaxe()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <select class="fsel" id="t-fcol" onchange="renderTaxe()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
+    <select class="fsel" id="t-fst" onchange="renderTaxe()"><option value="">Tous statuts</option><option>Reversé</option><option>Non reversé</option></select>
+  </div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
+    <tbody id="t-tb"></tbody>
+  </table><div class="empty hidden" id="t-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe</div></div>
+</div>
+
+<!-- ═══ VIEW: SERVICES ADDITIONNELS ═══ -->
+<div class="vw" id="vw-serv">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--go)">Services Additionnels</div><div class="vsub">Navette, late check-out, clim, extras...</div></div>
+    <button class="ba bas" onclick="openModal('serv')">+ Ajouter</button>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--go)" id="s-tot">0 MAD</div><div class="ks" id="s-cnt">0 services</div></div>
+    <div class="kc"><div class="kl">Payé</div><div class="kv" style="color:var(--gr)" id="s-pay">0 MAD</div></div>
+    <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="s-att">0 MAD</div></div>
+    <div class="kc"><div class="kl">+ Fréquent</div><div class="kv" style="font-size:12px;color:var(--go)" id="s-top">—</div></div>
+  </div>
+  <div class="sl">Résumé par service</div>
+  <div class="rg" id="s-recap"></div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="stj" onclick="setPer('s','jour')">Jour</button>
+      <button class="tab" id="sts" onclick="setPer('s','semaine')">Semaine</button>
+      <button class="tab ons" id="stm" onclick="setPer('s','mois')">Mois</button>
+    </div>
+    <div id="s-nav"></div>
+    <select class="fsel" id="s-fap" onchange="renderServ()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <select class="fsel" id="s-fsv" onchange="renderServ()"><option value="">Tous services</option><option>Navette aéroport</option><option>Navette ville</option><option>Ménage supplémentaire</option><option>Changement serviettes/linge</option><option>Arrivée anticipée</option><option>Départ tardif</option><option>Climatisation</option><option>Voyageur supplémentaire</option><option>Petit-déjeuner</option><option>Parking</option><option>Autre service</option></select>
+    <select class="fsel" id="s-fcol" onchange="renderServ()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
+    <select class="fsel" id="s-fst" onchange="renderServ()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+  </div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="s-tb"></tbody>
+  </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service</div></div>
+</div>
+
+<!-- ═══ VIEW: DÉPENSES PERSO ═══ -->
+<div class="vw" id="vw-perso">
+  <div class="vh">
+    <div><div class="vt" style="background:linear-gradient(135deg,var(--pu),var(--bl));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Dépenses Personnelles</div><div class="vsub">Toutes tes dépenses du quotidien</div></div>
+    <button class="ba bap" onclick="openModal('perso')">+ Ajouter</button>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
+    <div class="kc"><div class="kl">Crédits & Loyer</div><div class="kv" id="p-crd">0 MAD</div></div>
+    <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="p-att">0 MAD</div></div>
+  </div>
+  <div class="sl">Résumé par catégorie</div>
+  <div class="rg" id="p-recap"></div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="ptj" onclick="setPer('p','jour')">Jour</button>
+      <button class="tab" id="pts" onclick="setPer('p','semaine')">Semaine</button>
+      <button class="tab onp" id="ptm" onclick="setPer('p','mois')">Mois</button>
+    </div>
+    <div id="p-nav"></div>
+    <select class="fsel" id="p-fcat" onchange="renderPerso()"><option value="">Toutes catégories</option><option>Crédit personnel</option><option>Loyer perso</option><option>Pension enfants</option><option>Famille / Femme</option><option>Crèche / École</option><option>Abonnements</option><option>Alimentation / Grande surface</option><option>Resto / Snack / Café</option><option>Médicaments</option><option>Compléments alimentaires</option><option>Vêtements</option><option>Sport / Salle</option><option>Loisirs / Sorties</option><option>Transport / Carburant</option><option>Dons / Aides</option><option>Autre perso</option></select>
+    <select class="fsel" id="p-fst" onchange="renderPerso()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+  </div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Date</th><th>Catégorie</th><th class="hm">Description</th><th class="hm">Récurrence</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="p-tb"></tbody>
+  </table><div class="empty hidden" id="p-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense</div></div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /layout -->
+
+<!-- Mobile Nav -->
+<div class="mobnav">
+  <div class="mbt" id="mn-dash" onclick="goTo('dash')"><span class="mic">📊</span>Dash</div>
+  <div class="mbt on-r" id="mn-resa" onclick="goTo('resa')"><span class="mic">🏠</span>Rés.</div>
+  <div class="mbt" id="mn-business" onclick="goTo('business')"><span class="mic">🏢</span>Dép.</div>
+  <div class="mbt" id="mn-taxe" onclick="goTo('taxe')"><span class="mic">🧾</span>Taxe</div>
+  <div class="mbt" id="mn-serv" onclick="goTo('serv')"><span class="mic">⭐</span>Extras</div>
+  <div class="mbt" id="mn-perso" onclick="goTo('perso')"><span class="mic">👤</span>Perso</div>
+</div>
+
+<!-- MODAL UNIQUE -->
+<div class="ov hidden" id="modal-overlay">
+  <div class="mbox">
+    <div class="mt" id="modal-title">Nouvelle entrée</div>
+    <div id="modal-body"></div>
+    <div class="fac">
+      <button class="bcan" onclick="closeModal()">Annuler</button>
+      <button class="bsave" id="modal-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA — migration depuis anciennes clés si nécessaire
+// ============================================================
+var KEYS = {resa:'nxr', business:'nxb', taxe:'nxt', serv:'nxs', perso:'nxp'};
+var OLD  = {business:'nx-b', taxe:'nx-t', serv:'nx-s', perso:'nx-p'};
+
+function loadDB(k) {
+  var data = localStorage.getItem(KEYS[k]);
+  if (!data && OLD[k]) data = localStorage.getItem(OLD[k]);
+  return JSON.parse(data || '[]');
+}
+function saveDB(k) { localStorage.setItem(KEYS[k], JSON.stringify(DB[k])); }
+
+var DB = {
+  resa:     loadDB('resa'),
+  business: loadDB('business'),
+  taxe:     loadDB('taxe'),
+  serv:     loadDB('serv'),
+  perso:    loadDB('perso')
+};
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+var APPARTS = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+var RABAT   = ['Résidence Al Boustane','Agdal 13'];
+var EUR_MAD = 10.5; // Taux de change EUR->MAD, rafraîchi au démarrage via frankfurter.app
+var EUR_MAD_DATE = ''; // Date du taux (API frankfurter)
+var TAUX    = {rabat:4, sale:2}; // EUR par nuit par personne (converti en MAD à l'affichage)
+var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
+var CLEANERS = ['Amal','Rabiaa','Touria'];
+var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
+var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
+var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
+var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
+
+// ============================================================
+// UTILS
+// ============================================================
+function today() { return new Date().toISOString().slice(0,10); }
+function fmt(v)  { return Math.round(v||0).toLocaleString('fr-MA')+' MAD'; }
+function fmtE(v) { return Math.round((v||0)*EUR_MAD).toLocaleString('fr-MA')+' MAD'; }
+function e2m(v)  { return Math.round((v||0)*EUR_MAD); }
+function uid()   { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+function fetchEurMad() {
+  var url = 'https://api.frankfurter.app/latest?from=EUR&to=MAD';
+  fetch(url).then(function(r){return r.json();}).then(function(d){
+    if (d && d.rates && d.rates.MAD) {
+      EUR_MAD = d.rates.MAD;
+      EUR_MAD_DATE = d.date || '';
+      updateRateDisplay();
+      // Re-rendre la vue courante avec le nouveau taux
+      var k = {resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',dash:'d'}[CUR];
+      if (k) renderView(k);
+    }
+  }).catch(function(err){
+    console.warn('Taux EUR/MAD non rafraichi, fallback:', EUR_MAD, err);
+    updateRateDisplay();
+  });
+}
+
+function updateRateDisplay() {
+  var el = document.getElementById('rate-disp');
+  if (!el) return;
+  var txt = '1 EUR = ' + EUR_MAD.toFixed(3) + ' MAD';
+  if (EUR_MAD_DATE) txt += ' · ' + EUR_MAD_DATE;
+  el.textContent = txt;
+}
+
+function diffNuits(ci,co) {
+  if(!ci||!co) return 0;
+  return Math.max(0,Math.round((new Date(co)-new Date(ci))/86400000));
+}
+
+function tauxTaxe(appart) {
+  return RABAT.indexOf(appart)>=0 ? TAUX.rabat : TAUX.sale;
+}
+
+function catClass(c) {
+  var m = {
+    'Ménage':'menage','Loyer':'loyer','Eau & Électricité':'eau','Eau':'eau','Électricité':'elec',
+    'Internet / Fibre':'abo','Frais de syndic':'autre','Consommables':'alim','Maintenance':'autre',
+    'Ameublement / Décoration':'loisir','Travaux / Rénovation':'autre','Assurance':'autre',
+    'Frais bancaires':'credit','Transport / déplacements':'autre','Outils / logiciels':'abo',
+    'Crédit personnel':'credit','Loyer perso':'loyer','Pension enfants':'pension',
+    'Famille / Femme':'famille','Crèche / École':'famille','Abonnements':'abo',
+    'Alimentation / Grande surface':'alim','Resto / Snack / Café':'loisir',
+    'Médicaments':'sante','Compléments alimentaires':'sante','Vêtements':'loisir',
+    'Sport / Salle':'sante','Loisirs / Sorties':'loisir','Transport / Carburant':'autre',
+    'Dons / Aides':'dons'
+  };
+  return m[c]||'autre';
+}
+function chip(txt,cls) { return '<span class="ch ch-'+cls+'">'+txt+'</span>'; }
+function srcClass(s)   { var m={Airbnb:'airbnb','Booking.com':'booking',Direct:'direct',VRBO:'vrbo'}; return m[s]||'autre'; }
+function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
+function colClass(c)   { var m={Hakim:'hakim',Amal:'amal',Rabiaa:'rabiaa',Touria:'touria',Équipe:'equipe'}; return m[c]||'equipe'; }
+function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'); }
+
+function actBtns(type,id) {
+  return '<div class="acts">'+
+    '<button class="bedit" onclick="openModal(\''+type+'\',\''+id+'\')">✏️</button>'+
+    '<button class="bdel" onclick="delEntry(\''+type+'\',\''+id+'\')">✕</button>'+
+    '</div>';
+}
+
+// ============================================================
+// PERIODS
+// ============================================================
+var P   = {r:'mois',b:'mois',t:'mois',s:'mois',p:'mois',d:'mois'};
+var DAY = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
+var WK  = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
+var MO  = {r:new Date(),b:new Date(),t:new Date(),s:new Date(),p:new Date(),d:new Date()};
+var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().getFullYear(),s:new Date().getFullYear(),p:new Date().getFullYear(),d:new Date().getFullYear()};
+var wkRef = today();
+
+function wkRange(ref) {
+  var d=new Date(ref), day=d.getDay()||7;
+  d.setDate(d.getDate()-day+1);
+  var s=d.toISOString().slice(0,10);
+  d.setDate(d.getDate()+6);
+  return {s:s, e:d.toISOString().slice(0,10)};
+}
+
+function filterPer(rows, k) {
+  var p=P[k];
+  if(p==='jour') return rows.filter(function(r){return r.date===DAY[k];});
+  if(p==='semaine') { var w=wkRange(WK[k]); return rows.filter(function(r){return r.date>=w.s&&r.date<=w.e;}); }
+  var mk=MO[k].toISOString().slice(0,7);
+  return rows.filter(function(r){return (r.date||'').startsWith(mk);});
+}
+
+function filterResa(rows, k) {
+  var p=P[k];
+  function dateKey(r){return r.date_paiement||r.checkin||'';}
+  if(p==='jour') return rows.filter(function(r){return dateKey(r)===DAY[k];});
+  if(p==='semaine') { var w=wkRange(WK[k]); return rows.filter(function(r){var d=dateKey(r);return d>=w.s&&d<=w.e;}); }
+  var mk=MO[k].toISOString().slice(0,7);
+  return rows.filter(function(r){return (r.mois_kpi||dateKey(r)).startsWith(mk);});
+}
+
+function setPer(k, p) {
+  P[k]=p;
+  var tabMap={r:'rt',b:'bt',t:'tt',s:'st',p:'pt',d:'dt'};
+  var pre=tabMap[k];
+  var onCls={r:'onr',b:'on',t:'ont',s:'ons',p:'onp',d:'on'};
+  ['j','s','m'].forEach(function(x){
+    var el=document.getElementById(pre+x);
+    if(el) el.className='tab';
+  });
+  var el=document.getElementById(pre+p[0]);
+  if(el) el.className='tab '+onCls[k];
+  renderNav(k);
+  renderView(k);
+}
+
+function renderNav(k) {
+  var navId={r:'r-nav',b:'b-nav',t:'t-nav',s:'s-nav',p:'p-nav',d:'d-nav'}[k];
+  var el=document.getElementById(navId); if(!el) return;
+  var p=P[k];
+  var periodHtml='';
+  var curYr=YR[k];
+  if(p==='jour') {
+    periodHtml='<input type="date" class="fdt" value="'+DAY[k]+'" onchange="DAY[\''+k+'\']=this.value;YR[\''+k+'\']=parseInt(this.value.slice(0,4));renderView(\''+k+'\')">';
+  } else if(p==='semaine') {
+    var w=wkRange(WK[k]);
+    curYr=parseInt(WK[k].slice(0,4));
+    periodHtml='<div class="nc"><button class="nb2" onclick="shiftW(\''+k+'\',-1)">‹</button><div class="nv">'+w.s+' → '+w.e.slice(5)+'</div><button class="nb2" onclick="shiftW(\''+k+'\',1)">›</button></div>';
+  } else {
+    curYr=MO[k].getFullYear();
+    periodHtml='<div class="nc"><button class="nb2" onclick="shiftM(\''+k+'\',-1)">‹</button><div class="nv">'+MO[k].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})+'</div><button class="nb2" onclick="shiftM(\''+k+'\',1)">›</button></div>';
+  }
+  var yrHtml='<div class="ync"><button class="ynb" onclick="shiftY(\''+k+'\',-1)">‹</button><div class="ynv">'+curYr+'</div><button class="ynb" onclick="shiftY(\''+k+'\',1)">›</button></div>';
+  el.innerHTML='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+yrHtml+periodHtml+'</div>';
+}
+
+function shiftW(k,d) { var dt=new Date(WK[k]); dt.setDate(dt.getDate()+d*7); WK[k]=dt.toISOString().slice(0,10); YR[k]=parseInt(WK[k].slice(0,4)); renderNav(k); renderView(k); }
+function shiftM(k,d) { MO[k].setMonth(MO[k].getMonth()+d); YR[k]=MO[k].getFullYear(); renderNav(k); renderView(k); }
+function shiftY(k,d) {
+  var p=P[k];
+  YR[k]+=d;
+  if(p==='mois') {
+    MO[k].setFullYear(YR[k]);
+  } else if(p==='semaine') {
+    var dt=new Date(WK[k]); dt.setFullYear(YR[k]); WK[k]=dt.toISOString().slice(0,10);
+  } else {
+    DAY[k]=YR[k]+DAY[k].slice(4);
+  }
+  renderNav(k); renderView(k);
+}
+function shiftWk(d)  { var dt=new Date(wkRef); dt.setDate(dt.getDate()+d*7); wkRef=dt.toISOString().slice(0,10); renderWkCards(); }
+
+function renderView(k) {
+  if(k==='r') renderResa();
+  else if(k==='b') renderBiz();
+  else if(k==='t') renderTaxe();
+  else if(k==='s') renderServ();
+  else if(k==='d') renderDash();
+  else renderPerso();
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+var CUR = 'resa';
+function goTo(name) {
+  CUR = name;
+  document.querySelectorAll('.vw').forEach(function(v){v.classList.remove('active');});
+  document.getElementById('vw-'+name).classList.add('active');
+  var allNav = document.querySelectorAll('.ni,.mbt');
+  allNav.forEach(function(el){
+    el.classList.remove('on','on-b','on-t','on-s','on-p','on-r');
+  });
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p'};
+  var cls = clsMap[name]||'on-b';
+  var ni=document.getElementById('ni-'+name);
+  var mn=document.getElementById('mn-'+name);
+  if(ni){ni.classList.add('on');ni.classList.add(cls);}
+  if(mn){mn.classList.add(cls);}
+  renderNav({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[name]);
+  renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[name]);
+}
+
+// ============================================================
+// CIRCLE KPI HELPER
+// ============================================================
+function drawCircle(svgId, pct, color) {
+  var el=document.getElementById(svgId); if(!el) return;
+  var r=32, cx=40, cy=40, circum=2*Math.PI*r;
+  var clampPct=Math.min(100,Math.max(0,pct||0));
+  var dash=circum*(clampPct/100);
+  var gap=circum-dash;
+  el.innerHTML=
+    '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="var(--s2)" stroke-width="7"/>'+
+    '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="7"'+
+    ' stroke-dasharray="'+dash.toFixed(2)+' '+gap.toFixed(2)+'"'+
+    ' stroke-dashoffset="'+((circum/4)).toFixed(2)+'"'+
+    ' stroke-linecap="round" transform="rotate(-90 '+cx+' '+cy+')"'+
+    ' style="transition:stroke-dasharray .4s ease"/>';
+}
+
+function deltaArrow(cur, prev, unit) {
+  if(!prev && prev!==0) return '';
+  var diff=cur-prev;
+  if(Math.abs(diff)<0.5) return '';
+  var arrow=diff>0?'↑':'↓';
+  var col=diff>0?'var(--gr)':'var(--re)';
+  var label=unit==='%'?Math.abs(Math.round(diff))+'pp':Math.round(Math.abs(diff)).toLocaleString('fr-MA')+' MAD';
+  return '<span style="color:'+col+'">'+arrow+' '+label+'</span> <span style="color:var(--td)">vs mois préc.</span>';
+}
+
+// ============================================================
+// RENDER: DASHBOARD
+// ============================================================
+function periodDays(k) {
+  var p=P[k];
+  if(p==='jour') return 1;
+  if(p==='semaine') return 7;
+  var y=MO[k].getFullYear(), m=MO[k].getMonth();
+  return new Date(y,m+1,0).getDate();
+}
+
+function renderDash() {
+  renderNav('d');
+  var allRes=filterResa(DB.resa,'d');
+  var fa=val('d-fap');
+  if(fa) allRes=allRes.filter(function(r){return r.appart===fa;});
+  var revRes=allRes.filter(function(r){
+    return TYPES_R.indexOf(r.type_norm)>=0
+      && r.type_norm!=='ANNULATION_NON_PAYEE'
+      && r.statut!=='Annulé';
+  });
+  var brutEur=sum(revRes,'brut'), comEur=sum(revRes,'commission'), netEur=sum(revRes,'net');
+  var nuitsFact=revRes.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
+  var nuitsSejour=revRes.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+  var joursDispo=periodDays('d')*(fa?1:APPARTS.length);
+  var depenses=sum(filterPer(DB.business,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
+  var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
+  var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
+  var brutMad=brutEur*EUR_MAD, comMad=comEur*EUR_MAD, netMad=netEur*EUR_MAD;
+  var adrMad=nuitsFact>0?netMad/nuitsFact:0;
+  var occPct=joursDispo>0?(nuitsSejour/joursDispo*100):0;
+  var revpanMad=joursDispo>0?netMad/joursDispo:0;
+  var resultat=netMad-depenses;
+  var marge=netMad>0?(resultat/netMad*100):0;
+  set('d-net',fmt(netMad));
+  set('d-brut','Brut : '+fmt(brutMad));
+  set('d-res',fmt(resultat));
+  set('d-com',fmt(comMad));
+  set('d-dep',fmt(depenses));
+  set('d-tax',fmt(taxeCollectee));
+  set('d-ext',fmt(extras));
+  set('d-occ',Math.round(occPct)+' %');
+  set('d-occ-det',nuitsSejour+' / '+joursDispo+' nuits');
+  set('d-adr',fmt(adrMad));
+  set('d-revpan',fmt(revpanMad));
+  set('d-marge',Math.round(marge)+' %');
+
+  // ── Circles ──────────────────────────────────────────────
+  drawCircle('d-svg-occ', occPct, 'var(--te)');
+  set('d-circ-occ', Math.round(occPct)+' %');
+  set('d-circ-occ-det', nuitsSejour+' / '+joursDispo+' nuits');
+  drawCircle('d-svg-marge', Math.max(0,marge), 'var(--or)');
+  set('d-circ-marge', Math.round(marge)+' %');
+
+  // ── Prev period (mois only) for comparison base ──────────
+  if(P['d']==='mois') {
+    var prevMO=new Date(MO['d'].getTime()); prevMO.setMonth(prevMO.getMonth()-1);
+    var prevMk=prevMO.toISOString().slice(0,7);
+    var prevRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(prevMk);});
+    if(fa) prevRes=prevRes.filter(function(r){return r.appart===fa;});
+    var prevRev=prevRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+    var prevNet=sum(prevRev,'net')*EUR_MAD;
+    var prevNuitsSej=prevRev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+    var prevJours=new Date(prevMO.getFullYear(),prevMO.getMonth()+1,0).getDate()*(fa?1:APPARTS.length);
+    var prevOcc=prevJours>0?(prevNuitsSej/prevJours*100):0;
+    var prevDep=sum(DB.business.filter(function(r){return r.date.startsWith(prevMk)&&(!fa||r.appart===fa);}),'montant');
+    var prevMarge=prevNet>0?((prevNet-prevDep)/prevNet*100):0;
+    window._NX_PREV={netMad:prevNet,occPct:prevOcc,marge:prevMarge,nuits:prevNuitsSej,mk:prevMk};
+    set('d-delta-occ',deltaArrow(occPct,prevOcc,'%'));
+    set('d-delta-marge',deltaArrow(marge,prevMarge,'%'));
+  } else {
+    window._NX_PREV=null;
+    set('d-delta-occ',''); set('d-delta-marge','');
+  }
+  set('d-recap-ap',APPARTS.map(function(ap){
+    var x=revRes.filter(function(r){return r.appart===ap;});
+    var n=x.reduce(function(s,r){return s+(r.net||0);},0);
+    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
+  }).join(''));
+  var sources=['Airbnb','Booking.com','Direct','VRBO'];
+  set('d-recap-src',sources.map(function(src){
+    var x=revRes.filter(function(r){return r.source===src;});
+    if(!x.length) return '';
+    var n=x.reduce(function(s,r){return s+(r.net||0);},0);
+    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmtE(n)+'</div></div>';
+  }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
+}
+
+// ============================================================
+// RENDER: RÉSERVATIONS
+// ============================================================
+function renderResa() {
+  renderNav('r');
+  var rows = filterResa(DB.resa,'r');
+  var fa=val('r-fap'),fsrc=val('r-fsrc'),ftype=val('r-ftype'),fst=val('r-fst');
+  if(fa)   rows=rows.filter(function(r){return r.appart===fa;});
+  if(fsrc) rows=rows.filter(function(r){return r.source===fsrc;});
+  if(ftype)rows=rows.filter(function(r){return r.type_norm===ftype;});
+  if(fst)  rows=rows.filter(function(r){return r.statut===fst;});
+  rows.sort(function(a,b){return (b.checkin||'').localeCompare(a.checkin||'');});
+  var rev = rows.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+  var brut=sum(rev,'brut'), com=sum(rev,'commission'), net=sum(rev,'net');
+  var nuits=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
+  set('r-net',fmtE(net)); set('r-brut',fmtE(brut)); set('r-com',fmtE(com));
+  set('r-nuits',nuits); set('r-cnt',rows.length+' réservation'+(rows.length>1?'s':''));
+  var allR=filterResa(DB.resa,'r').filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0&&r.statut!=='Annulé';});
+  set('r-recap',APPARTS.map(function(ap){
+    var x=allR.filter(function(r){return r.appart===ap;}), n=x.reduce(function(s,r){return s+r.net;},0);
+    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
+  }).join(''));
+  var tb=document.getElementById('r-tb'), em=document.getElementById('r-em');
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  em.classList.add('hidden');
+  tb.innerHTML=rows.map(function(r){
+    return '<tr>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.ref||'')+'</td>'+
+      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
+      '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
+      '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
+      '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
+      '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+e2m(r.taxe_sejour||0).toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.type_norm||'',stClass(r.type_norm==='ANNULATION_NON_PAYEE'?'Annulé':r.type_norm==='RESERVATION'?'Payé':'Payé'))+'</td>'+
+      '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+      '<td>'+actBtns('resa',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// RENDER: BUSINESS
+// ============================================================
+function renderBiz() {
+  renderNav('b');
+  var rows=filterPer(DB.business,'b');
+  var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst');
+  if(fa)rows=rows.filter(function(r){return r.appart===fa;});
+  if(fc)rows=rows.filter(function(r){return r.cat===fc;});
+  if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
+  if(fs)rows=rows.filter(function(r){return r.statut===fs;});
+  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
+  var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
+  var chg=sum(rows.filter(function(r){return r.cat!=='Ménage';}), 'montant');
+  var att=sum(rows.filter(function(r){return r.statut==='En attente';}), 'montant');
+  set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
+  set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
+  var mk=MO.b.toISOString().slice(0,7);
+  set('b-recap',APPARTS.map(function(ap){
+    var x=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.cat==='Ménage'&&r.appart===ap;});
+    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' passage'+(x.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(x,'montant'))+'</div></div>';
+  }).join(''));
+  var tb=document.getElementById('b-tb'), em=document.getElementById('b-em');
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  em.classList.add('hidden');
+  tb.innerHTML=rows.map(function(r){
+    return '<tr>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
+      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
+      '<td>'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>'+
+      '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+      '<td>'+actBtns('business',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// RENDER: TAXE
+// ============================================================
+function renderWkCards() {
+  var w=wkRange(wkRef);
+  set('wk-lbl',w.s+' → '+w.e.slice(5));
+  set('wk-cards',CLEANERS.map(function(name){
+    var bRows=DB.business.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.fmen===name;});
+    var men=sum(bRows.filter(function(r){return r.cat==='Ménage';}),'montant');
+    var adv=sum(bRows.filter(function(r){return r.cat!=='Ménage';}),'montant');
+    var tax=sum(DB.taxe.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name&&r.rev==='Non reversé';}),'montant');
+    var ext=sum(DB.serv.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name;}),'montant');
+    var total=men+adv, net=total-tax-ext;
+    var col=net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
+    var lbl=net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
+    return '<div class="cc">'+
+      '<div class="ccn '+colClass(name)+'">'+name+'</div>'+
+      '<div class="ccr"><div class="ccl">Ménage effectué</div><div class="ccv">'+fmt(men)+'</div></div>'+
+      (adv>0?'<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>':'')+
+      '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px"><div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div></div>'+
+      '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>'+
+      '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>'+
+      '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
+      '</div>';
+  }).join(''));
+}
+
+function renderTaxe() {
+  renderNav('t');
+  renderWkCards();
+  var rows=filterPer(DB.taxe,'t');
+  var fa=val('t-fap'),fc=val('t-fcol'),fs=val('t-fst');
+  if(fa)rows=rows.filter(function(r){return r.appart===fa;});
+  if(fc)rows=rows.filter(function(r){return r.col===fc;});
+  if(fs)rows=rows.filter(function(r){return r.rev===fs;});
+  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
+  var tot=sum(rows,'montant');
+  var hak=sum(rows.filter(function(r){return r.col==='Hakim';}),'montant');
+  var eqp=sum(rows.filter(function(r){return r.col!=='Hakim';}),'montant');
+  var nr=sum(rows.filter(function(r){return r.rev==='Non reversé'&&r.col!=='Hakim';}),'montant');
+  set('t-tot',fmt(tot)); set('t-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
+  set('t-hak',fmt(hak)); set('t-eqp',fmt(eqp)); set('t-nr',fmt(nr));
+  var tb=document.getElementById('t-tb'), em=document.getElementById('t-em');
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  em.classList.add('hidden');
+  tb.innerHTML=rows.map(function(r){
+    return '<tr>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
+      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
+      '<td>'+chip(r.col,colClass(r.col))+'</td>'+
+      '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.rev,r.rev==='Reversé'?'rev':'att')+'</td>'+
+      '<td>'+actBtns('taxe',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// RENDER: SERVICES
+// ============================================================
+function renderServ() {
+  renderNav('s');
+  var rows=filterPer(DB.serv,'s');
+  var fa=val('s-fap'),fsv=val('s-fsv'),fc=val('s-fcol'),fs=val('s-fst');
+  if(fa) rows=rows.filter(function(r){return r.appart===fa;});
+  if(fsv)rows=rows.filter(function(r){return r.svc===fsv;});
+  if(fc) rows=rows.filter(function(r){return r.col===fc;});
+  if(fs) rows=rows.filter(function(r){return r.statut===fs;});
+  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
+  var tot=sum(rows,'montant'), pay=sum(rows.filter(function(r){return r.statut==='Payé';}),'montant');
+  var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
+  set('s-tot',fmt(tot)); set('s-cnt',rows.length+' service'+(rows.length>1?'s':''));
+  set('s-pay',fmt(pay)); set('s-att',fmt(att));
+  var cnt={};filterPer(DB.serv,'s').forEach(function(r){cnt[r.svc]=(cnt[r.svc]||0)+1;});
+  var topK=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];})[0]||'—';
+  set('s-top',topK);
+  var allS=filterPer(DB.serv,'s');
+  set('s-recap',CATS_S.map(function(sv){
+    var x=allS.filter(function(r){return r.svc===sv;}); if(!x.length)return'';
+    return'<div class="rc"><div><div class="rn">'+sv+'</div><div class="rsb">'+x.length+'×</div></div><div class="rv" style="color:var(--go)">'+fmt(sum(x,'montant'))+'</div></div>';
+  }).join('')||'<div style="color:var(--td);font-size:13px">Aucun service</div>');
+  var tb=document.getElementById('s-tb'),em=document.getElementById('s-em');
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  em.classList.add('hidden');
+  tb.innerHTML=rows.map(function(r){
+    return '<tr>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
+      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td>'+chip(r.svc,'serv')+'</td>'+
+      '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
+      '<td>'+chip(r.col,colClass(r.col))+'</td>'+
+      '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--go)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+      '<td>'+actBtns('serv',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// RENDER: PERSO
+// ============================================================
+function renderPerso() {
+  renderNav('p');
+  var rows=filterPer(DB.perso,'p');
+  var fc=val('p-fcat'),fs=val('p-fst');
+  if(fc)rows=rows.filter(function(r){return r.cat===fc;});
+  if(fs)rows=rows.filter(function(r){return r.statut===fs;});
+  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
+  var tot=sum(rows,'montant');
+  var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École'].indexOf(r.cat)>=0;}),'montant');
+  var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
+  var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
+  set('p-tot',fmt(tot)); set('p-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
+  set('p-fam',fmt(fam)); set('p-crd',fmt(crd)); set('p-att',fmt(att));
+  var allP=filterPer(DB.perso,'p');
+  set('p-recap',CATS_P.map(function(cat){
+    var x=allP.filter(function(r){return r.cat===cat;}); if(!x.length)return'';
+    return'<div class="rc"><div><div class="rn">'+cat+'</div><div class="rsb">'+x.length+' entrée'+(x.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--pu)">'+fmt(sum(x,'montant'))+'</div></div>';
+  }).join('')||'<div style="color:var(--td);font-size:13px">Aucune dépense</div>');
+  var tb=document.getElementById('p-tb'),em=document.getElementById('p-em');
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  em.classList.add('hidden');
+  tb.innerHTML=rows.map(function(r){
+    return '<tr>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
+      '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
+      '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td)">'+(r.rec||'Ponctuel')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+      '<td>'+actBtns('perso',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+var M_TYPE='', M_ID=null;
+
+function openModal(type, id) {
+  M_TYPE=type; M_ID=id||null;
+  var title=id?'Modifier':'Nouvelle entrée';
+  var saveCls={resa:'bar',business:'bab',taxe:'bat',serv:'bas',perso:'bap'}[type]||'bab';
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-save').className='bsave '+saveCls;
+  document.getElementById('modal-save').onclick=saveEntry;
+  document.getElementById('modal-body').innerHTML=buildForm(type, id);
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  // Wire auto-calc for resa
+  if(type==='resa') {
+    ['fi-ci','fi-co','fi-np','fi-brut','fi-src','fi-app'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.addEventListener('change', autoCalcResa);
+    });
+    autoCalcResa();
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  M_ID=null;
+}
+
+function buildForm(type, editId) {
+  var rec=null;
+  if(editId) rec=DB[type].find(function(x){return x.id===editId;});
+  var v=function(k,def){return rec?(rec[k]||def||''):(def||'');};
+  var T=today();
+
+  if(type==='resa') {
+    var ap=v('appart','Agdal 13'), src=v('source','Airbnb');
+    var ci=v('checkin',T), co=v('checkout','');
+    var brutEur=rec?rec.brut:0;
+    var brutMad=Math.round(brutEur*EUR_MAD);
+    var comPct=COM[src]||0.155;
+    var np=v('nb_personnes',1);
+    var nf=v('nuits_fact',diffNuits(ci,co));
+    var netMad=Math.round(brutMad-brutMad*comPct);
+    var taxeMad = rec ? Math.round((rec.taxe_sejour||0)*EUR_MAD) : ((src==='Booking.com' && nf>0) ? Math.round(nf*np*tauxTaxe(ap)*EUR_MAD) : 0);
+    var taxeDisabled = (src !== 'Booking.com');
+    var existingRef = rec ? (rec.ref||'') : '';
+    return '<div class="fg">'+
+      '<input type="hidden" id="fi-ref" value="'+existingRef+'">'+
+      field2('Source','fi-src','select',src,['Airbnb','Booking.com','Direct','VRBO'])+
+      field2('Appartement','fi-app','select',ap,APPARTS)+
+      fieldFull('Voyageur','fi-voy','text',v('voyageur',''),'Nom du voyageur')+
+      field2('Check-in','fi-ci','date',ci)+
+      field2('Check-out','fi-co','date',co)+
+      field2('Nuits facturées','fi-nf','number',nf)+
+      field2('Nb personnes','fi-np','number',np)+
+      field2('Montant brut (MAD)','fi-brut','number',brutMad)+
+      '<div><label class="fl">Commission (%)</label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" readonly style="opacity:0.6"></div>'+
+      '<div><label class="fl">Montant net (MAD)</label><input type="number" class="fi" id="fi-net" value="'+netMad+'" readonly></div>'+
+      '<div><label class="fl">Taxe séjour (MAD)</label><input type="number" class="fi" id="fi-taxe" value="'+taxeMad+'"'+(taxeDisabled?' readonly style="opacity:0.5"':'')+'></div>'+
+      field2('Type','fi-type','select',v('type_norm','RESERVATION'),TYPES_R)+
+      field2('Mode paiement','fi-mode','select',v('mode_paiement','Virement plateforme'),['Virement plateforme','Cash','Virement MAD','Virement EUR'])+
+      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente','Annulé'])+
+      fieldFull('Date de paiement','fi-dp','date',v('date_paiement',''))+
+      fieldFull('Notes','fi-notes','text',v('notes',''),'Annulation, relocation, cas spécial...')+
+      '</div>';
+  }
+
+  if(type==='business') {
+    return '<div class="fg">'+
+      fieldFull('Date','fi-date','date',v('date',T))+
+      '<div class="ff"><label class="fl">Appartement(s)</label>'+
+      '<div class="chips-row" id="appt-chips">'+
+      APPARTS.map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
+      '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen"><option value="">— Non applicable —</option>'+CLEANERS.map(function(c){return '<option'+(v('fmen')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
+      field2('Montant (MAD)','fi-montant','number',v('montant',0))+
+      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
+      '</div>';
+  }
+
+  if(type==='taxe') {
+    return '<div class="fg">'+
+      field2('Date','fi-date','date',v('date',T))+
+      field2('Appartement','fi-app','select',v('appart','Agdal 13'),APPARTS)+
+      fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
+      field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
+      field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
+      field2('Montant (MAD)','fi-montant','number',v('montant',0))+
+      field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
+      '</div>';
+  }
+
+  if(type==='serv') {
+    return '<div class="fg">'+
+      field2('Date','fi-date','date',v('date',T))+
+      field2('Appartement','fi-app','select',v('appart','Agdal 13'),APPARTS)+
+      '<div class="ff"><label class="fl">Type de service</label><select class="fse" id="fi-svc">'+CATS_S.map(function(c){return '<option'+(v('svc')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
+      field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
+      field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
+      field2('Montant (MAD)','fi-montant','number',v('montant',0))+
+      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
+      '</div>';
+  }
+
+  if(type==='perso') {
+    return '<div class="fg">'+
+      field2('Date','fi-date','date',v('date',T))+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_P.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      fieldFull('Description','fi-desc','text',v('desc',''),'Détail de la dépense')+
+      field2('Montant (MAD)','fi-montant','number',v('montant',0))+
+      field2('Récurrence','fi-rec','select',v('rec','Ponctuel'),['Ponctuel','Hebdomadaire','Mensuel','Annuel'])+
+      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
+      fieldFull('Bénéficiaire','fi-prest','text',v('prest',''),'Nom')+
+      '</div>';
+  }
+  return '';
+}
+
+function field2(lbl,id,type,val,opts) {
+  if(type==='select') {
+    return '<div><label class="fl">'+lbl+'</label><select class="fse" id="'+id+'">'+opts.map(function(o){return '<option'+(val==o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></div>';
+  }
+  return '<div><label class="fl">'+lbl+'</label><input type="'+type+'" class="fi" id="'+id+'" value="'+val+'"></div>';
+}
+function fieldFull(lbl,id,type,val,ph) {
+  return '<div class="ff"><label class="fl">'+lbl+'</label><input type="'+type+'" class="fi" id="'+id+'" value="'+(val||'')+'" placeholder="'+(ph||'')+'"></div>';
+}
+
+function toggleChip(el) { el.classList.toggle('sel'); }
+
+function getSelectedAppts() {
+  var chips=document.querySelectorAll('#appt-chips .achip.sel');
+  var res=[];chips.forEach(function(c){res.push(c.getAttribute('data-v'));});
+  return res;
+}
+
+function autoCalcResa() {
+  var ci=gv('fi-ci'), co=gv('fi-co'), np=parseInt(gv('fi-np'))||1;
+  var src=gv('fi-src'), ap=gv('fi-app');
+  var brutMad=parseFloat(gv('fi-brut'))||0;
+  // Toujours forcer la commission depuis COM[src]
+  var comPct=COM[src]||0;
+  var comEl=document.getElementById('fi-com');
+  if(comEl) { comEl.value=Math.round(comPct*1000)/10; }
+  var nuits=diffNuits(ci,co);
+  var netMad=Math.round(brutMad-brutMad*comPct);
+  var nfEl=document.getElementById('fi-nf');
+  if(nfEl&&!nfEl._locked&&nuits>0) nfEl.value=nuits;
+  var netEl=document.getElementById('fi-net');
+  if(netEl) netEl.value=netMad;
+  var nf=parseInt(gv('fi-nf'))||nuits;
+  var taxeEl=document.getElementById('fi-taxe');
+  if(taxeEl) {
+    if(src !== 'Booking.com') {
+      taxeEl.value = 0;
+      taxeEl.readOnly = true;
+      taxeEl.style.opacity = '0.5';
+    } else {
+      taxeEl.readOnly = false;
+      taxeEl.style.opacity = '1';
+      if(!taxeEl._locked && nf>0) {
+        taxeEl.value = Math.round(nf*np*tauxTaxe(ap)*EUR_MAD);
+      }
+    }
+  }
+}
+
+function saveEntry() {
+  if(M_TYPE==='resa') saveResa();
+  else if(M_TYPE==='business') saveBiz();
+  else if(M_TYPE==='taxe') saveTaxe();
+  else if(M_TYPE==='serv') saveServ();
+  else savePerso();
+}
+
+function saveResa() {
+  var brutMad=parseFloat(gv('fi-brut'))||0, ci=gv('fi-ci');
+  if(!ci||!brutMad){alert('Check-in et montant brut requis');return;}
+  var src=gv('fi-src');
+  // Commission toujours forcée depuis les règles métier
+  var comPct=COM[src]||0;
+  var co=gv('fi-co'), dp=gv('fi-dp');
+  var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
+  var brutEur = brutMad / EUR_MAD;
+  var comEur = brutEur * comPct;
+  var netEur = brutEur - comEur;
+  var taxeMad = (src === 'Booking.com') ? (parseFloat(gv('fi-taxe'))||0) : 0;
+  var taxeEur = taxeMad / EUR_MAD;
+  // Préserver la référence existante si modification, sinon en générer une nouvelle
+  var existingRef = gv('fi-ref');
+  if(!existingRef) {
+    var srcPfx = {'Airbnb':'AIR','Booking.com':'BKG','Direct':'DIR','VRBO':'VRB'}[src]||'SMB';
+    existingRef = srcPfx+'-'+uid().slice(-8).toUpperCase();
+  }
+  var entry={
+    id:M_ID||uid(), ref:existingRef,
+    source:src, appart:gv('fi-app'), voyageur:gv('fi-voy'),
+    checkin:ci, checkout:co, nuits_sejour:diffNuits(ci,co), nuits_fact:nf,
+    nb_personnes:parseInt(gv('fi-np'))||1,
+    brut: Math.round(brutEur*100)/100,
+    com_pct:comPct,
+    commission: Math.round(comEur*100)/100,
+    net: Math.round(netEur*100)/100,
+    taxe_sejour: Math.round(taxeEur*100)/100,
+    type_norm:gv('fi-type')||'RESERVATION',
+    mode_paiement:gv('fi-mode')||'Virement plateforme',
+    statut:gv('fi-st')||'Payé', date_paiement:dp,
+    mois_kpi:(dp||ci).slice(0,7), notes:gv('fi-notes')
+  };
+  upsert('resa',entry); closeModal(); renderResa();
+}
+
+function saveBiz() {
+  var montant=parseFloat(gv('fi-montant'))||0, date=gv('fi-date');
+  if(!date||!montant){alert('Date et montant requis');return;}
+  var appts=getSelectedAppts();
+  if(!appts.length){alert('Sélectionne au moins un appartement');return;}
+  var mpp=montant/appts.length;
+  appts.forEach(function(ap,i){
+    var id=(M_ID&&i===0)?M_ID:uid();
+    upsert('business',{id:id,date:date,appart:ap,cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+  });
+  closeModal(); renderBiz();
+}
+
+function saveTaxe() {
+  var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
+  if(!d||!m){alert('Date et montant requis');return;}
+  upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,rev:gv('fi-rev')});
+  closeModal(); renderTaxe();
+}
+
+function saveServ() {
+  var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
+  if(!d||!m){alert('Date et montant requis');return;}
+  upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st')});
+  closeModal(); renderServ();
+}
+
+function savePerso() {
+  var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
+  if(!d||!m){alert('Date et montant requis');return;}
+  upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest')});
+  closeModal(); renderPerso();
+}
+
+function upsert(type,entry) {
+  var idx=DB[type].findIndex(function(x){return x.id===entry.id;});
+  if(idx>=0) DB[type][idx]=entry; else DB[type].push(entry);
+  saveDB(type);
+}
+
+function delEntry(type,id) {
+  if(!confirm('Supprimer ?'))return;
+  DB[type]=DB[type].filter(function(x){return x.id!==id;});
+  saveDB(type); renderView({resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[type]);
+}
+
+// ============================================================
+// CSV IMPORT
+// ============================================================
+var csvPending=[];
+function handleCSV(input) {
+  var file=input.files[0]; if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var text=e.target.result;
+    var lines=text.split('\n').filter(function(l){return l.trim();});
+    if(lines.length<2){alert('CSV vide');return;}
+    var sep=lines[0].includes(';')?';':',';
+    var headers=lines[0].split(sep).map(function(h){return h.replace(/"/g,'').trim();});
+    var dataRows=lines.slice(1).map(function(l){
+      var vals=l.split(sep).map(function(v){return v.replace(/"/g,'').trim();});
+      var obj={}; headers.forEach(function(h,i){obj[h]=vals[i]||'';});
+      return obj;
+    }).filter(function(r){return Object.values(r).some(function(v){return v;});});
+    csvPending=dataRows.map(parseSmoobuRow);
+    showCSVPrev();
+  };
+  reader.readAsText(file,'UTF-8');
+  input.value='';
+}
+
+function fc(row,keys) { for(var i=0;i<keys.length;i++){if(row[keys[i]]!==undefined&&row[keys[i]])return row[keys[i]];}return''; }
+
+function normDate(d) {
+  if(!d)return'';
+  var p=d.split(/[\/\-\.]/);
+  if(p.length!==3)return d;
+  if(p[0].length===4)return p[0]+'-'+p[1].padStart(2,'0')+'-'+p[2].padStart(2,'0');
+  return p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0');
+}
+
+function parseSmoobuRow(row) {
+  var src=fc(row,['Canal','Channel','Source','Portail','portal'])||'Direct';
+  if(src.toLowerCase().includes('airbnb'))src='Airbnb';
+  else if(src.toLowerCase().includes('booking'))src='Booking.com';
+  else if(src.toLowerCase().includes('vrbo')||src.toLowerCase().includes('homeaway'))src='VRBO';
+  else if(src.toLowerCase().includes('direct')||!src)src='Direct';
+  var apRaw=fc(row,['Propriété','Property','Logement','Listing','listing_name','property_name'])||'';
+  var ap=apRaw;
+  var apMap={boustane:'Résidence Al Boustane','al boustane':'Résidence Al Boustane',agdal:'Agdal 13',touahri:'Touahri 11','riad':'Riad Ahl Sala','ahl sala':'Riad Ahl Sala'};
+  var apL=apRaw.toLowerCase();
+  Object.keys(apMap).forEach(function(k){if(apL.includes(k))ap=apMap[k];});
+  var ci=normDate(fc(row,['Arrivée','Check-in','checkin','check_in','arrival','Date d\'arrivée']));
+  var co=normDate(fc(row,['Départ','Check-out','checkout','check_out','departure','Date de départ']));
+  var voyageur=fc(row,['Voyageur','Guest','Nom','guest_name','Name']);
+  var brutRaw=fc(row,['Montant','Amount','Revenue','Prix','Total','brut','total_price','payout','Revenu'])||'0';
+  var brut=parseFloat(brutRaw.replace(/[^\d\.,]/g,'').replace(',','.'))||0;
+  var stRaw=fc(row,['Statut','Status','status'])||'';
+  var statut=stRaw.toLowerCase().includes('cancel')||stRaw.toLowerCase().includes('annul')?'Annulé':stRaw.toLowerCase().includes('attente')||stRaw.toLowerCase().includes('pending')?'En attente':'Payé';
+  var nuits=diffNuits(ci,co), np=1;
+  var comPct=COM[src]||0;
+  var dp=normDate(fc(row,['Date de paiement','payment_date','payout_date']));
+  var taxeEur = (src === 'Booking.com' && nuits > 0) ? nuits*np*tauxTaxe(ap) : 0;
+  var rawRef=fc(row,['Référence','Code','ID','confirmation','ref','reservation_id']);
+  var srcPfx2={'Airbnb':'AIR','Booking.com':'BKG','Direct':'DIR','VRBO':'VRB'}[src]||'SMB';
+  var entryRef=rawRef?rawRef.slice(-12):(srcPfx2+'-'+uid().slice(-8).toUpperCase());
+  return{
+    id:uid(),ref:entryRef,
+    source:src,appart:ap,voyageur:voyageur,checkin:ci,checkout:co,
+    nuits_sejour:nuits,nuits_fact:nuits,nb_personnes:np,
+    brut:brut,com_pct:comPct,commission:Math.round(brut*comPct*100)/100,net:Math.round((brut-brut*comPct)*100)/100,
+    taxe_sejour:taxeEur,
+    type_norm:'RESERVATION',mode_paiement:'Virement plateforme',statut:statut,
+    date_paiement:dp,mois_kpi:(dp||ci).slice(0,7),notes:''
+  };
+}
+
+function showCSVPrev() {
+  var html='<div class="tw" style="margin-bottom:8px"><table><thead><tr><th>Réf.</th><th>Source</th><th>Appart</th><th>Voyageur</th><th>Check-in</th><th>Nuits</th><th>Brut</th><th>Net</th></tr></thead><tbody>'+
+    csvPending.map(function(r){
+      var warn=!r.appart||!r.checkin;
+      return'<tr style="'+(warn?'background:rgba(224,82,82,.08)':'')+'">'+
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+r.ref+'</td>'+
+        '<td>'+chip(r.source,srcClass(r.source))+'</td>'+
+        '<td style="color:'+(r.appart?'inherit':'var(--re)')+'">'+aptShort(r.appart||'⚠️ Inconnu')+'</td>'+
+        '<td style="font-size:12px">'+r.voyageur+'</td>'+
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+r.checkin+'</td>'+
+        '<td style="text-align:center">'+r.nuits_sejour+'</td>'+
+        '<td style="font-family:\'DM Mono\',monospace">'+e2m(r.brut).toLocaleString('fr-MA')+'</td>'+
+        '<td style="font-family:\'DM Mono\',monospace;color:var(--gr)">'+e2m(r.net).toLocaleString('fr-MA')+'</td>'+
+        '</tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<div style="font-size:12px;color:var(--tm)">'+csvPending.length+' réservation'+(csvPending.length>1?'s':'')+' détectée'+(csvPending.length>1?'s':'')+'. Lignes rouges = correction manuelle nécessaire après import.</div>';
+  set('csv-prev-content',html);
+  document.getElementById('csv-prev').classList.remove('hidden');
+}
+
+function confirmCSV() {
+  csvPending.forEach(function(r){DB.resa.push(r);});
+  saveDB('resa'); csvPending=[];
+  document.getElementById('csv-prev').classList.add('hidden');
+  renderResa();
+}
+function cancelCSV() { csvPending=[]; document.getElementById('csv-prev').classList.add('hidden'); }
+
+// ============================================================
+// HELPERS
+// ============================================================
+function val(id){var el=document.getElementById(id);return el?el.value:'';}
+function gv(id){var el=document.getElementById(id);return el?el.value:'';}
+function set(id,v){var el=document.getElementById(id);if(!el)return;var s=String(v);if(s.indexOf('<')>=0)el.innerHTML=s;else el.textContent=s;}
+function sum(arr,k){return arr.reduce(function(s,r){return s+(r[k]||0);},0);}
+
+document.getElementById('modal-overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+// ============================================================
+// EXPORT / IMPORT
+// ============================================================
+function exportData() {
+  var backup = {
+    version: 2,
+    date: new Date().toISOString().slice(0,10),
+    resa:     DB.resa,
+    business: DB.business,
+    taxe:     DB.taxe,
+    serv:     DB.serv,
+    perso:    DB.perso
+  };
+  var blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'nex-estate-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(input) {
+  var file = input.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      if(!data.business && !data.resa) { alert('Fichier invalide'); return; }
+      if(!confirm("Restaurer les données ? Cela remplacera tout ce qui est actuellement dans l'app.")) return;
+      if(data.resa)     { DB.resa     = data.resa;     saveDB('resa'); }
+      if(data.business) { DB.business = data.business; saveDB('business'); }
+      if(data.taxe)     { DB.taxe     = data.taxe;     saveDB('taxe'); }
+      if(data.serv)     { DB.serv     = data.serv;     saveDB('serv'); }
+      if(data.perso)    { DB.perso    = data.perso;    saveDB('perso'); }
+      alert('✅ Données restaurées avec succès !');
+      goTo(CUR);
+    } catch(err) { alert('Erreur lors de la lecture du fichier'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ============================================================
+// NORMALISATION DONNÉES (règles métier strictes)
+// ============================================================
+function normalizeData() {
+  var changed = false;
+  DB.resa.forEach(function(r) {
+    // Règle 1 : Commission Booking.com toujours 22% (sauf annulé com=0)
+    if(r.source === 'Booking.com' && r.statut !== 'Annulé' && Math.abs(r.com_pct - 0.22) > 0.001) {
+      r.com_pct = 0.22;
+      r.commission = Math.round(r.brut * 0.22 * 100) / 100;
+      r.net = Math.round((r.brut - r.commission) * 100) / 100;
+      changed = true;
+    }
+    // Règle 2 : Airbnb toujours 15.5%
+    if(r.source === 'Airbnb' && r.statut !== 'Annulé' && r.com_pct > 0 && Math.abs(r.com_pct - 0.155) > 0.002) {
+      r.com_pct = 0.155;
+      r.commission = Math.round(r.brut * 0.155 * 100) / 100;
+      r.net = Math.round((r.brut - r.commission) * 100) / 100;
+      changed = true;
+    }
+    // Règle 3 : AIRCOVER et AJUSTEMENT → 0 nuits (ne jamais distordre ADR/RevPAN)
+    if((r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT') && (r.nuits_sejour > 0 || r.nuits_fact > 0)) {
+      r.nuits_sejour = 0;
+      r.nuits_fact = 0;
+      changed = true;
+    }
+  });
+  if(changed) saveDB('resa');
+}
+
+// ============================================================
+// ============================================================
+// INIT
+// ============================================================
+// Chargement données Q1 2026 si vide
+if(DB.resa.length===0){try{DB.resa=[{"id":"AIR-HMT5JXDA83_q1","ref":"AIR-HMT5JXDA83","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Gedeon Kalambayi","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":112.0,"com_pct":0.155,"commission":17.36,"net":94.64,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM3YP5QEWX_q1","ref":"AIR-HM3YP5QEWX","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Mariam So","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":59.0,"com_pct":0.1551,"commission":9.15,"net":49.85,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM2FKF9XZS_q1","ref":"AIR-HM2FKF9XZS","source":"Airbnb","appart":"Studio Ocean","voyageur":"Bouchra Zelmad","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":88.0,"com_pct":0.155,"commission":13.64,"net":74.36,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMWPDACQTQ_q1","ref":"AIR-HMWPDACQTQ","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Nour Zeguir","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":65.0,"com_pct":0.1551,"commission":10.08,"net":54.92,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMN9P5RTYS_q1","ref":"AIR-HMN9P5RTYS","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Rafik Laraicia","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":86.87,"com_pct":0.1549,"commission":13.46,"net":73.41,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMMY2MBPAW_q1","ref":"AIR-HMMY2MBPAW","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Nadhir Habouria","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":84.0,"com_pct":0.155,"commission":13.02,"net":70.98,"taxe_sejour":0.0,"type_norm":"RELOCATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMCHPE4J2S_q1","ref":"AIR-HMCHPE4J2S","source":"Airbnb","appart":"Agdal 13","voyageur":"Gergely Balint","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":54.0,"com_pct":0.155,"commission":8.37,"net":45.63,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMXQYPFXN4_q1","ref":"AIR-HMXQYPFXN4","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Samira El Aroussi","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":98.28,"com_pct":0.155,"commission":15.23,"net":83.05,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMXJPH5RPR_q1","ref":"AIR-HMXJPH5RPR","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Nezar Jellal","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":188.48,"com_pct":0.155,"commission":29.21,"net":159.27,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM3B84T4BN-RES_q1","ref":"AIR-HM3B84T4BN-RES","source":"Airbnb","appart":"Touahri 11","voyageur":"Anass","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":80.27,"com_pct":0.0,"commission":0.0,"net":80.27,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM2FA9DS8S_q1","ref":"AIR-HM2FA9DS8S","source":"Airbnb","appart":"Touahri 11","voyageur":"Redwan Ajari","checkin":"2026-01-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":266.9,"com_pct":0.155,"commission":41.37,"net":225.53,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM448PCHNY_q1","ref":"AIR-HM448PCHNY","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Naif Edrees","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":93.45,"com_pct":0.1549,"commission":14.48,"net":78.97,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMBQ52TWRN_q1","ref":"AIR-HMBQ52TWRN","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Hajar Ait Barghane","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":56.0,"com_pct":0.155,"commission":8.68,"net":47.32,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM4F3X88AA_q1","ref":"AIR-HM4F3X88AA","source":"Airbnb","appart":"Studio Ocean","voyageur":"Mourad Abm","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":86.0,"com_pct":0.155,"commission":13.33,"net":72.67,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMFK48HRMP_q1","ref":"AIR-HMFK48HRMP","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Marco Hensler","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":219.22,"com_pct":0.155,"commission":33.98,"net":185.24,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMWWRKB48B_q1","ref":"AIR-HMWWRKB48B","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Federica Mirolla","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":73.68,"com_pct":0.155,"commission":11.42,"net":62.26,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM9KMJNTZK_q1","ref":"AIR-HM9KMJNTZK","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Tarik Ajrhourh","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":225.55,"com_pct":0.155,"commission":34.96,"net":190.59,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMPEMY4W84_q1","ref":"AIR-HMPEMY4W84","source":"Airbnb","appart":"Studio Ocean","voyageur":"Jean Duclair PONE","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":72.0,"com_pct":0.155,"commission":11.16,"net":60.84,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMQ2YBSP5E_q1","ref":"AIR-HMQ2YBSP5E","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Noreen Haitam","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":76.0,"com_pct":0.155,"commission":11.78,"net":64.22,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMNWAYTFEP_q1","ref":"AIR-HMNWAYTFEP","source":"Airbnb","appart":"Touahri 11","voyageur":"Fawaz S","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":72.0,"com_pct":0.155,"commission":11.16,"net":60.84,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM52RP8CX5-RES_q1","ref":"AIR-HM52RP8CX5-RES","source":"Airbnb","appart":"Agdal 13","voyageur":"Sabri Benabid","checkin":"2026-01-01","checkout":"","nuits_sejour":0,"nuits_fact":0,"nb_personnes":1,"brut":9.0,"com_pct":0.0,"commission":0.0,"net":9.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMH85JYQ43_q1","ref":"AIR-HMH85JYQ43","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Hajar Ait Barghane","checkin":"2026-01-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":185.0,"com_pct":0.155,"commission":28.68,"net":156.32,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM52RP8CX5_q1","ref":"AIR-HM52RP8CX5","source":"Airbnb","appart":"Agdal 13","voyageur":"Sabri Benabid","checkin":"2026-01-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":312.3,"com_pct":0.155,"commission":48.41,"net":263.89,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMFK48HRMP-AIRCOVER_q1","ref":"AIR-HMFK48HRMP-AIRCOVER","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Marco Hensler","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":55.98,"com_pct":0.0,"commission":0.0,"net":55.98,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM9ZTBX4ZH_q1","ref":"AIR-HM9ZTBX4ZH","source":"Airbnb","appart":"Studio Ocean","voyageur":"Imne Hadri","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":97.0,"com_pct":0.1551,"commission":15.04,"net":81.96,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMHMFJB4KS_q1","ref":"AIR-HMHMFJB4KS","source":"Airbnb","appart":"Studio Ocean","voyageur":"Madani Yaniss Rezigui","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":181.0,"com_pct":0.155,"commission":28.06,"net":152.94,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMWDKPKN3P_q1","ref":"AIR-HMWDKPKN3P","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Hissam Rahmani","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":106.2,"com_pct":0.155,"commission":16.46,"net":89.74,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMXZQ93NQZ_q1","ref":"AIR-HMXZQ93NQZ","source":"Airbnb","appart":"Touahri 11","voyageur":"Loubna Benmessaoud","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":533.21,"com_pct":0.155,"commission":82.65,"net":450.56,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMJA2FHEK5_q1","ref":"AIR-HMJA2FHEK5","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Ahmed Ismaili","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":58.66,"com_pct":0.155,"commission":9.09,"net":49.57,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMJCHRDQ9P-RES_q1","ref":"AIR-HMJCHRDQ9P-RES","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Craig McGowan","checkin":"2026-03-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":28.0,"com_pct":0.0,"commission":0.0,"net":28.0,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMNZP95J98_q1","ref":"AIR-HMNZP95J98","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Nihal El METNI","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":149.2,"com_pct":0.155,"commission":23.13,"net":126.07,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMC4DMQ99P-RES_q1","ref":"AIR-HMC4DMQ99P-RES","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Arnaud Tokouzan","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":9.0,"com_pct":0.0,"commission":0.0,"net":9.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMZFE8BJBA_q1","ref":"AIR-HMZFE8BJBA","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Anne Luisier","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":41.0,"com_pct":0.1551,"commission":6.36,"net":34.64,"taxe_sejour":0.0,"type_norm":"RELOCATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM944K8ENP_q1","ref":"AIR-HM944K8ENP","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Abderrazzaq Maamori","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":58.0,"com_pct":0.155,"commission":8.99,"net":49.01,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMC4DMQ99P_q1","ref":"AIR-HMC4DMQ99P","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Arnaud Tokouzan","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":256.5,"com_pct":0.155,"commission":39.76,"net":216.74,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMSBQ5XR39_q1","ref":"AIR-HMSBQ5XR39","source":"Airbnb","appart":"Agdal 13","voyageur":"Diabel Gueye","checkin":"2026-01-01","checkout":"","nuits_sejour":10,"nuits_fact":10,"nb_personnes":1,"brut":1022.4,"com_pct":0.155,"commission":158.47,"net":863.93,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMHBWXF55D_q1","ref":"AIR-HMHBWXF55D","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Stella Taty","checkin":"2026-03-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":186.9,"com_pct":0.155,"commission":28.97,"net":157.93,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM383CAP9C_q1","ref":"AIR-HM383CAP9C","source":"Airbnb","appart":"Touahri 11","voyageur":"Megan Vodegel","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":49.0,"com_pct":0.1551,"commission":7.6,"net":41.4,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMKSWJFTXM_q1","ref":"AIR-HMKSWJFTXM","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Karime Kalloubi","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":45.72,"com_pct":0.1551,"commission":7.09,"net":38.63,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMA9PYJTBD_q1","ref":"AIR-HMA9PYJTBD","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Fabrice Dufrene","checkin":"2026-03-01","checkout":"","nuits_sejour":6,"nuits_fact":6,"nb_personnes":1,"brut":240.0,"com_pct":0.155,"commission":37.2,"net":202.8,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HME3A4NBJD_q1","ref":"AIR-HME3A4NBJD","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Arkin Almaajoun","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":62.48,"com_pct":0.1549,"commission":9.68,"net":52.8,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMY2AQPQQF_q1","ref":"AIR-HMY2AQPQQF","source":"Airbnb","appart":"Agdal 13","voyageur":"Chakir Tahiri","checkin":"2026-03-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":252.0,"com_pct":0.155,"commission":39.06,"net":212.94,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM8BYMRF99-RES_q1","ref":"AIR-HM8BYMRF99-RES","source":"Airbnb","appart":"Touahri 11","voyageur":"Noura Lamria Kissa","checkin":"2026-03-01","checkout":"","nuits_sejour":0,"nuits_fact":0,"nb_personnes":1,"brut":48.0,"com_pct":0.0,"commission":0.0,"net":48.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMDTZAXPNT_q1","ref":"AIR-HMDTZAXPNT","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Yasmine Belkadi","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":47.6,"com_pct":0.155,"commission":7.38,"net":40.22,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMQS5AYFWJ_q1","ref":"AIR-HMQS5AYFWJ","source":"Airbnb","appart":"Touahri 11","voyageur":"Alii","checkin":"2026-03-01","checkout":"","nuits_sejour":28,"nuits_fact":28,"nb_personnes":1,"brut":123.08,"com_pct":0.155,"commission":19.08,"net":104.0,"taxe_sejour":0.0,"type_norm":"ANNULATION_PAYEE","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMJNJ4PF3X_q1","ref":"AIR-HMJNJ4PF3X","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Ayoub Bahari","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":47.0,"com_pct":0.1551,"commission":7.29,"net":39.71,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM2K85QX8T_q1","ref":"AIR-HM2K85QX8T","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Diogo","checkin":"2026-03-01","checkout":"","nuits_sejour":14,"nuits_fact":14,"nb_personnes":1,"brut":414.9,"com_pct":0.155,"commission":64.3,"net":350.6,"taxe_sejour":0.0,"type_norm":"RELOCATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMM442CWXA_q1","ref":"AIR-HMM442CWXA","source":"Airbnb","appart":"Touahri 11","voyageur":"Lisa Lab","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":146.6,"com_pct":0.155,"commission":22.72,"net":123.88,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM8BYMRF99_q1","ref":"AIR-HM8BYMRF99","source":"Airbnb","appart":"Touahri 11","voyageur":"Noura Lamria Kissa","checkin":"2026-03-01","checkout":"","nuits_sejour":17,"nuits_fact":17,"nb_personnes":1,"brut":655.7,"com_pct":0.155,"commission":101.63,"net":554.07,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMJ32JNAS2_q1","ref":"AIR-HMJ32JNAS2","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Othman Jbari","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":63.45,"com_pct":0.1549,"commission":9.83,"net":53.62,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMMCC2PQS8-RES_q1","ref":"AIR-HMMCC2PQS8-RES","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Bahae Eddine El Hachimy","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":3.0,"com_pct":0.0,"commission":0.0,"net":3.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMNZP95J98-RES_q1","ref":"AIR-HMNZP95J98-RES","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Nihal El METNI","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":6.0,"com_pct":0.0,"commission":0.0,"net":6.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM3D4HC249_q1","ref":"AIR-HM3D4HC249","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Jamal Achaq","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":46.66,"com_pct":0.155,"commission":7.23,"net":39.43,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMTXER8BZN_q1","ref":"AIR-HMTXER8BZN","source":"Airbnb","appart":"Agdal 13","voyageur":"Rabha Boutouil","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":52.0,"com_pct":0.155,"commission":8.06,"net":43.94,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMP9TJSJCJ_q1","ref":"AIR-HMP9TJSJCJ","source":"Airbnb","appart":"Agdal 13","voyageur":"Ahmed Messoud","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":353.7,"com_pct":0.155,"commission":54.82,"net":298.88,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM92FHZT3E_q1","ref":"AIR-HM92FHZT3E","source":"Airbnb","appart":"Agdal 13","voyageur":"Chaymae Allak","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":50.0,"com_pct":0.155,"commission":7.75,"net":42.25,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMP9TJSJCJ-RES_q1","ref":"AIR-HMP9TJSJCJ-RES","source":"Airbnb","appart":"Agdal 13","voyageur":"Ahmed Messoud","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":15.0,"com_pct":0.0,"commission":0.0,"net":15.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMMCC2PQS8_q1","ref":"AIR-HMMCC2PQS8","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Bahae Eddine El Hachimy","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":55.48,"com_pct":0.155,"commission":8.6,"net":46.88,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMK2XKCQJ3-RES_q1","ref":"AIR-HMK2XKCQJ3-RES","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Adil Hassini","checkin":"2026-01-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":23.36,"com_pct":0.0,"commission":0.0,"net":23.36,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM4ATC2TAN-RES2_q1","ref":"AIR-HM4ATC2TAN-RES2","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Faisal Alhashmi","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":11.47,"com_pct":0.0,"commission":0.0,"net":11.47,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HM4BTQQ5XA_q1","ref":"AIR-HM4BTQQ5XA","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Pia Lucceia Maria Cordahi","checkin":"2026-02-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":192.5,"com_pct":0.155,"commission":29.84,"net":162.66,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMKQSFKH2F-RES_q1","ref":"AIR-HMKQSFKH2F-RES","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Amine Elbadaoui","checkin":"2026-02-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":35.0,"com_pct":0.0,"commission":0.0,"net":35.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMJCHRDQ9P_q1","ref":"AIR-HMJCHRDQ9P","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Craig McGowan","checkin":"2026-03-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":171.6,"com_pct":0.155,"commission":26.6,"net":145.0,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM2K85QX8T-REG_q1","ref":"AIR-HM2K85QX8T-REG","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Diogo","checkin":"2026-03-01","checkout":"","nuits_sejour":0,"nuits_fact":0,"nb_personnes":1,"brut":0.0,"com_pct":0,"commission":0.0,"net":0.0,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM4ATC2TAN-RES_q1","ref":"AIR-HM4ATC2TAN-RES","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Faisal Alhashmi","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":23.53,"com_pct":0.0,"commission":0.0,"net":23.53,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HM3TNTPNMY-RES2_q1","ref":"AIR-HM3TNTPNMY-RES2","source":"Airbnb","appart":"Touahri 11","voyageur":"Mohcine Abounaji","checkin":"2026-02-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":12.0,"com_pct":0.0,"commission":0.0,"net":12.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HM3TNTPNMY-RES_q1","ref":"AIR-HM3TNTPNMY-RES","source":"Airbnb","appart":"Touahri 11","voyageur":"Mohcine Abounaji","checkin":"2026-02-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":10.0,"com_pct":0.0,"commission":0.0,"net":10.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HM8RPHZC2Z_q1","ref":"AIR-HM8RPHZC2Z","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Erwin Dewald","checkin":"2026-01-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":154.4,"com_pct":0.155,"commission":23.93,"net":130.47,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM8RPHZC2Z-RES_q1","ref":"AIR-HM8RPHZC2Z-RES","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Erwin Dewald","checkin":"2026-01-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":12.0,"com_pct":0.0,"commission":0.0,"net":12.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMKQSFKH2F_q1","ref":"AIR-HMKQSFKH2F","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Amine Elbadaoui","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":88.0,"com_pct":0.155,"commission":13.64,"net":74.36,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMXZQ93NQZ-RES_q1","ref":"AIR-HMXZQ93NQZ-RES","source":"Airbnb","appart":"Touahri 11","voyageur":"Loubna Benmessaoud","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":44.0,"com_pct":0.0,"commission":0.0,"net":44.0,"taxe_sejour":0.0,"type_norm":"AIRCOVER","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM9KMDZTZP_q1","ref":"AIR-HM9KMDZTZP","source":"Airbnb","appart":"Touahri 11","voyageur":"Anton Herrmann","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":44.0,"com_pct":0.155,"commission":6.82,"net":37.18,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HM3TNTPNMY_q1","ref":"AIR-HM3TNTPNMY","source":"Airbnb","appart":"Touahri 11","voyageur":"Mohcine Abounaji","checkin":"2026-02-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":219.2,"com_pct":0.155,"commission":33.98,"net":185.22,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-6023350720_q1","ref":"BKG-6023350720","source":"Booking.com","appart":"Riad Ahl Sala","voyageur":"Mohamed salem Cheikh sbai","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":37.0,"com_pct":0.22,"commission":8.14,"net":28.86,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-6207432889_q1","ref":"BKG-6207432889","source":"Booking.com","appart":"Riad Ahl Sala","voyageur":"Adam Ettaounati","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":46.0,"com_pct":0.22,"commission":10.12,"net":35.88,"taxe_sejour":2.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5994365884_q1","ref":"BKG-5994365884","source":"Booking.com","appart":"Riad Ahl Sala","voyageur":"Driouach Naji","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":163.0,"com_pct":0.22,"commission":35.86,"net":127.14,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5645137696_q1","ref":"BKG-5645137696","source":"Booking.com","appart":"Riad Ahl Sala","voyageur":"Mbuyi Gloire MUKUNA","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":96.4,"com_pct":0.22,"commission":21.21,"net":75.19,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5732630968_q1","ref":"BKG-5732630968","source":"Booking.com","appart":"Riad Ahl Sala","voyageur":"Fauzi Metahri","checkin":"2026-01-01","checkout":"","nuits_sejour":6,"nuits_fact":6,"nb_personnes":1,"brut":335.6,"com_pct":0.22,"commission":73.83,"net":261.77,"taxe_sejour":24.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMZRFBYRD9_q1","ref":"AIR-HMZRFBYRD9","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Anna Anna Dieste","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":240.2,"com_pct":0.1834,"commission":44.06,"net":196.14,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMQKWR4ESX_q1","ref":"AIR-HMQKWR4ESX","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Tegra Ntemo","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":72.0,"com_pct":0.155,"commission":11.16,"net":60.84,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMWKJD4AYC_q1","ref":"AIR-HMWKJD4AYC","source":"Airbnb","appart":"Agdal 13","voyageur":"Youssef Boughaba","checkin":"2026-02-01","checkout":"","nuits_sejour":8,"nuits_fact":8,"nb_personnes":1,"brut":396.15,"com_pct":0.155,"commission":61.4,"net":334.75,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMHFBAKDXW_q1","ref":"AIR-HMHFBAKDXW","source":"Airbnb","appart":"Studio Ocean","voyageur":"Abdelilah Aboulfejr","checkin":"2026-01-01","checkout":"","nuits_sejour":10,"nuits_fact":10,"nb_personnes":1,"brut":504.75,"com_pct":0.155,"commission":78.24,"net":426.51,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMYMYHENDA_q1","ref":"AIR-HMYMYHENDA","source":"Airbnb","appart":"Touahri 11","voyageur":"Malik Perviez","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":62.0,"com_pct":0.155,"commission":9.61,"net":52.39,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMW8JRT5NE_q1","ref":"AIR-HMW8JRT5NE","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Anglique Dubois","checkin":"2026-01-01","checkout":"","nuits_sejour":17,"nuits_fact":17,"nb_personnes":1,"brut":822.71,"com_pct":0.155,"commission":127.52,"net":695.19,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMJNXQYE38_q1","ref":"AIR-HMJNXQYE38","source":"Airbnb","appart":"Touahri 11","voyageur":"Rayhanne Malabat","checkin":"2026-01-01","checkout":"","nuits_sejour":8,"nuits_fact":8,"nb_personnes":1,"brut":350.6,"com_pct":0.155,"commission":54.34,"net":296.26,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMDBDX5MKM_q1","ref":"AIR-HMDBDX5MKM","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Hawraz Ako","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":112.86,"com_pct":0.155,"commission":17.49,"net":95.37,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMEFNWKJEC_q1","ref":"AIR-HMEFNWKJEC","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Samia Nasri","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":50.0,"com_pct":0.155,"commission":7.75,"net":42.25,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM2M2YF4Q8_q1","ref":"AIR-HM2M2YF4Q8","source":"Airbnb","appart":"Touahri 11","voyageur":"Nada Hd","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":52.0,"com_pct":0.155,"commission":8.06,"net":43.94,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HMZJ5N92Z4_q1","ref":"AIR-HMZJ5N92Z4","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Anais Mbolokombe","checkin":"2026-02-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":139.0,"com_pct":0.155,"commission":21.55,"net":117.45,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMJQHNMTF3_q1","ref":"AIR-HMJQHNMTF3","source":"Airbnb","appart":"Agdal 13","voyageur":"Laghzal Rachid","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":60.0,"com_pct":0.155,"commission":9.3,"net":50.7,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMHQPQQS4S_q1","ref":"AIR-HMHQPQQS4S","source":"Airbnb","appart":"Touahri 11","voyageur":"Imane Ismaili Alaoui","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":54.0,"com_pct":0.155,"commission":8.37,"net":45.63,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMH2P2TBTD_q1","ref":"AIR-HMH2P2TBTD","source":"Airbnb","appart":"Studio Ocean","voyageur":"Fahd Boukhari","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":57.0,"com_pct":0.1551,"commission":8.84,"net":48.16,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMDAH8K8C2_q1","ref":"AIR-HMDAH8K8C2","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Youcef Boulouiz","checkin":"2026-02-01","checkout":"","nuits_sejour":10,"nuits_fact":10,"nb_personnes":1,"brut":261.12,"com_pct":0.155,"commission":40.47,"net":220.65,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMZESER8J9_q1","ref":"AIR-HMZESER8J9","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Patricia Van Veen","checkin":"2026-02-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":164.9,"com_pct":0.155,"commission":25.56,"net":139.34,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMA2JHNBFK_q1","ref":"AIR-HMA2JHNBFK","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Zakaryae Samar","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":59.9,"com_pct":0.1549,"commission":9.28,"net":50.62,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMTPTNPJSM-V2_q1","ref":"AIR-HMTPTNPJSM-V2","source":"Airbnb","appart":"Touahri 11","voyageur":"Stephane Nguena","checkin":"2026-02-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":14.0,"com_pct":0.155,"commission":2.17,"net":11.83,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMTPTNPJSM_q1","ref":"AIR-HMTPTNPJSM","source":"Airbnb","appart":"Touahri 11","voyageur":"Stephane Nguena","checkin":"2026-02-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":148.1,"com_pct":0.155,"commission":22.96,"net":125.14,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMJJ3DMYBP_q1","ref":"AIR-HMJJ3DMYBP","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Mamadou Paul Bakayoko","checkin":"2026-02-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":76.0,"com_pct":0.155,"commission":11.78,"net":64.22,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMK4J4S8KE_q1","ref":"AIR-HMK4J4S8KE","source":"Airbnb","appart":"Agdal 13","voyageur":"Mehdi Ouidirne","checkin":"2026-02-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":214.8,"com_pct":0.155,"commission":33.29,"net":181.51,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMWEX3ZPBY_q1","ref":"AIR-HMWEX3ZPBY","source":"Airbnb","appart":"Touahri 11","voyageur":"Olivia Fruchart","checkin":"2026-02-01","checkout":"","nuits_sejour":9,"nuits_fact":9,"nb_personnes":1,"brut":296.69,"com_pct":0.155,"commission":45.99,"net":250.7,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMQS5AYFWJ-V1_q1","ref":"AIR-HMQS5AYFWJ-V1","source":"Airbnb","appart":"Touahri 11","voyageur":"Alii","checkin":"2026-02-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":945.58,"com_pct":0.155,"commission":146.56,"net":799.02,"taxe_sejour":0.0,"type_norm":"ANNULATION_PAYEE","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMMXXQ8Z95_q1","ref":"AIR-HMMXXQ8Z95","source":"Airbnb","appart":"Agdal 13","voyageur":"Soufiane Elbergui","checkin":"2026-02-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":273.51,"com_pct":0.155,"commission":42.39,"net":231.12,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMP8KXDCXD-ANL-P_q1","ref":"AIR-HMP8KXDCXD-ANL-P","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Amina","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":66.72,"com_pct":0.155,"commission":10.34,"net":56.38,"taxe_sejour":0.0,"type_norm":"ANNULATION_PAYEE","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMF9SKTCKP-AML-P_q1","ref":"AIR-HMF9SKTCKP-AML-P","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Ababacar","checkin":"2026-02-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":195.7,"com_pct":0.155,"commission":30.33,"net":165.37,"taxe_sejour":0.0,"type_norm":"ANNULATION_PAYEE","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMNXRB939N_q1","ref":"AIR-HMNXRB939N","source":"Airbnb","appart":"Touahri 11","voyageur":"Tima Queen","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":43.0,"com_pct":0.1551,"commission":6.67,"net":36.33,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMB8MSYB9H_q1","ref":"AIR-HMB8MSYB9H","source":"Airbnb","appart":"Touahri 11","voyageur":"Chijioke Ndubisi","checkin":"2026-02-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":160.0,"com_pct":0.155,"commission":24.8,"net":135.2,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMBYM3W9BF_q1","ref":"AIR-HMBYM3W9BF","source":"Airbnb","appart":"Agdal 13","voyageur":"Teddy Zanklan","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":134.4,"com_pct":0.155,"commission":20.83,"net":113.57,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMJKKKM8DS_q1","ref":"AIR-HMJKKKM8DS","source":"Airbnb","appart":"Agdal 13","voyageur":"Oumaima Mahfoud","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":76.0,"com_pct":0.155,"commission":11.78,"net":64.22,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMPYNCJW5Y_q1","ref":"AIR-HMPYNCJW5Y","source":"Airbnb","appart":"Agdal 13","voyageur":"Anis Bennani","checkin":"2026-03-01","checkout":"","nuits_sejour":13,"nuits_fact":13,"nb_personnes":1,"brut":434.82,"com_pct":0.155,"commission":67.4,"net":367.42,"taxe_sejour":0.0,"type_norm":"RELOCATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMFT8HSHB3_q1","ref":"AIR-HMFT8HSHB3","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Haitham Al Saied","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":135.96,"com_pct":0.155,"commission":21.07,"net":114.89,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMT4DFSYSD_q1","ref":"AIR-HMT4DFSYSD","source":"Airbnb","appart":"Touahri 11","voyageur":"Jan","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":46.0,"com_pct":0.155,"commission":7.13,"net":38.87,"taxe_sejour":0.0,"type_norm":"ANNULATION_PAYEE","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMPECCNPE9_q1","ref":"AIR-HMPECCNPE9","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Naoual Ghazouani","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":45.72,"com_pct":0.1551,"commission":7.09,"net":38.63,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM4HZEE32P_q1","ref":"AIR-HM4HZEE32P","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Zineb Bessis Boulaamane","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":256.2,"com_pct":0.155,"commission":39.71,"net":216.49,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMAY5CYTCY_q1","ref":"AIR-HMAY5CYTCY","source":"Airbnb","appart":"Agdal 13","voyageur":"Anass Hassoun","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":41.0,"com_pct":0.1551,"commission":6.36,"net":34.64,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6334794468_q1","ref":"BKG-6334794468","source":"Booking.com","appart":"Studio Ocean","voyageur":"Mustapha Lachhab","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":173.9,"com_pct":0.22,"commission":38.26,"net":135.64,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5331260556_q1","ref":"BKG-5331260556","source":"Booking.com","appart":"Agdal 13","voyageur":"SABRI MESSABHIA","checkin":"2026-01-01","checkout":"","nuits_sejour":6,"nuits_fact":6,"nb_personnes":1,"brut":595.25,"com_pct":0.19,"commission":113.1,"net":482.15,"taxe_sejour":24.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5125100938_q1","ref":"BKG-5125100938","source":"Booking.com","appart":"R\u00e9sidence Al Boustane","voyageur":"Faiz Remmache","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":102.12,"com_pct":0.19,"commission":19.4,"net":82.72,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-6742698256_q1","ref":"BKG-6742698256","source":"Booking.com","appart":"Studio Ocean","voyageur":"Thomas Liebermann","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":207.15,"com_pct":0.22,"commission":45.57,"net":161.58,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5651006210_q1","ref":"BKG-5651006210","source":"Booking.com","appart":"Touahri 11","voyageur":"Ines Dorval","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":55.36,"com_pct":0.22,"commission":12.18,"net":43.18,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-6113917434_q1","ref":"BKG-6113917434","source":"Booking.com","appart":"Touahri 11","voyageur":"Youssef Bouzlafa","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":91.86,"com_pct":0.22,"commission":20.21,"net":71.65,"taxe_sejour":6.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5858520689_q1","ref":"BKG-5858520689","source":"Booking.com","appart":"Studio Ocean","voyageur":"KADI PASCALINE SOUMAHORO","checkin":"2026-01-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":602.8,"com_pct":0.22,"commission":132.62,"net":470.18,"taxe_sejour":28.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5106032428_q1","ref":"BKG-5106032428","source":"Booking.com","appart":"Touahri 11","voyageur":"Natalya Mysechko","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":89.56,"com_pct":0.0,"commission":0.0,"net":89.56,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Annul\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5348877838_q1","ref":"BKG-5348877838","source":"Booking.com","appart":"Agdal 13","voyageur":"Ashish Bassi","checkin":"2026-02-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":236.15,"com_pct":0.19,"commission":44.87,"net":191.28,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-6597774400_q1","ref":"BKG-6597774400","source":"Booking.com","appart":"Touahri 11","voyageur":"Kahina Benaoudia","checkin":"2026-01-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":140.74,"com_pct":0.22,"commission":30.96,"net":109.78,"taxe_sejour":12.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-6350774493_q1","ref":"BKG-6350774493","source":"Booking.com","appart":"Touahri 11","voyageur":"azize kherraz","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":47.83,"com_pct":0.2199,"commission":10.52,"net":37.31,"taxe_sejour":2.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-4379808807_q1","ref":"BKG-4379808807","source":"Booking.com","appart":"Studio Ocean","voyageur":"Joel Chikaonda","checkin":"2026-02-01","checkout":"","nuits_sejour":30,"nuits_fact":30,"nb_personnes":1,"brut":1399.8,"com_pct":0.0,"commission":0.0,"net":1399.8,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Annul\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-6064468406_q1","ref":"BKG-6064468406","source":"Booking.com","appart":"Agdal 13","voyageur":"Abdellah Gadour","checkin":"2026-01-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":96.5,"com_pct":0.1901,"commission":18.34,"net":78.16,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5779138070_q1","ref":"BKG-5779138070","source":"Booking.com","appart":"Agdal 13","voyageur":"Kenza Atif","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":62.6,"com_pct":0.1899,"commission":11.89,"net":50.71,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-6248948251_q1","ref":"BKG-6248948251","source":"Booking.com","appart":"Touahri 11","voyageur":" ","checkin":"2026-02-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":83.82,"com_pct":0.22,"commission":18.44,"net":65.38,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5944071763_q1","ref":"BKG-5944071763","source":"Booking.com","appart":"R\u00e9sidence Al Boustane","voyageur":"Hiba Mathlouthi Ep Mikkawi","checkin":"2026-02-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":246.46,"com_pct":0.19,"commission":46.83,"net":199.63,"taxe_sejour":40.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5173675332_q1","ref":"BKG-5173675332","source":"Booking.com","appart":"Touahri 11","voyageur":"Youssef El Farissi","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":55.28,"com_pct":0.22,"commission":12.16,"net":43.12,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6103075431_q1","ref":"BKG-6103075431","source":"Booking.com","appart":"R\u00e9sidence Al Boustane","voyageur":"Khayyam Babayev","checkin":"2026-02-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":82.32,"com_pct":0.19,"commission":15.64,"net":66.68,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5666964931_q1","ref":"BKG-5666964931","source":"Booking.com","appart":"Agdal 13","voyageur":"Mohamed El maroufi","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":55.95,"com_pct":0.19,"commission":10.63,"net":45.32,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5978274983_q1","ref":"BKG-5978274983","source":"Booking.com","appart":"Touahri 11","voyageur":"Ibrahim Affany","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":45.2,"com_pct":0.2199,"commission":9.94,"net":35.26,"taxe_sejour":2.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5663215792_q1","ref":"BKG-5663215792","source":"Booking.com","appart":"Touahri 11","voyageur":"Najib Zahri","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":50.34,"com_pct":0.2199,"commission":11.07,"net":39.27,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-6526654372_q1","ref":"BKG-6526654372","source":"Booking.com","appart":"Touahri 11","voyageur":"Rafi Dahan","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":43.4,"com_pct":0.22,"commission":9.55,"net":33.85,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-6369533122_q1","ref":"BKG-6369533122","source":"Booking.com","appart":"Touahri 11","voyageur":"MARTIN ENRIQUE OBAMA Oyono Oyana","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":45.2,"com_pct":0.2199,"commission":9.94,"net":35.26,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6607979328_q1","ref":"BKG-6607979328","source":"Booking.com","appart":"Agdal 13","voyageur":"Amal Dopchie","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":78.5,"com_pct":0.1901,"commission":14.92,"net":63.58,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6597440278_q1","ref":"BKG-6597440278","source":"Booking.com","appart":"Touahri 11","voyageur":"Aya MITRO","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":40.29,"com_pct":0.2199,"commission":8.86,"net":31.43,"taxe_sejour":2.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"BKG-5212722323_q1","ref":"BKG-5212722323","source":"Booking.com","appart":"Agdal 13","voyageur":"FREDERIC COGNON","checkin":"2026-03-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":356.6,"com_pct":0.19,"commission":67.75,"net":288.85,"taxe_sejour":28.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6369533227_q1","ref":"BKG-6369533227","source":"Booking.com","appart":"R\u00e9sidence Al Boustane","voyageur":"Asselborn Samuel","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":43.55,"com_pct":0.1899,"commission":8.27,"net":35.28,"taxe_sejour":16.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-5236561776_q1","ref":"BKG-5236561776","source":"Booking.com","appart":"Touahri 11","voyageur":"abdelhak mouloudi","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":56.0,"com_pct":0.2,"commission":11.2,"net":44.8,"taxe_sejour":30.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-5687247239_q1","ref":"BKG-5687247239","source":"Booking.com","appart":"R\u00e9sidence Al Boustane","voyageur":"Aminata Sy","checkin":"2026-03-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":150.99,"com_pct":0.0,"commission":0.0,"net":150.99,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Annul\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"BKG-6769260132_q1","ref":"BKG-6769260132","source":"Booking.com","appart":"Agdal 13","voyageur":"Issa Darraji","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":46.0,"com_pct":0.1717,"commission":7.9,"net":38.1,"taxe_sejour":8.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMK2XKCQJ3_q1","ref":"AIR-HMK2XKCQJ3","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Adil Hassini","checkin":"2026-01-01","checkout":"","nuits_sejour":5,"nuits_fact":5,"nb_personnes":1,"brut":353.63,"com_pct":0.155,"commission":54.81,"net":298.82,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM4ATC2TAN_q1","ref":"AIR-HM4ATC2TAN","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Faisal Alhashmi","checkin":"2026-02-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":64.88,"com_pct":0.1551,"commission":10.06,"net":54.82,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-02-01","mois_kpi":"2026-02","notes":""},{"id":"AIR-HMEC3BMH3C_q1","ref":"AIR-HMEC3BMH3C","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Youssef Bendriss","checkin":"2026-03-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":139.28,"com_pct":0.155,"commission":21.59,"net":117.69,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"DRC-1_q1","ref":"DRC-1","source":"Direct","appart":"Studio Ocean","voyageur":"Laurena","checkin":"2026-01-01","checkout":"","nuits_sejour":4,"nuits_fact":4,"nb_personnes":1,"brut":400.0,"com_pct":0.0,"commission":0.0,"net":400.0,"taxe_sejour":0.0,"type_norm":"DIRECT","mode_paiement":"Cash","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"DRC-3_q1","ref":"DRC-3","source":"Direct","appart":"Agdal 13","voyageur":"Oumaima Mahfoud","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":42.05,"com_pct":0.0,"commission":0.0,"net":42.05,"taxe_sejour":0.0,"type_norm":"DIRECT","mode_paiement":"Cash","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"DRC-4_q1","ref":"DRC-4","source":"Direct","appart":"Agdal 13","voyageur":"Oumaima Mahfoud","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":42.05,"com_pct":0.0,"commission":0.0,"net":42.05,"taxe_sejour":0.0,"type_norm":"DIRECT","mode_paiement":"Cash","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"DRC-2_q1","ref":"DRC-2","source":"Direct","appart":"Agdal 13","voyageur":"kenza Atif","checkin":"2026-01-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":52.0,"com_pct":0.0,"commission":0.0,"net":52.0,"taxe_sejour":0.0,"type_norm":"DIRECT","mode_paiement":"Cash","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"AIR-HM5X4SDZ89_q1","ref":"AIR-HM5X4SDZ89","source":"Airbnb","appart":"Agdal 13","voyageur":"Khnata El Kadiri","checkin":"2026-03-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":58.0,"com_pct":0.155,"commission":8.99,"net":49.01,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HMPSNDH8Y3_q1","ref":"AIR-HMPSNDH8Y3","source":"Airbnb","appart":"Agdal 13","voyageur":"Ahmed Aabou","checkin":"2026-04-01","checkout":"","nuits_sejour":2,"nuits_fact":2,"nb_personnes":1,"brut":138.9,"com_pct":0.155,"commission":21.53,"net":117.37,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"En attente","date_paiement":"2026-04-01","mois_kpi":"2026-04","notes":""},{"id":"AIR-HMXDJNSNBS_q1","ref":"AIR-HMXDJNSNBS","source":"Airbnb","appart":"Agdal 13","voyageur":"Mohammed Chaaban","checkin":"2026-04-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":63.0,"com_pct":0.1551,"commission":9.77,"net":53.23,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"En attente","date_paiement":"2026-04-01","mois_kpi":"2026-04","notes":""},{"id":"AIR-HMQSJ5CFYM_q1","ref":"AIR-HMQSJ5CFYM","source":"Airbnb","appart":"Touahri 11","voyageur":"Pacme Acka","checkin":"2026-01-01","checkout":"","nuits_sejour":10,"nuits_fact":10,"nb_personnes":1,"brut":1095.8,"com_pct":0.155,"commission":169.85,"net":925.95,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-01-01","mois_kpi":"2026-01","notes":""},{"id":"BKG-5824684756_q1","ref":"BKG-5824684756","source":"Booking.com","appart":"Touahri 11","voyageur":"Booking Guest","checkin":"2026-04-01","checkout":"","nuits_sejour":1,"nuits_fact":1,"nb_personnes":1,"brut":53.3,"com_pct":0.2201,"commission":11.73,"net":41.57,"taxe_sejour":4.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"En attente","date_paiement":"2026-04-01","mois_kpi":"2026-04","notes":""},{"id":"AIR-HMX4C8C59Q_q1","ref":"AIR-HMX4C8C59Q","source":"Airbnb","appart":"Riad Ahl Sala","voyageur":"Alphonse Divin Ondon Mongo","checkin":"2026-03-01","checkout":"","nuits_sejour":7,"nuits_fact":7,"nb_personnes":1,"brut":264.17,"com_pct":0.155,"commission":40.94,"net":223.23,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"Pay\u00e9","date_paiement":"2026-03-01","mois_kpi":"2026-03","notes":""},{"id":"AIR-HM8SZHWMHF_q1","ref":"AIR-HM8SZHWMHF","source":"Airbnb","appart":"R\u00e9sidence Al Boustane","voyageur":"Carlos Guillen","checkin":"2026-04-01","checkout":"","nuits_sejour":3,"nuits_fact":3,"nb_personnes":1,"brut":185.14,"com_pct":0.155,"commission":28.7,"net":156.44,"taxe_sejour":0.0,"type_norm":"RESERVATION","mode_paiement":"Virement plateforme","statut":"En attente","date_paiement":"2026-04-01","mois_kpi":"2026-04","notes":""}];saveDB('resa');}catch(e){console.error('Q1 load error',e);}}
+['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
+normalizeData();
+setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
+updateRateDisplay();
+fetchEurMad();
+goTo('resa');
+</script>
+</body>
+</html>
