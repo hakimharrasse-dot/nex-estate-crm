@@ -161,6 +161,23 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .circ-delta{font-size:11px;font-weight:500;margin-top:2px;}
 @keyframes ldbar{0%,100%{opacity:.25;transform:scaleX(.5)}50%{opacity:1;transform:scaleX(1)}}
 .ldbar{width:40px;height:3px;background:var(--or);border-radius:2px;animation:ldbar 1.1s ease-in-out infinite;transform-origin:center;}
+/* ── LOGIN SCREEN ── */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;}
+#login-screen.hidden{display:none;}
+.login-box{background:var(--s);border:1px solid var(--br);border-radius:16px;padding:32px 28px;width:100%;max-width:360px;}
+.login-logo{font-size:18px;font-weight:600;margin-bottom:4px;}
+.login-sub{font-size:11px;color:var(--tm);font-family:'DM Mono',monospace;margin-bottom:28px;}
+.login-label{font-size:11px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px;}
+.login-input{width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:11px 13px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:12px;}
+.login-input:focus{border-color:var(--or);}
+.login-btn{width:100%;background:var(--or);color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:4px;transition:opacity .15s;}
+.login-btn:hover{opacity:.88;}
+.login-btn:disabled{opacity:.5;cursor:default;}
+.login-err{font-size:12px;color:var(--re);margin-top:10px;text-align:center;min-height:18px;}
+.login-ok{font-size:12px;color:var(--gr);margin-top:10px;text-align:center;min-height:18px;}
+/* ── RESET PASSWORD SCREEN ── */
+#reset-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;}
+#reset-screen.visible{display:flex;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
@@ -170,17 +187,39 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 </style>
 </head>
 <body>
-<div id="auth" style="display:flex;justify-content:center;align-items:center;height:100vh;">
-  <div style="background:#111;padding:30px;border-radius:10px;width:300px;">
-    <h2 style="color:white;text-align:center;">Login</h2>
-    <input id="email" type="email" placeholder="Email" style="width:100%;margin-bottom:10px;padding:8px;">
-    <input id="password" type="password" placeholder="Mot de passe" style="width:100%;margin-bottom:10px;padding:8px;">
-    <button onclick="login()" style="width:100%;padding:10px;background:#22c55e;color:white;border:none;">Se connecter</button>
-    <p id="error" style="color:red;text-align:center;"></p>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Nex-Estate</div>
+    <div class="login-sub">CRM v3.0 · Accès sécurisé</div>
+    <label class="login-label">Email</label>
+    <input class="login-input" id="li-email" type="email" placeholder="hakim@nex-estate.com" autocomplete="email">
+    <label class="login-label">Mot de passe</label>
+    <input class="login-input" id="li-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    <button class="login-btn" id="li-btn" onclick="doLogin()">Se connecter</button>
+    <div class="login-err" id="li-err"></div>
   </div>
 </div>
 
+<!-- ══ RESET PASSWORD SCREEN ══ -->
+<div id="reset-screen">
+  <div class="login-box">
+    <div class="login-logo">Nex-Estate</div>
+    <div class="login-sub">Définir un nouveau mot de passe</div>
+    <label class="login-label">Nouveau mot de passe</label>
+    <input class="login-input" id="rp-pass" type="password" placeholder="••••••••" autocomplete="new-password">
+    <label class="login-label">Confirmer le mot de passe</label>
+    <input class="login-input" id="rp-confirm" type="password" placeholder="••••••••" autocomplete="new-password">
+    <button class="login-btn" id="rp-btn" onclick="doResetPassword()">Enregistrer le mot de passe</button>
+    <div class="login-err" id="rp-err"></div>
+    <div class="login-ok" id="rp-ok"></div>
+  </div>
+</div>
+
+<!-- ══ APP (masqué jusqu'au login) ══ -->
 <div id="app" style="display:none;">
+
 <div id="loading-overlay" style="position:fixed;inset:0;background:#0f0f0f;z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px">
   <div style="font-size:20px;font-weight:600;color:#f0ede8;letter-spacing:-.5px">Nex-Estate</div>
   <div style="font-size:12px;color:#888;font-family:'DM Mono',monospace" id="loading-msg">Connexion à Supabase...</div>
@@ -199,6 +238,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
       <button onclick="exportData()" style="background:var(--gr);color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">💾 Sauvegarder</button>
       <button onclick="document.getElementById('imp-file').click()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">📂 Restaurer</button>
       <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importData(this)">
+      <button onclick="doLogout()" style="background:var(--s2);border:1px solid var(--br);color:var(--td);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🔒 Déconnexion</button>
     </div>
   </div>
   <div class="ng">
@@ -480,20 +520,19 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
   </div>
 </div>
 
+</div><!-- /app -->
+
 <script>
 // ============================================================
 // CONFIG SUPABASE
-// Remplacer SUPA_URL et SUPA_KEY par vos valeurs (Settings → API)
-// La anon key est sûre côté client — la sécurité repose sur les RLS policies
 // ============================================================
-var SUPA_URL = 'https://supabase.com/dashboard/project/zjultuaqkzjupiiewxhy/settings/api-keys';
+var SUPA_URL = 'https://zjultuaqkzjupiiewxhy.supabase.co';
 var SUPA_KEY = 'sb_publishable_r106TzPRWMQ9xfDavbiDIA_FQF1Nz2E';
 var SUPA = null;
 var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso'};
 
 function initSupabase() {
   if (typeof supabase === 'undefined') { setDBStatus(false,'SDK non chargé'); return; }
-  if (SUPA_URL.indexOf('VOTRE') >= 0) { setDBStatus(false,'Config manquante'); return; }
   try {
     SUPA = supabase.createClient(SUPA_URL, SUPA_KEY);
     setDBStatus(null, 'Connexion...');
@@ -532,7 +571,6 @@ async function saveOne(k, entry) {
 async function saveAll(k) {
   if (!SUPA || !DB[k].length) return;
   try {
-    // Upsert par lots de 500 pour éviter les limites
     var batch = 500;
     for (var i = 0; i < DB[k].length; i += batch) {
       var chunk = DB[k].slice(i, i + batch);
@@ -550,17 +588,171 @@ async function deleteOne(k, id) {
   } catch(e) { console.error('Supabase delete error:', e); }
 }
 
-// DB in-memory — rempli au démarrage depuis Supabase
+// DB in-memory
 var DB = { resa:[], business:[], taxe:[], serv:[], perso:[] };
+
+// ============================================================
+// AUTH — Supabase Auth (signInWithPassword + session persistante)
+// ============================================================
+
+async function doLogin() {
+  var email = document.getElementById('li-email').value.trim();
+  var pass  = document.getElementById('li-pass').value;
+  var btn   = document.getElementById('li-btn');
+  var err   = document.getElementById('li-err');
+  if (!email || !pass) { err.textContent = 'Email et mot de passe requis.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Connexion...';
+  err.textContent = '';
+  try {
+    var res = await SUPA.auth.signInWithPassword({ email: email, password: pass });
+    if (res.error) throw res.error;
+    // Session établie — lancer l'app
+    await launchApp();
+  } catch(e) {
+    err.textContent = 'Identifiants incorrects ou compte inactif.';
+    btn.disabled = false;
+    btn.textContent = 'Se connecter';
+  }
+}
+
+async function doLogout() {
+  if (!SUPA) return;
+  await SUPA.auth.signOut();
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('li-pass').value = '';
+  document.getElementById('li-err').textContent = '';
+  document.getElementById('li-btn').disabled = false;
+  document.getElementById('li-btn').textContent = 'Se connecter';
+}
+
+async function doResetPassword() {
+  var pass    = document.getElementById('rp-pass').value;
+  var confirm = document.getElementById('rp-confirm').value;
+  var btn     = document.getElementById('rp-btn');
+  var err     = document.getElementById('rp-err');
+  var ok      = document.getElementById('rp-ok');
+  err.textContent = ''; ok.textContent = '';
+  if (!pass || pass.length < 6) { err.textContent = 'Minimum 6 caractères.'; return; }
+  if (pass !== confirm) { err.textContent = 'Les mots de passe ne correspondent pas.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Enregistrement...';
+  try {
+    var res = await SUPA.auth.updateUser({ password: pass });
+    if (res.error) throw res.error;
+    ok.textContent = '✅ Mot de passe mis à jour. Redirection...';
+    // Nettoyer l'URL (supprimer les tokens du hash)
+    window.history.replaceState(null, '', window.location.pathname);
+    // Déconnecter la session recovery, puis afficher le login
+    setTimeout(async function() {
+      await SUPA.auth.signOut();
+      document.getElementById('reset-screen').classList.remove('visible');
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('rp-pass').value = '';
+      document.getElementById('rp-confirm').value = '';
+      document.getElementById('rp-ok').textContent = '';
+      btn.disabled = false;
+      btn.textContent = 'Enregistrer le mot de passe';
+    }, 1500);
+  } catch(e) {
+    err.textContent = 'Erreur : ' + (e.message || 'Veuillez réessayer.');
+    btn.disabled = false;
+    btn.textContent = 'Enregistrer le mot de passe';
+  }
+}
+
+// ============================================================
+// INIT — checkAuth avant tout
+// ============================================================
+async function initApp() {
+  // 1. Init Supabase client
+  initSupabase();
+
+  // 2. Listener session — doit être enregistré AVANT getSession()
+  //    pour intercepter l'event PASSWORD_RECOVERY au chargement
+  SUPA.auth.onAuthStateChange(function(event, session) {
+    if (event === 'PASSWORD_RECOVERY') {
+      // Flux reset password : masquer login, afficher écran reset
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('reset-screen').classList.add('visible');
+      return;
+    }
+    if (event === 'SIGNED_OUT') {
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('reset-screen').classList.remove('visible');
+      document.getElementById('login-screen').classList.remove('hidden');
+    }
+    if (event === 'SIGNED_IN' && session) {
+      // Ne pas lancer l'app si on est en train de reset le mot de passe
+      var rs = document.getElementById('reset-screen');
+      if (rs && rs.classList.contains('visible')) return;
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').style.display = 'block';
+    }
+  });
+
+  // 3. Vérifier session existante (hors flux recovery géré par onAuthStateChange)
+  var sessionRes = await SUPA.auth.getSession();
+  var session = sessionRes.data && sessionRes.data.session;
+
+  // Si déjà une session normale (pas recovery) → lancer l'app
+  if (session && document.getElementById('reset-screen') && !document.getElementById('reset-screen').classList.contains('visible')) {
+    await launchApp();
+  }
+  // Sinon : soit l'onAuthStateChange a déjà affiché l'écran reset,
+  // soit on reste sur le login screen (visible par défaut)
+}
+
+async function launchApp() {
+  // Masquer login, afficher app
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'block';
+
+  var overlay = document.getElementById('loading-overlay');
+  var loadMsg = document.getElementById('loading-msg');
+
+  // Charger les données
+  loadMsg.textContent = 'Chargement des données...';
+  var ok = await loadAllDB();
+  if (ok) {
+    setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
+  } else {
+    setDBStatus(false, 'Erreur de connexion');
+    loadMsg.textContent = 'Erreur Supabase — vérifier la config';
+  }
+
+  // Cacher l'overlay
+  if (overlay) overlay.style.display = 'none';
+
+  // Init UI
+  ['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
+  await normalizeData();
+  setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
+  updateRateDisplay();
+  fetchEurMad();
+  goTo('resa');
+}
+
+// Enter key sur les formulaires auth
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    var ls = document.getElementById('login-screen');
+    var rs = document.getElementById('reset-screen');
+    if (ls && !ls.classList.contains('hidden')) { doLogin(); return; }
+    if (rs && rs.classList.contains('visible')) { doResetPassword(); return; }
+  }
+});
 
 // ============================================================
 // CONSTANTS
 // ============================================================
 var APPARTS = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
 var RABAT   = ['Résidence Al Boustane','Agdal 13'];
-var EUR_MAD = 10.5; // Taux de change EUR->MAD, rafraîchi au démarrage via frankfurter.app
-var EUR_MAD_DATE = ''; // Date du taux (API frankfurter)
-var TAUX    = {rabat:4, sale:2}; // EUR par nuit par personne (converti en MAD à l'affichage)
+var EUR_MAD = 10.5;
+var EUR_MAD_DATE = '';
+var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
 var CLEANERS = ['Amal','Rabiaa','Touria'];
 var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
@@ -584,7 +776,6 @@ function fetchEurMad() {
       EUR_MAD = d.rates.MAD;
       EUR_MAD_DATE = d.date || '';
       updateRateDisplay();
-      // Re-rendre la vue courante avec le nouveau taux
       var k = {resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',dash:'d'}[CUR];
       if (k) renderView(k);
     }
@@ -830,15 +1021,11 @@ function renderDash() {
   set('d-adr',fmt(adrMad));
   set('d-revpan',fmt(revpanMad));
   set('d-marge',Math.round(marge)+' %');
-
-  // ── Circles ──────────────────────────────────────────────
   drawCircle('d-svg-occ', occPct, 'var(--te)');
   set('d-circ-occ', Math.round(occPct)+' %');
   set('d-circ-occ-det', nuitsSejour+' / '+joursDispo+' nuits');
   drawCircle('d-svg-marge', Math.max(0,marge), 'var(--or)');
   set('d-circ-marge', Math.round(marge)+' %');
-
-  // ── Prev period (mois only) for comparison base ──────────
   if(P['d']==='mois') {
     var prevMO=new Date(MO['d'].getTime()); prevMO.setMonth(prevMO.getMonth()-1);
     var prevMk=prevMO.toISOString().slice(0,7);
@@ -1106,7 +1293,6 @@ function openModal(type, id) {
   document.getElementById('modal-save').onclick=saveEntry;
   document.getElementById('modal-body').innerHTML=buildForm(type, id);
   document.getElementById('modal-overlay').classList.remove('hidden');
-  // Wire auto-calc for resa
   if(type==='resa') {
     ['fi-ci','fi-co','fi-np','fi-brut','fi-src','fi-app'].forEach(function(id){
       var el=document.getElementById(id);
@@ -1165,7 +1351,7 @@ function buildForm(type, editId) {
       fieldFull('Date','fi-date','date',v('date',T))+
       '<div class="ff"><label class="fl">Appartement(s)</label>'+
       '<div class="chips-row" id="appt-chips">'+
-      APPARTS.map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
+      APPARTS.map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'\" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       '<div class="ff"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen"><option value="">— Non applicable —</option>'+CLEANERS.map(function(c){return '<option'+(v('fmen')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
@@ -1236,7 +1422,6 @@ function autoCalcResa() {
   var ci=gv('fi-ci'), co=gv('fi-co'), np=parseInt(gv('fi-np'))||1;
   var src=gv('fi-src'), ap=gv('fi-app');
   var brutMad=parseFloat(gv('fi-brut'))||0;
-  // Toujours forcer la commission depuis COM[src]
   var comPct=COM[src]||0;
   var comEl=document.getElementById('fi-com');
   if(comEl) { comEl.value=Math.round(comPct*1000)/10; }
@@ -1275,7 +1460,6 @@ async function saveResa() {
   var brutMad=parseFloat(gv('fi-brut'))||0, ci=gv('fi-ci');
   if(!ci||!brutMad){alert('Check-in et montant brut requis');return;}
   var src=gv('fi-src');
-  // Commission toujours forcée depuis les règles métier
   var comPct=COM[src]||0;
   var co=gv('fi-co'), dp=gv('fi-dp');
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
@@ -1284,7 +1468,6 @@ async function saveResa() {
   var netEur = brutEur - comEur;
   var taxeMad = (src === 'Booking.com') ? (parseFloat(gv('fi-taxe'))||0) : 0;
   var taxeEur = taxeMad / EUR_MAD;
-  // Préserver la référence existante si modification, sinon en générer une nouvelle
   var existingRef = gv('fi-ref');
   if(!existingRef) {
     var srcPfx = {'Airbnb':'AIR','Booking.com':'BKG','Direct':'DIR','VRBO':'VRB'}[src]||'SMB';
@@ -1468,7 +1651,6 @@ document.getElementById('modal-overlay').addEventListener('click',function(e){if
 // ============================================================
 // EXPORT / IMPORT
 // ============================================================
-// Export JSON (sauvegarde locale — les données sont aussi dans Supabase)
 function exportData() {
   var backup = {
     version: 2,
@@ -1512,26 +1694,23 @@ function importData(input) {
 }
 
 // ============================================================
-// NORMALISATION DONNÉES (règles métier strictes)
+// NORMALISATION DONNÉES
 // ============================================================
 async function normalizeData() {
   var changed = false;
   DB.resa.forEach(function(r) {
-    // Règle 1 : Commission Booking.com toujours 22% (sauf annulé com=0)
     if(r.source === 'Booking.com' && r.statut !== 'Annulé' && Math.abs(r.com_pct - 0.22) > 0.001) {
       r.com_pct = 0.22;
       r.commission = Math.round(r.brut * 0.22 * 100) / 100;
       r.net = Math.round((r.brut - r.commission) * 100) / 100;
       changed = true;
     }
-    // Règle 2 : Airbnb toujours 15.5%
     if(r.source === 'Airbnb' && r.statut !== 'Annulé' && r.com_pct > 0 && Math.abs(r.com_pct - 0.155) > 0.002) {
       r.com_pct = 0.155;
       r.commission = Math.round(r.brut * 0.155 * 100) / 100;
       r.net = Math.round((r.brut - r.commission) * 100) / 100;
       changed = true;
     }
-    // Règle 3 : AIRCOVER et AJUSTEMENT → 0 nuits (ne jamais distordre ADR/RevPAN)
     if((r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT') && (r.nuits_sejour > 0 || r.nuits_fact > 0)) {
       r.nuits_sejour = 0;
       r.nuits_fact = 0;
@@ -1541,59 +1720,8 @@ async function normalizeData() {
   if(changed) await saveAll('resa');
 }
 
-// ============================================================
-// INIT ASYNCHRONE — connexion Supabase puis rendu
-// ============================================================
-async function initApp() {
-  // 1. Afficher l'overlay de chargement
-  var overlay = document.getElementById('loading-overlay');
-  var loadMsg = document.getElementById('loading-msg');
-
-  // 2. Init Supabase
-  initSupabase();
-
-  // 3. Charger les données
-  if (SUPA) {
-    loadMsg.textContent = 'Chargement des données...';
-    var ok = await loadAllDB();
-    if (ok) {
-      setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
-    } else {
-      setDBStatus(false, 'Erreur de connexion');
-      loadMsg.textContent = 'Erreur Supabase — vérifier la config';
-    }
-  } else {
-    setDBStatus(false, 'Non configuré');
-    loadMsg.textContent = 'Supabase non configuré (SUPA_URL / SUPA_KEY)';
-    await new Promise(function(r){setTimeout(r,1500);});
-  }
-
-  // 4. Cacher l'overlay
-  if (overlay) overlay.style.display = 'none';
-
-  // 5. Init UI
-  ['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
-  await normalizeData();
-  setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
-  updateRateDisplay();
-  fetchEurMad();
-  goTo('resa');
-}
-
-// Lancer l'application
+// Lancer
 initApp();
-function login() {
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-
-  if (email === "admin@nex.com" && password === "1234") {
-    document.getElementById('auth').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-  } else {
-    document.getElementById('error').textContent = "Identifiants incorrects";
-  }
-}
 </script>
-</div>
 </body>
 </html>
