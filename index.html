@@ -532,11 +532,12 @@ var SUPA = null;
 var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso'};
 
 function initSupabase() {
-  if (typeof supabase === 'undefined') { setDBStatus(false,'SDK non chargé'); return; }
+  if (typeof supabase === 'undefined') { setDBStatus(false, 'SDK non chargé'); return false; }
   try {
     SUPA = supabase.createClient(SUPA_URL, SUPA_KEY);
     setDBStatus(null, 'Connexion...');
-  } catch(e) { setDBStatus(false, 'Erreur init'); }
+    return true;
+  } catch(e) { setDBStatus(false, 'Erreur init client'); return false; }
 }
 
 function setDBStatus(ok, msg) {
@@ -561,15 +562,16 @@ async function loadAllDB() {
 }
 
 async function saveOne(k, entry) {
-  if (!SUPA) return;
+  if (!SUPA) { setDBStatus(false, 'Non connecté — écriture impossible'); return; }
   try {
     var res = await SUPA.from(TABLE[k]).upsert(entry, {onConflict:'id'});
     if (res.error) throw res.error;
-  } catch(e) { console.error('Supabase saveOne error:', e); }
+  } catch(e) { setDBStatus(false, 'Erreur écriture'); console.error('Supabase saveOne error:', e); }
 }
 
 async function saveAll(k) {
-  if (!SUPA || !DB[k].length) return;
+  if (!SUPA) { setDBStatus(false, 'Non connecté — écriture impossible'); return; }
+  if (!DB[k].length) return;
   try {
     var batch = 500;
     for (var i = 0; i < DB[k].length; i += batch) {
@@ -577,15 +579,15 @@ async function saveAll(k) {
       var res = await SUPA.from(TABLE[k]).upsert(chunk, {onConflict:'id'});
       if (res.error) throw res.error;
     }
-  } catch(e) { console.error('Supabase saveAll error:', e); }
+  } catch(e) { setDBStatus(false, 'Erreur écriture'); console.error('Supabase saveAll error:', e); }
 }
 
 async function deleteOne(k, id) {
-  if (!SUPA) return;
+  if (!SUPA) { setDBStatus(false, 'Non connecté — suppression impossible'); return; }
   try {
     var res = await SUPA.from(TABLE[k]).delete().eq('id', id);
     if (res.error) throw res.error;
-  } catch(e) { console.error('Supabase delete error:', e); }
+  } catch(e) { setDBStatus(false, 'Erreur suppression'); console.error('Supabase delete error:', e); }
 }
 
 // DB in-memory
@@ -617,8 +619,7 @@ async function doLogin() {
 }
 
 async function doLogout() {
-  if (!SUPA) return;
-  await SUPA.auth.signOut();
+  if (SUPA) { try { await SUPA.auth.signOut(); } catch(e) { console.error('signOut error:', e); } }
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('li-pass').value = '';
@@ -666,8 +667,13 @@ async function doResetPassword() {
 // INIT — checkAuth avant tout
 // ============================================================
 async function initApp() {
-  // 1. Init Supabase client
-  initSupabase();
+  // 1. Init Supabase client — abort si échec
+  var supaOk = initSupabase();
+  if (!supaOk || !SUPA) {
+    var loadMsg = document.getElementById('loading-msg');
+    if (loadMsg) loadMsg.textContent = '⚠️ Supabase non initialisé — rechargez la page.';
+    return;
+  }
 
   // 2. Listener session — doit être enregistré AVANT getSession()
   //    pour intercepter l'event PASSWORD_RECOVERY au chargement
@@ -713,15 +719,27 @@ async function launchApp() {
   var overlay = document.getElementById('loading-overlay');
   var loadMsg = document.getElementById('loading-msg');
 
-  // Charger les données
+  // Charger les données depuis Supabase — bloquant
   loadMsg.textContent = 'Chargement des données...';
   var ok = await loadAllDB();
-  if (ok) {
-    setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
-  } else {
-    setDBStatus(false, 'Erreur de connexion');
-    loadMsg.textContent = 'Erreur Supabase — vérifier la config';
+
+  if (!ok) {
+    // Supabase inaccessible : garder l'overlay, afficher l'erreur, NE PAS rendre l'UI
+    setDBStatus(false, 'Erreur Supabase');
+    loadMsg.textContent = '⚠️ Impossible de charger les données. Vérifier la connexion.';
+    if (overlay) {
+      overlay.style.display = 'flex'; // forcer l'overlay à rester visible
+      // Ajouter un bouton de reconnexion
+      var retryBtn = document.createElement('button');
+      retryBtn.textContent = 'Réessayer';
+      retryBtn.style.cssText = 'margin-top:16px;background:#c8773a;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;';
+      retryBtn.onclick = function() { overlay.removeChild(retryBtn); launchApp(); };
+      overlay.appendChild(retryBtn);
+    }
+    return; // STOP — UI non rendue
   }
+
+  setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
 
   // Cacher l'overlay
   if (overlay) overlay.style.display = 'none';
