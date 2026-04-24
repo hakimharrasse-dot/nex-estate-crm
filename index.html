@@ -202,6 +202,24 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .ch-type-direct{background:var(--grs);color:var(--gr);font-size:10px;}
 .ch-type-annp{background:var(--ors);color:var(--or);font-size:10px;}
 .ch-type-annnp{background:var(--res);color:var(--re);font-size:10px;}
+/* Sparklines dashboard */
+.spark-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.spark-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;flex:1;min-width:220px;}
+.spark-lbl{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;font-weight:500;margin-bottom:8px;}
+.spark-svg{width:100%;height:48px;display:block;}
+.spark-axis{display:flex;justify-content:space-between;margin-top:3px;}
+.spark-ax{font-size:9px;color:var(--td);font-family:'DM Mono',monospace;}
+/* Decision cards */
+.dec-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+.dec-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;flex:1;min-width:150px;}
+.dec-icon{font-size:18px;margin-bottom:6px;}
+.dec-lbl{font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:4px;}
+.dec-val{font-size:14px;font-weight:600;font-family:'DM Mono',monospace;color:var(--tx);}
+.dec-sub{font-size:11px;color:var(--td);margin-top:2px;}
+.dec-alert{border-color:var(--re)!important;background:rgba(224,82,82,.05);}
+.dec-ok{border-color:var(--gr)!important;}
+/* Delta inline sous les KPI */
+.kd{font-size:10px;margin-top:3px;min-height:14px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
@@ -296,21 +314,22 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="dtj" onclick="setPer('d','jour')">Jour</button>
       <button class="tab" id="dts" onclick="setPer('d','semaine')">Semaine</button>
       <button class="tab on" id="dtm" onclick="setPer('d','mois')">Mois</button>
+      <button class="tab" id="dta" onclick="setPer('d','annee')">Année</button>
     </div>
     <div id="d-nav"></div>
     <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
   </div></div>
   <div class="kg">
-    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div></div>
-    <div class="kc"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div></div>
-    <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div></div>
-    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div></div>
+    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="kd" id="d-delta-net"></div></div>
+    <div class="kc"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
+    <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div><div class="kd" id="d-delta-occ2"></div></div>
+    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
   </div>
   <div class="kg">
     <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="d-com">0 MAD</div></div>
     <div class="kc"><div class="kl">Dépenses business</div><div class="kv" style="color:var(--or)" id="d-dep">0 MAD</div></div>
-    <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div></div>
-    <div class="kc"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div></div>
+    <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div><div class="kd" id="d-delta-revpan"></div></div>
+    <div class="kc"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div><div class="kd" id="d-delta-marge2"></div></div>
   </div>
   <!-- Circle KPIs -->
   <div class="circ-row">
@@ -333,6 +352,21 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       </div>
     </div>
   </div>
+  <!-- Sparklines -->
+  <div class="spark-row">
+    <div class="spark-card">
+      <div class="spark-lbl">Revenus nets — 6 derniers mois</div>
+      <svg class="spark-svg" id="d-spark-net" viewBox="0 0 260 48" preserveAspectRatio="none"></svg>
+      <div class="spark-axis" id="d-spark-net-ax"></div>
+    </div>
+    <div class="spark-card">
+      <div class="spark-lbl">Taux d'occupation — 6 derniers mois</div>
+      <svg class="spark-svg" id="d-spark-occ" viewBox="0 0 260 48" preserveAspectRatio="none"></svg>
+      <div class="spark-axis" id="d-spark-occ-ax"></div>
+    </div>
+  </div>
+  <!-- Décisions rapides -->
+  <div class="dec-row" id="d-decisions"></div>
   <div class="kg">
     <div class="kc"><div class="kl">Taxe collectée</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Hors CA — argent État</div></div>
     <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
@@ -379,6 +413,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="rtj" onclick="setPer('r','jour')">Jour</button>
       <button class="tab" id="rts" onclick="setPer('r','semaine')">Semaine</button>
       <button class="tab onr" id="rtm" onclick="setPer('r','mois')">Mois</button>
+      <button class="tab" id="rta" onclick="setPer('r','annee')">Année</button>
     </div>
     <div id="r-nav"></div>
     <select class="fsel" id="r-fap" onchange="renderResa()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -951,6 +986,7 @@ function filterPer(rows, k) {
   var p=P[k];
   if(p==='jour') return rows.filter(function(r){return r.date===DAY[k];});
   if(p==='semaine') { var w=wkRange(WK[k]); return rows.filter(function(r){return r.date>=w.s&&r.date<=w.e;}); }
+  if(p==='annee') { var yr=String(YR[k]); return rows.filter(function(r){return (r.date||'').startsWith(yr);}); }
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.date||'').startsWith(mk);});
 }
@@ -960,6 +996,7 @@ function filterResa(rows, k) {
   function dateKey(r){return r.date_paiement||r.checkin||'';}
   if(p==='jour') return rows.filter(function(r){return dateKey(r)===DAY[k];});
   if(p==='semaine') { var w=wkRange(WK[k]); return rows.filter(function(r){var d=dateKey(r);return d>=w.s&&d<=w.e;}); }
+  if(p==='annee') { var yr=String(YR[k]); return rows.filter(function(r){return (r.mois_kpi||dateKey(r)).startsWith(yr);}); }
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.mois_kpi||dateKey(r)).startsWith(mk);});
 }
@@ -970,7 +1007,7 @@ function setPer(k, p) {
   var tabMap={r:'rt',b:'bt',t:'tt',s:'st',p:'pt',d:'dt'};
   var pre=tabMap[k];
   var onCls={r:'onr',b:'on',t:'ont',s:'ons',p:'onp',d:'on'};
-  ['j','s','m'].forEach(function(x){
+  ['j','s','m','a'].forEach(function(x){
     var el=document.getElementById(pre+x);
     if(el) el.className='tab';
   });
@@ -992,6 +1029,9 @@ function renderNav(k) {
     var w=wkRange(WK[k]);
     curYr=parseInt(WK[k].slice(0,4));
     periodHtml='<div class="nc"><button class="nb2" onclick="shiftW(\''+k+'\',-1)">‹</button><div class="nv">'+w.s+' → '+w.e.slice(5)+'</div><button class="nb2" onclick="shiftW(\''+k+'\',1)">›</button></div>';
+  } else if(p==='annee') {
+    curYr=YR[k];
+    periodHtml=''; // year nav alone is sufficient
   } else {
     curYr=MO[k].getFullYear();
     periodHtml='<div class="nc"><button class="nb2" onclick="shiftM(\''+k+'\',-1)">‹</button><div class="nv">'+MO[k].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})+'</div><button class="nb2" onclick="shiftM(\''+k+'\',1)">›</button></div>';
@@ -1009,6 +1049,8 @@ function shiftY(k,d) {
     MO[k].setFullYear(YR[k]);
   } else if(p==='semaine') {
     var dt=new Date(WK[k]); dt.setFullYear(YR[k]); WK[k]=dt.toISOString().slice(0,10);
+  } else if(p==='annee') {
+    // YR[k] already updated — nothing else needed
   } else {
     DAY[k]=YR[k]+DAY[k].slice(4);
   }
@@ -1067,102 +1109,208 @@ function drawCircle(svgId, pct, color) {
     ' style="transition:stroke-dasharray .4s ease"/>';
 }
 
-function deltaArrow(cur, prev, unit) {
-  if(!prev && prev!==0) return '';
+function deltaArrow(cur, prev, unit, lbl) {
+  if(prev===null||prev===undefined) return '';
   var diff=cur-prev;
   if(Math.abs(diff)<0.5) return '';
   var arrow=diff>0?'↑':'↓';
   var col=diff>0?'var(--gr)':'var(--re)';
   var label=unit==='%'?Math.abs(Math.round(diff))+'pp':Math.round(Math.abs(diff)).toLocaleString('fr-MA')+' MAD';
-  return '<span style="color:'+col+'">'+arrow+' '+label+'</span> <span style="color:var(--td)">vs mois préc.</span>';
+  return '<span style="color:'+col+'">'+arrow+' '+label+'</span> <span style="color:var(--td)">vs '+(lbl||'préc.')+'</span>';
+}
+
+function drawSparkline(svgId, values, color) {
+  var el=document.getElementById(svgId); if(!el) return;
+  if(!values.length){el.innerHTML='';return;}
+  var W=260, H=48, pad=4;
+  var max=Math.max.apply(null,values)||1;
+  var min=Math.min(0,Math.min.apply(null,values));
+  var range=max-min||1;
+  var pts=values.map(function(v,i){
+    var x=pad+(W-pad*2)*i/Math.max(values.length-1,1);
+    var y=H-pad-(v-min)/range*(H-pad*2);
+    return x.toFixed(1)+','+y.toFixed(1);
+  });
+  // Area fill
+  var fillPts='0,'+(H-pad)+' '+pts.join(' ')+' '+(W-pad)+','+(H-pad);
+  el.innerHTML=
+    '<defs><linearGradient id="sg_'+svgId+'" x1="0" y1="0" x2="0" y2="1">'+
+    '<stop offset="0%" stop-color="'+color+'" stop-opacity="0.3"/>'+
+    '<stop offset="100%" stop-color="'+color+'" stop-opacity="0.02"/>'+
+    '</linearGradient></defs>'+
+    '<polygon points="'+fillPts+'" fill="url(#sg_'+svgId+')" />'+
+    '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+color+'" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>';
 }
 
 // ============================================================
 // RENDER: DASHBOARD
 // ============================================================
-function periodDays(k) {
-  var p=P[k];
-  if(p==='jour') return 1;
-  if(p==='semaine') return 7;
-  var y=MO[k].getFullYear(), m=MO[k].getMonth();
-  return new Date(y,m+1,0).getDate();
+function computePeriodKPIs(resaRows, bizRows, joursDispo) {
+  var rev=resaRows.filter(function(r){
+    return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';
+  });
+  var netEur=sum(rev,'net');
+  var nuitsFact=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
+  var nuitsSej=rev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+  var netMad=netEur*EUR_MAD;
+  var dep=sum(bizRows,'montant');
+  var adr=nuitsFact>0?netMad/nuitsFact:0;
+  var occ=joursDispo>0?(nuitsSej/joursDispo*100):0;
+  var revpan=joursDispo>0?netMad/joursDispo:0;
+  var resultat=netMad-dep;
+  var marge=netMad>0?(resultat/netMad*100):0;
+  return {netMad:netMad,adr:adr,occ:occ,revpan:revpan,resultat:resultat,marge:marge,nuitsSej:nuitsSej,nuitsFact:nuitsFact,dep:dep};
 }
 
 function renderDash() {
   renderNav('d');
+  var p=P['d'], fa=val('d-fap');
+  var nAp=fa?1:APPARTS.length;
+
+  // ── Données courantes ──
   var allRes=filterResa(DB.resa,'d');
-  var fa=val('d-fap');
   if(fa) allRes=allRes.filter(function(r){return r.appart===fa;});
-  var revRes=allRes.filter(function(r){
-    return TYPES_R.indexOf(r.type_norm)>=0
-      && r.type_norm!=='ANNULATION_NON_PAYEE'
-      && r.statut!=='Annulé';
+  var bizRows=filterPer(DB.business,'d').filter(function(r){
+    if(fa) return r.appart===fa&&r.scope!=='global'; return true;
   });
-  var brutEur=sum(revRes,'brut'), comEur=sum(revRes,'commission'), netEur=sum(revRes,'net');
-  var nuitsFact=revRes.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
-  var nuitsSejour=revRes.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
-  var joursDispo=periodDays('d')*(fa?1:APPARTS.length);
-  var depenses=sum(filterPer(DB.business,'d').filter(function(r){
-    if(fa) return r.appart===fa && r.scope!=='global'; // global exclues quand filtre par appart
-    return true; // global incluses dans "tous apparts"
-  }),'montant');
+  var joursDispo=periodDays('d')*nAp;
+  var cur=computePeriodKPIs(allRes,bizRows,joursDispo);
+  var brutEur=sum(allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';}),'brut');
+  var comEur=sum(allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';}),'commission');
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
-  var brutMad=brutEur*EUR_MAD, comMad=comEur*EUR_MAD, netMad=netEur*EUR_MAD;
-  var adrMad=nuitsFact>0?netMad/nuitsFact:0;
-  var occPct=joursDispo>0?(nuitsSejour/joursDispo*100):0;
-  var revpanMad=joursDispo>0?netMad/joursDispo:0;
-  var resultat=netMad-depenses;
-  var marge=netMad>0?(resultat/netMad*100):0;
-  set('d-net',fmt(netMad));
-  set('d-brut','Brut : '+fmt(brutMad));
-  set('d-res',fmt(resultat));
-  set('d-com',fmt(comMad));
-  set('d-dep',fmt(depenses));
+
+  // ── Affichage KPI ──
+  set('d-net',fmt(cur.netMad));
+  set('d-brut','Brut : '+fmt(brutEur*EUR_MAD));
+  set('d-res',fmt(cur.resultat));
+  set('d-com',fmt(comEur*EUR_MAD));
+  set('d-dep',fmt(cur.dep));
   set('d-tax',fmt(taxeCollectee));
   set('d-ext',fmt(extras));
-  set('d-occ',Math.round(occPct)+' %');
-  set('d-occ-det',nuitsSejour+' / '+joursDispo+' nuits');
-  set('d-adr',fmt(adrMad));
-  set('d-revpan',fmt(revpanMad));
-  set('d-marge',Math.round(marge)+' %');
-  drawCircle('d-svg-occ', occPct, 'var(--te)');
-  set('d-circ-occ', Math.round(occPct)+' %');
-  set('d-circ-occ-det', nuitsSejour+' / '+joursDispo+' nuits');
-  drawCircle('d-svg-marge', Math.max(0,marge), 'var(--or)');
-  set('d-circ-marge', Math.round(marge)+' %');
-  if(P['d']==='mois') {
+  set('d-occ',Math.round(cur.occ)+' %');
+  set('d-occ-det',cur.nuitsSej+' / '+joursDispo+' nuits');
+  set('d-adr',fmt(cur.adr));
+  set('d-revpan',fmt(cur.revpan));
+  set('d-marge',Math.round(cur.marge)+' %');
+  drawCircle('d-svg-occ', cur.occ, 'var(--te)');
+  set('d-circ-occ', Math.round(cur.occ)+' %');
+  set('d-circ-occ-det', cur.nuitsSej+' / '+joursDispo+' nuits');
+  drawCircle('d-svg-marge', Math.max(0,cur.marge), 'var(--or)');
+  set('d-circ-marge', Math.round(cur.marge)+' %');
+
+  // ── Calcul période précédente ──
+  var prevRes=[], prevBiz=[], prevJours=joursDispo, prevLbl='préc.';
+  if(p==='mois') {
     var prevMO=new Date(MO['d'].getTime()); prevMO.setMonth(prevMO.getMonth()-1);
     var prevMk=prevMO.toISOString().slice(0,7);
-    var prevRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(prevMk);});
-    if(fa) prevRes=prevRes.filter(function(r){return r.appart===fa;});
-    var prevRev=prevRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
-    var prevNet=sum(prevRev,'net')*EUR_MAD;
-    var prevNuitsSej=prevRev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
-    var prevJours=new Date(prevMO.getFullYear(),prevMO.getMonth()+1,0).getDate()*(fa?1:APPARTS.length);
-    var prevOcc=prevJours>0?(prevNuitsSej/prevJours*100):0;
-    var prevDep=sum(DB.business.filter(function(r){return r.date.startsWith(prevMk)&&(!fa||r.appart===fa);}),'montant');
-    var prevMarge=prevNet>0?((prevNet-prevDep)/prevNet*100):0;
-    window._NX_PREV={netMad:prevNet,occPct:prevOcc,marge:prevMarge,nuits:prevNuitsSej,mk:prevMk};
-    set('d-delta-occ',deltaArrow(occPct,prevOcc,'%'));
-    set('d-delta-marge',deltaArrow(marge,prevMarge,'%'));
-  } else {
-    window._NX_PREV=null;
-    set('d-delta-occ',''); set('d-delta-marge','');
+    prevRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(prevMk);});
+    prevBiz=DB.business.filter(function(r){return (r.date||'').startsWith(prevMk);});
+    prevJours=new Date(prevMO.getFullYear(),prevMO.getMonth()+1,0).getDate()*nAp;
+    prevLbl='mois préc.';
+  } else if(p==='annee') {
+    var prevYr=String(YR['d']-1);
+    prevRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(prevYr);});
+    prevBiz=DB.business.filter(function(r){return (r.date||'').startsWith(prevYr);});
+    var pYrN=parseInt(prevYr); prevJours=((pYrN%4===0&&(pYrN%100!==0||pYrN%400===0))?366:365)*nAp;
+    prevLbl='année préc.';
+  } else if(p==='semaine') {
+    var prevWk=new Date(WK['d']); prevWk.setDate(prevWk.getDate()-7);
+    var pw=wkRange(prevWk.toISOString().slice(0,10));
+    prevRes=DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=pw.s&&d<=pw.e;});
+    prevBiz=DB.business.filter(function(r){return r.date>=pw.s&&r.date<=pw.e;});
+    prevJours=7*nAp; prevLbl='sem. préc.';
+  } else if(p==='jour') {
+    var prevDay=new Date(DAY['d']); prevDay.setDate(prevDay.getDate()-1);
+    var pd=prevDay.toISOString().slice(0,10);
+    prevRes=DB.resa.filter(function(r){return (r.date_paiement||r.checkin||'')===pd;});
+    prevBiz=DB.business.filter(function(r){return r.date===pd;});
+    prevJours=nAp; prevLbl='j. préc.';
   }
+  if(fa){prevRes=prevRes.filter(function(r){return r.appart===fa;});prevBiz=prevBiz.filter(function(r){return r.appart===fa&&r.scope!=='global';});}
+  var prev=computePeriodKPIs(prevRes,prevBiz,prevJours);
+
+  // ── Affichage deltas ──
+  set('d-delta-net', deltaArrow(cur.netMad,prev.netMad,'mad',prevLbl));
+  set('d-delta-res', deltaArrow(cur.resultat,prev.resultat,'mad',prevLbl));
+  set('d-delta-occ2', deltaArrow(cur.occ,prev.occ,'%',prevLbl));
+  set('d-delta-adr', deltaArrow(cur.adr,prev.adr,'mad',prevLbl));
+  set('d-delta-revpan', deltaArrow(cur.revpan,prev.revpan,'mad',prevLbl));
+  set('d-delta-marge2', deltaArrow(cur.marge,prev.marge,'%',prevLbl));
+  set('d-delta-occ', deltaArrow(cur.occ,prev.occ,'%',prevLbl));
+  set('d-delta-marge', deltaArrow(cur.marge,prev.marge,'%',prevLbl));
+
+  // ── Sparklines 6 derniers mois ──
+  var sparkMonths=[], sparkNet=[], sparkOcc=[], sparkLabels=[];
+  for(var sm=5;sm>=0;sm--) {
+    var smDate=new Date(); smDate.setDate(1); smDate.setMonth(smDate.getMonth()-sm);
+    var smMk=smDate.toISOString().slice(0,7);
+    var smRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(smMk);});
+    if(fa) smRes=smRes.filter(function(r){return r.appart===fa;});
+    var smRev=smRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+    var smNet=sum(smRev,'net')*EUR_MAD;
+    var smNSej=smRev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+    var smDays=new Date(smDate.getFullYear(),smDate.getMonth()+1,0).getDate()*nAp;
+    sparkNet.push(smNet);
+    sparkOcc.push(smDays>0?(smNSej/smDays*100):0);
+    sparkLabels.push(smDate.toLocaleDateString('fr-FR',{month:'short'}));
+  }
+  drawSparkline('d-spark-net', sparkNet, '#4caf7d');
+  drawSparkline('d-spark-occ', sparkOcc, '#3dbdaa');
+  set('d-spark-net-ax','<span class="spark-ax">'+sparkLabels[0]+'</span><span class="spark-ax">'+sparkLabels[sparkLabels.length-1]+'</span>');
+  set('d-spark-occ-ax','<span class="spark-ax">'+sparkLabels[0]+'</span><span class="spark-ax">'+sparkLabels[sparkLabels.length-1]+'</span>');
+
+  // ── Décisions rapides ──
+  var revRes=allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+  // Meilleur appart
+  var apNet=APPARTS.map(function(ap){
+    var n=sum(revRes.filter(function(r){return r.appart===ap;}),'net')*EUR_MAD;
+    return {ap:ap,n:n};
+  }).sort(function(a,b){return b.n-a.n;});
+  var bestAp=apNet[0];
+  // Meilleure source
+  var srcNet=['Airbnb','Booking.com','Direct','VRBO'].map(function(s){
+    var n=sum(revRes.filter(function(r){return r.source===s;}),'net')*EUR_MAD;
+    return {s:s,n:n};
+  }).filter(function(x){return x.n>0;}).sort(function(a,b){return b.n-a.n;});
+  var bestSrc=srcNet[0];
+  // Alerte
+  var alertHtml='';
+  var alerts=[];
+  if(cur.occ>0&&cur.occ<40) alerts.push('Occupation faible ('+Math.round(cur.occ)+'%)');
+  if(cur.netMad>0&&cur.marge<20) alerts.push('Marge basse ('+Math.round(cur.marge)+'%)');
+  if(alerts.length) alertHtml='<div class="dec-card dec-alert"><div class="dec-icon">⚠️</div><div class="dec-lbl">Alerte</div><div class="dec-val" style="color:var(--re);font-size:12px">'+alerts.join('<br>')+'</div></div>';
+  else alertHtml='<div class="dec-card dec-ok"><div class="dec-icon">✅</div><div class="dec-lbl">Performance</div><div class="dec-val" style="color:var(--gr);font-size:12px">Occupation et marge OK</div></div>';
+  set('d-decisions',
+    (bestAp&&bestAp.n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(bestAp.ap)+'</div><div class="dec-sub">'+fmt(bestAp.n)+'</div></div>':'')+
+    (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div><div class="dec-sub">'+fmt(bestSrc.n)+'</div></div>':'')+
+    alertHtml
+  );
+
+  // ── Récap par appart + source ──
   set('d-recap-ap',APPARTS.map(function(ap){
     var x=revRes.filter(function(r){return r.appart===ap;});
-    var n=x.reduce(function(s,r){return s+(r.net||0);},0);
+    var n=sum(x,'net');
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
   }).join(''));
   var sources=['Airbnb','Booking.com','Direct','VRBO'];
   set('d-recap-src',sources.map(function(src){
     var x=revRes.filter(function(r){return r.source===src;});
     if(!x.length) return '';
-    var n=x.reduce(function(s,r){return s+(r.net||0);},0);
+    var n=sum(x,'net');
     return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmtE(n)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
 }
+
+function periodDays(k) {
+  var p=P[k];
+  if(p==='jour') return 1;
+  if(p==='semaine') return 7;
+  if(p==='annee') { var yr=YR[k]; return (yr%4===0&&(yr%100!==0||yr%400===0))?366:365; }
+  var y=MO[k].getFullYear(), m=MO[k].getMonth();
+  return new Date(y,m+1,0).getDate();
+}
+
 
 // ============================================================
 // RENDER: RÉSERVATIONS
