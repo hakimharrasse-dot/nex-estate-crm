@@ -2071,27 +2071,28 @@ function nextThursday(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
-// ── Calcul date_paiement selon source et type ──
+// ── Calcul date_paiement selon source et type — colonne "Payé" Smoobu ignorée ──
 function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
   var t = today();
+  // ANNULATION_NON_PAYEE → date_creation (pas de paiement attendu)
   if (typeNorm === 'ANNULATION_NON_PAYEE') return dateCreation || t;
-  if (src === 'Airbnb' || (src === 'Airbnb' && typeNorm === 'ANNULATION_PAYEE')) {
-    // checkin + 1 jour (même pour annulation payée)
+  // Airbnb : checkin + 1j (RESERVATION et ANNULATION_PAYEE)
+  if (src === 'Airbnb') {
     if (!ci) return dateCreation || t;
     var d = new Date(ci); d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   }
+  // Booking.com : jeudi suivant après checkout (RESERVATION et ANNULATION_PAYEE)
   if (src === 'Booking.com') {
-    // jeudi suivant après checkout
     return nextThursday(co) || dateCreation || t;
   }
+  // VRBO : checkin + 7j (RESERVATION et ANNULATION_PAYEE)
   if (src === 'VRBO') {
-    // checkin + 7 jours
     if (!ci) return dateCreation || t;
     var d2 = new Date(ci); d2.setDate(d2.getDate() + 7);
     return d2.toISOString().slice(0, 10);
   }
-  // Direct → date_creation par défaut
+  // Direct → date_creation
   return dateCreation || t;
 }
 
@@ -2136,14 +2137,13 @@ function parseSmoobuRow(row, idx) {
   var dateCreation = normDate(rawCreate); // YYYY-MM-DD, sans heure
 
   // ── Statut & type_norm ──
+  // Ne JAMAIS utiliser la colonne "Payé" Smoobu — calculé par le CRM
   var isAnnule = statRaw.toLowerCase().indexOf('annul') >= 0 || statRaw.toLowerCase().indexOf('cancel') >= 0;
-  var statut, typeNorm;
+  var typeNorm;
   if (isAnnule) {
     typeNorm = (prixEur > 0) ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
-    statut   = 'Annulé';
   } else {
     typeNorm = 'RESERVATION';
-    // statut calculé après avoir la date_paiement
   }
 
   // ── Nuits : 0 pour annulation non payée ──
@@ -2172,17 +2172,17 @@ function parseSmoobuRow(row, idx) {
     taxeEur = nuitsSejou * adultes * tauxTaxe(ap);
   }
 
-  // ── Date paiement calculée selon source ──
+  // ── Date paiement calculée par le CRM selon source/type ──
   var dp = calcDatePaiement(src, typeNorm, ci, co, dateCreation);
 
-  // ── Statut auto basé sur date_paiement (hors annulation) ──
-  if (typeNorm !== 'ANNULATION_NON_PAYEE' && typeNorm !== 'RESERVATION' || typeNorm === 'RESERVATION') {
-    // Pour RESERVATION, ANNULATION_PAYEE, RELOCATION, DIRECT
-    // Ne jamais utiliser la colonne "Payé" de Smoobu pour Airbnb/Booking/VRBO
-    if (typeNorm !== 'ANNULATION_NON_PAYEE') {
-      var t2 = today();
-      statut = (dp && t2 >= dp) ? 'Payé' : 'En attente';
-    }
+  // ── Statut calculé par le CRM — colonne "Payé" Smoobu ignorée ──
+  var statut;
+  if (typeNorm === 'ANNULATION_NON_PAYEE') {
+    statut = 'Annulé'; // toujours annulé, jamais payé
+  } else {
+    // RESERVATION, ANNULATION_PAYEE, RELOCATION, DIRECT
+    var t2 = today();
+    statut = (dp && t2 >= dp) ? 'Payé' : 'En attente';
   }
 
   // ── Validation ──
@@ -2269,12 +2269,14 @@ function showCSVPrev(rejectedCount) {
     '<thead><tr>' +
     '<th>Réf.</th><th>Source</th><th>Appart</th><th>Voyageur</th>' +
     '<th>Check-in</th><th>Checkout</th><th>Nuits</th>' +
-    '<th>Brut EUR</th><th>Net EUR</th><th>Type</th><th>Statut</th><th>Alertes</th>' +
+    '<th>Brut EUR</th><th>Net EUR</th><th>Type</th>' +
+    '<th>Création</th><th>Paiement CRM</th><th>Statut CRM</th><th>Alertes</th>' +
     '</tr></thead><tbody>' +
     csvPending.map(function(r) {
       var bg  = r._isDup ? 'rgba(90,159,212,.07)' : r._hasWarn ? 'rgba(224,82,82,.07)' : '';
       var op  = r._isDup ? 'opacity:.6;' : '';
       var apOk = r.appart && APPARTS_OK.indexOf(r.appart) >= 0;
+      var stCls = r.statut==='Payé'?'color:var(--gr)':r.statut==='En attente'?'color:var(--or)':'color:var(--re)';
       return '<tr style="background:' + bg + ';' + op + '">' +
         '<td style="font-size:10px;font-family:\'DM Mono\',monospace;color:var(--tm)">' + (r._isDup ? '🔁 ' : '') + (r.ref || '—') + '</td>' +
         '<td>' + chip(r.source, srcClass(r.source)) + '</td>' +
@@ -2285,8 +2287,10 @@ function showCSVPrev(rejectedCount) {
         '<td style="text-align:center">' + r.nuits_sejour + '</td>' +
         '<td style="font-family:\'DM Mono\',monospace">' + (r.brut || 0).toFixed(2) + ' €</td>' +
         '<td style="font-family:\'DM Mono\',monospace;color:var(--gr)">' + (r.net || 0).toFixed(2) + ' €</td>' +
-        '<td>' + chip(r.type_norm || '', r.type_norm === 'ANNULATION_NON_PAYEE' ? 'ann' : r.type_norm === 'RESERVATION' ? 'ok' : 'att') + '</td>' +
-        '<td>' + chip(r.statut || '', stClass(r.statut || '')) + '</td>' +
+        '<td>' + chip(r.type_norm || '', typeClass(r.type_norm || '')) + '</td>' +
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--td)">' + (r.date_creation || '—') + '</td>' +
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--bl);font-weight:500">' + (r.date_paiement || '—') + '</td>' +
+        '<td style="font-size:11px;font-weight:600;' + stCls + '">' + (r.statut || '—') + '</td>' +
         '<td style="font-size:11px;color:var(--re)">' + (r._isDup ? 'déjà importée' : (r._warns || []).join(', ')) + '</td>' +
         '</tr>';
     }).join('') + '</tbody></table></div>';
