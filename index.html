@@ -24,6 +24,7 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .ni.on-s{background:rgba(232,200,74,.12);color:var(--go);}
 .ni.on-p{background:rgba(155,125,232,.12);color:var(--pu);}
 .ni.on-r{background:rgba(76,175,125,.1);color:var(--gr);}
+.ni.on-d{background:rgba(224,82,82,.1);color:var(--re);}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
 /* Views */
 .vw{display:none;}.vw.active{display:block;}
@@ -143,7 +144,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 /* Mobile nav */
 .mobnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--s);border-top:1px solid var(--br);padding:7px 0 13px;z-index:20;justify-content:space-around;}
 .mbt{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:var(--tm);font-size:9px;padding:3px 8px;border-radius:8px;}
-.mbt.on-b{color:var(--or);}.mbt.on-t{color:var(--te);}.mbt.on-s{color:var(--go);}.mbt.on-p{color:var(--pu);}.mbt.on-r{color:var(--gr);}
+.mbt.on-b{color:var(--or);}.mbt.on-t{color:var(--te);}.mbt.on-s{color:var(--go);}.mbt.on-p{color:var(--pu);}.mbt.on-r{color:var(--gr);}.mbt.on-d{color:var(--re);}
 .mic{font-size:19px;}
 /* Year nav */
 .ync{display:flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:2px 6px;}
@@ -251,6 +252,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
     <div class="ni" id="ni-business" onclick="goTo('business')"><span class="dot"></span>Dépenses Business</div>
     <div class="ni" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
     <div class="ni" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
+    <div class="ni" id="ni-doublons" onclick="goTo('doublons')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Doublons <span id="dup-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
   </div>
   <div class="ng">
     <div class="nl">Personnel</div>
@@ -465,6 +467,26 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
   </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service</div></div>
 </div>
 
+<!-- ═══ VIEW: DOUBLONS ═══ -->
+<div class="vw" id="vw-doublons">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--re)">Doublons</div><div class="vsub">Réservations importées en double — détection par ref / Smoobu ID</div></div>
+    <button class="ba ba-ghost" onclick="renderDoublons()">🔄 Rafraîchir</button>
+  </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">Entrées en doublon</div><div class="kv" style="color:var(--re)" id="dup-total">0</div><div class="ks" id="dup-cnt-sub">0 entrées concernées</div></div>
+    <div class="kc"><div class="kl">Groupes distincts</div><div class="kv" id="dup-grp">0</div><div class="ks">réf. ou ID partagés</div></div>
+    <div class="kc"><div class="kl">Impact revenu net</div><div class="kv" style="color:var(--re)" id="dup-net">0 MAD</div><div class="ks">doublon × net EUR</div></div>
+  </div>
+  <div style="background:var(--s);border:1px solid var(--br);border-radius:10px;padding:13px 15px;margin-bottom:14px;font-size:12px;color:var(--tm)">
+    ℹ️ Les doublons sont <strong style="color:var(--tx)">détectés uniquement</strong>, jamais bloqués. Supprime manuellement les entrées superflues via le bouton ✕ ci-dessous, ou navigue dans <strong style="color:var(--gr)">Réservations</strong> pour éditer.
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Doublon</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Net</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="dup-tb"></tbody>
+  </table><div class="empty hidden" id="dup-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté</div></div>
+</div>
+
 <!-- ═══ VIEW: DÉPENSES PERSO ═══ -->
 <div class="vw" id="vw-perso">
   <div class="vh">
@@ -505,6 +527,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
   <div class="mbt" id="mn-business" onclick="goTo('business')"><span class="mic">🏢</span>Dép.</div>
   <div class="mbt" id="mn-taxe" onclick="goTo('taxe')"><span class="mic">🧾</span>Taxe</div>
   <div class="mbt" id="mn-serv" onclick="goTo('serv')"><span class="mic">⭐</span>Extras</div>
+  <div class="mbt" id="mn-doublons" onclick="goTo('doublons')"><span class="mic">🔁</span>Dbl.</div>
   <div class="mbt" id="mn-perso" onclick="goTo('perso')"><span class="mic">👤</span>Perso</div>
 </div>
 
@@ -940,6 +963,7 @@ function renderView(k) {
   else if(k==='t') renderTaxe();
   else if(k==='s') renderServ();
   else if(k==='d') renderDash();
+  else if(k==='dup') renderDoublons();
   else renderPerso();
 }
 
@@ -953,16 +977,17 @@ function goTo(name) {
   document.getElementById('vw-'+name).classList.add('active');
   var allNav = document.querySelectorAll('.ni,.mbt');
   allNav.forEach(function(el){
-    el.classList.remove('on','on-b','on-t','on-s','on-p','on-r');
+    el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d');
   });
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
   if(ni){ni.classList.add('on');ni.classList.add(cls);}
   if(mn){mn.classList.add(cls);}
-  renderNav({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[name]);
-  renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[name]);
+  var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
+  if(navKey) renderNav(navKey);
+  renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
 // ============================================================
@@ -1018,7 +1043,10 @@ function renderDash() {
   var nuitsFact=revRes.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
   var nuitsSejour=revRes.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
   var joursDispo=periodDays('d')*(fa?1:APPARTS.length);
-  var depenses=sum(filterPer(DB.business,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
+  var depenses=sum(filterPer(DB.business,'d').filter(function(r){
+    if(fa) return r.appart===fa && r.scope!=='global'; // global exclues quand filtre par appart
+    return true; // global incluses dans "tous apparts"
+  }),'montant');
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var brutMad=brutEur*EUR_MAD, comMad=comEur*EUR_MAD, netMad=netEur*EUR_MAD;
@@ -1127,7 +1155,7 @@ function renderBiz() {
   renderNav('b');
   var rows=filterPer(DB.business,'b');
   var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst');
-  if(fa)rows=rows.filter(function(r){return r.appart===fa;});
+  if(fa)rows=rows.filter(function(r){return r.appart===fa;}); // scope global (appart null) exclu automatiquement
   if(fc)rows=rows.filter(function(r){return r.cat===fc;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
@@ -1138,17 +1166,22 @@ function renderBiz() {
   set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
   var mk=MO.b.toISOString().slice(0,7);
+  // Recap ménage par appart (hors global)
   set('b-recap',APPARTS.map(function(ap){
     var x=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.cat==='Ménage'&&r.appart===ap;});
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' passage'+(x.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(x,'montant'))+'</div></div>';
-  }).join(''));
+  }).join('')+function(){
+    var g=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.scope==='global';});
+    if(!g.length) return '';
+    return '<div class="rc" style="border-color:var(--or)"><div><div class="rn" style="color:var(--or)">🌐 Global</div><div class="rsb">'+g.length+' entrée'+(g.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(g,'montant'))+'</div></div>';
+  }());
   var tb=document.getElementById('b-tb'), em=document.getElementById('b-em');
   if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
   em.classList.add('hidden');
   tb.innerHTML=rows.map(function(r){
     return '<tr>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
-      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td>'+(r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+'</td>'+
       '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
       '<td>'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>'+
       '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
@@ -1298,8 +1331,95 @@ function renderPerso() {
 }
 
 // ============================================================
-// MODAL
+// RENDER: DOUBLONS
 // ============================================================
+function renderDoublons() {
+  var smoobuCount = {}, refCount = {};
+  DB.resa.forEach(function(r) {
+    if (r.smoobu_id) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
+    // Ref générées localement (uid) ne comptent pas comme vrai doublon
+    var isNativeRef = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+    if (r.ref && !isNativeRef) refCount[r.ref] = (refCount[r.ref]||0)+1;
+  });
+
+  var seen = {};
+  var dups = DB.resa.filter(function(r) {
+    var bySmoobu = r.smoobu_id && smoobuCount[r.smoobu_id] > 1;
+    var byRef    = r.ref && refCount[r.ref] > 1;
+    return bySmoobu || byRef;
+  });
+
+  dups.sort(function(a,b){
+    var ka = a.smoobu_id || a.ref || '';
+    var kb = b.smoobu_id || b.ref || '';
+    return ka.localeCompare(kb);
+  });
+
+  var groups = {};
+  dups.forEach(function(r) {
+    var gk = (r.smoobu_id && smoobuCount[r.smoobu_id]>1) ? ('s:'+r.smoobu_id) : ('r:'+r.ref);
+    groups[gk] = (groups[gk]||0)+1;
+  });
+  var nbGroups = Object.keys(groups).length;
+  var netImpact = dups.reduce(function(s,r){return s+(r.net||0);},0);
+
+  set('dup-total', dups.length);
+  set('dup-cnt-sub', dups.length+' entrées concernées');
+  set('dup-grp', nbGroups);
+  set('dup-net', fmtE(netImpact));
+
+  // Mettre à jour le badge sidebar
+  var badge = document.getElementById('dup-badge');
+  if(badge) {
+    if(dups.length > 0) {
+      badge.textContent = dups.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  var tb = document.getElementById('dup-tb'), em = document.getElementById('dup-em');
+  if(!dups.length){ tb.innerHTML=''; em.classList.remove('hidden'); return; }
+  em.classList.add('hidden');
+
+  tb.innerHTML = dups.map(function(r) {
+    var cnt = (r.smoobu_id && smoobuCount[r.smoobu_id]>1)
+      ? smoobuCount[r.smoobu_id]
+      : (refCount[r.ref]||1);
+    var badge = '<span style="display:inline-block;background:var(--res);color:var(--re);border-radius:12px;padding:2px 9px;font-size:11px;font-weight:700;min-width:28px;text-align:center">×'+cnt+'</span>';
+    return '<tr>'+
+      '<td>'+badge+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--td)">'+(r.smoobu_id||'—')+'</td>'+
+      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+      '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
+      '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
+      '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+(r.checkin||'—')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
+      '<td>'+chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+'</td>'+
+      '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+      '<td>'+actBtns('resa',r.id)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+function updateDupBadge() {
+  var smoobuCount = {}, refCount = {};
+  DB.resa.forEach(function(r) {
+    if (r.smoobu_id) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
+    var isNativeRef = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+    if (r.ref && !isNativeRef) refCount[r.ref] = (refCount[r.ref]||0)+1;
+  });
+  var cnt = DB.resa.filter(function(r) {
+    return (r.smoobu_id && smoobuCount[r.smoobu_id]>1) || (r.ref && refCount[r.ref]>1);
+  }).length;
+  var badge = document.getElementById('dup-badge');
+  if(badge) {
+    if(cnt>0){ badge.textContent=cnt; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  }
+}
 var M_TYPE='', M_ID=null;
 
 function openModal(type, id) {
@@ -1365,12 +1485,21 @@ function buildForm(type, editId) {
   }
 
   if(type==='business') {
+    var scope = rec ? (rec.scope || 'property') : 'property';
+    var isGlobal = scope === 'global';
     return '<div class="fg">'+
       fieldFull('Date','fi-date','date',v('date',T))+
-      '<div class="ff"><label class="fl">Appartement(s)</label>'+
+      '<div class="ff"><label class="fl">Portée</label>'+
+      '<div style="display:flex;gap:6px;margin-top:4px">'+
+      '<button type="button" id="scope-appart-btn" onclick="setBizScope(\'property\')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;border:1.5px solid '+(isGlobal?'var(--br)':'var(--or)')+';background:'+(isGlobal?'var(--s2)':'var(--ors)')+';color:'+(isGlobal?'var(--tm)':'var(--or)')+';font-weight:'+(isGlobal?'400':'600')+'">Par appartement</button>'+
+      '<button type="button" id="scope-global-btn" onclick="setBizScope(\'global\')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;border:1.5px solid '+(isGlobal?'var(--or)':'var(--br)')+';background:'+(isGlobal?'var(--ors)':'var(--s2)')+';color:'+(isGlobal?'var(--or)':'var(--tm)')+';font-weight:'+(isGlobal?'600':'400')+'">Global (tous apparts)</button>'+
+      '</div><input type="hidden" id="fi-scope" value="'+scope+'"></div>'+
+      '<div class="ff" id="appt-chips-row" style="display:'+(isGlobal?'none':'block')+'"><label class="fl">Appartement(s)</label>'+
       '<div class="chips-row" id="appt-chips">'+
       APPARTS.map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'\" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
+      '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
+      '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       '<div class="ff"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen"><option value="">— Non applicable —</option>'+CLEANERS.map(function(c){return '<option'+(v('fmen')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
@@ -1429,6 +1558,26 @@ function fieldFull(lbl,id,type,val,ph) {
 }
 
 function toggleChip(el) { el.classList.toggle('sel'); }
+
+function setBizScope(scope) {
+  var fi = document.getElementById('fi-scope');
+  if(fi) fi.value = scope;
+  var chipsRow = document.getElementById('appt-chips-row');
+  var infoRow  = document.getElementById('global-info-row');
+  var btnAp    = document.getElementById('scope-appart-btn');
+  var btnGl    = document.getElementById('scope-global-btn');
+  if(scope === 'global') {
+    if(chipsRow) chipsRow.style.display = 'none';
+    if(infoRow)  infoRow.style.display  = 'block';
+    if(btnAp) { btnAp.style.borderColor='var(--br)'; btnAp.style.background='var(--s2)'; btnAp.style.color='var(--tm)'; btnAp.style.fontWeight='400'; }
+    if(btnGl) { btnGl.style.borderColor='var(--or)'; btnGl.style.background='var(--ors)'; btnGl.style.color='var(--or)'; btnGl.style.fontWeight='600'; }
+  } else {
+    if(chipsRow) chipsRow.style.display = 'block';
+    if(infoRow)  infoRow.style.display  = 'none';
+    if(btnAp) { btnAp.style.borderColor='var(--or)'; btnAp.style.background='var(--ors)'; btnAp.style.color='var(--or)'; btnAp.style.fontWeight='600'; }
+    if(btnGl) { btnGl.style.borderColor='var(--br)'; btnGl.style.background='var(--s2)'; btnGl.style.color='var(--tm)'; btnGl.style.fontWeight='400'; }
+  }
+}
 
 function getSelectedAppts() {
   var chips=document.querySelectorAll('#appt-chips .achip.sel');
@@ -1512,12 +1661,18 @@ async function saveResa() {
 async function saveBiz() {
   var montant=parseFloat(gv('fi-montant'))||0, date=gv('fi-date');
   if(!date||!montant){alert('Date et montant requis');return;}
-  var appts=getSelectedAppts();
-  if(!appts.length){alert('Sélectionne au moins un appartement');return;}
-  var mpp=montant/appts.length;
-  for(var _i=0;_i<appts.length;_i++){
-    var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-    await upsert('business',{id:_id,date:date,appart:_ap,cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+  var scope = gv('fi-scope') || 'property';
+  if(scope === 'global') {
+    // Entrée unique, appart = null (pas de string 'Global'), scope = 'global'
+    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
+  } else {
+    var appts=getSelectedAppts();
+    if(!appts.length){alert('Sélectionne au moins un appartement');return;}
+    var mpp=montant/appts.length;
+    for(var _i=0;_i<appts.length;_i++){
+      var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
+      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+    }
   }
   closeModal(); renderBiz();
 }
@@ -1556,105 +1711,320 @@ async function delEntry(type,id) {
   renderView({resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[type]);
 }
 
+
 // ============================================================
-// CSV IMPORT
+// CSV IMPORT — MODULE SMOOBU (corrigé)
+// Colonnes Smoobu (index 0-based, séparateur ;):
+//  0=Position  1=Arrivée(date)  2=Départ(date)  3=Propriété  4=Voyageur
+//  5=Portail   6=Créé   10=Adultes   12=Arrivée(heure)  13=Départ(heure)
+//  14=Notes    15=Prix(EUR)  17=Commission inclue(EUR)  18=City tax(EUR)
+//  19=Payé     22=Nombre des nuits   23=Statut
 // ============================================================
-var csvPending=[];
+
+// ── Parser CSV complet : gère guillemets, multilignes, BOM ──
+function parseCSVFull(text) {
+  text = text.replace(/^\uFEFF/, '');
+  var i, c, fl = '';
+  for (i = 0; i < text.length && text[i] !== '\n'; i++) fl += text[i];
+  var delim = (fl.split(';').length > fl.split(',').length) ? ';' : ',';
+  var rows = [], row = [], field = '', inQ = false;
+  for (i = 0; i <= text.length; i++) {
+    c = i < text.length ? text[i] : null;
+    if (c === '"') {
+      if (inQ && text[i+1] === '"') { field += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === delim && !inQ) {
+      row.push(field.replace(/\r$/, '').trim()); field = '';
+    } else if ((c === '\n' || c === null) && !inQ) {
+      row.push(field.replace(/\r$/, '').trim()); field = '';
+      if (row.some(function(v){return v !== '';})) rows.push(row.slice());
+      row = [];
+    } else if (c !== null && c !== '\r') {
+      field += c;
+    }
+  }
+  if (rows.length < 2) return {headers:[], data:[]};
+  var rawH = rows[0].map(function(h){return h.trim();});
+  var data = rows.slice(1).map(function(cols) {
+    var obj = {_c: cols};
+    rawH.forEach(function(h, idx) {
+      if (obj[h] === undefined) obj[h] = (cols[idx] || '').trim();
+    });
+    return obj;
+  });
+  return {headers: rawH, data: data};
+}
+
+// ── Accès positionnel brut (pour headers dupliqués) ──
+function fci(row, idx) {
+  return (row._c && row._c[idx]) ? row._c[idx].trim() : '';
+}
+
+// ── Résolution colonne flexible (case-insensitive) ──
+function fc(row, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (row[k] !== undefined && row[k] !== '') return row[k];
+    var rk = Object.keys(row);
+    for (var j = 0; j < rk.length; j++) {
+      if (rk[j] !== '_c' && rk[j].toLowerCase() === k.toLowerCase() && row[rk[j]] !== '') return row[rk[j]];
+    }
+  }
+  return '';
+}
+
+// ── Normalisation date Smoobu : DD.MM.YY / DD.MM.YYYY / YYYY-MM-DD ──
+function normDate(raw) {
+  if (!raw) return '';
+  raw = raw.trim().split(' ')[0].split('T')[0]; // supprimer heure
+  if (!raw) return '';
+  var p = raw.split(/[\/\-\.]/);
+  if (p.length !== 3) return '';
+  if (p[0].length === 4) return p[0] + '-' + p[1].padStart(2,'0') + '-' + p[2].padStart(2,'0');
+  var yr = (p[2].length === 2) ? '20' + p[2] : p[2];
+  return yr + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+}
+
+// ── Normalisation montant ──
+function normAmount(raw) {
+  if (!raw) return 0;
+  return parseFloat(String(raw).replace(/[^\d,.\-]/g,'').replace(',','.')) || 0;
+}
+
+// ── Détection source ──
+function detectSrc(raw) {
+  var lw = (raw || '').toLowerCase();
+  if (lw.indexOf('airbnb') >= 0) return 'Airbnb';
+  if (lw.indexOf('booking') >= 0) return 'Booking.com';
+  if (lw.indexOf('vrbo') >= 0 || lw.indexOf('homeaway') >= 0) return 'VRBO';
+  return 'Direct';
+}
+
+// ── Détection appartement (toutes variantes Smoobu) ──
+function detectAp(raw) {
+  if (!raw) return '';
+  var lw = raw.toLowerCase();
+  if (lw.indexOf('boustane') >= 0 || lw.indexOf('nahda') >= 0) return 'Résidence Al Boustane';
+  if (lw.indexOf('agdal') >= 0 || lw.indexOf('biognache') >= 0) return 'Agdal 13';
+  if (lw.indexOf('touahri') >= 0) return 'Touahri 11';
+  if (lw.indexOf('riad') >= 0 || lw.indexOf('riyad') >= 0 || lw.indexOf('ahl') >= 0 || lw.indexOf('sala') >= 0) return 'Riad Ahl Sala';
+  return raw;
+}
+
+var csvPending = [];
+
+// ── Parser une ligne Smoobu → objet CRM ──
+function parseSmoobuRow(row, idx) {
+  // Accès positionnel pour les champs à header dupliqué (Arrivée×2, Départ×2)
+  var smoobuId  = fci(row,  0);
+  var rawDate1  = fci(row,  1);   // date Arrivée  ex: 25.04.26
+  var rawDate2  = fci(row,  2);   // date Départ
+  var rawAppart = fci(row,  3);
+  var voyageur  = fci(row,  4);
+  var rawSrc    = fci(row,  5);
+  var rawCreate = fci(row,  6);   // Créé ex: 23.04.26 14:37
+  var adultes   = parseInt(fci(row, 10)) || 1;
+  // col 12 = heure check-in (même header "Arrivée" → ignoré via fci(1))
+  var notes     = fci(row, 14);
+  var prixRaw   = fci(row, 15);   // Prix EUR
+  var commRaw   = fci(row, 17);   // Commission inclue EUR
+  var cityTaxR  = fci(row, 18);   // City tax EUR
+  var paye      = fci(row, 19);   // Payé: Oui/Non
+  var nuitsRaw  = fci(row, 22);   // Nombre des nuits
+  var statRaw   = fci(row, 23);   // Statut: Réservé/Annulé
+
+  var src = detectSrc(rawSrc);
+  var ap  = detectAp(rawAppart);
+  var ci  = normDate(rawDate1);
+  var co  = normDate(rawDate2);
+
+  var prixEur = normAmount(prixRaw);
+  var commEur = normAmount(commRaw);
+  var nuits   = parseInt(nuitsRaw) || diffNuits(ci, co) || 0;
+
+  // ── Référence plateforme ──
+  // Smoobu met "Numéro de réservation: X" dans Notes pour Airbnb ET Booking.com
+  var entryRef = '';
+  var mRef = notes.match(/Num[eé]ro de r[eé]servation[:\s]+([A-Za-z0-9]+)/i);
+  if (mRef) {
+    entryRef = mRef[1];
+  } else {
+    entryRef = smoobuId || ('SMB-' + uid().slice(-8).toUpperCase());
+  }
+
+  // ── Statut & type_norm ──
+  var isAnnule = statRaw.toLowerCase().indexOf('annul') >= 0 || statRaw.toLowerCase().indexOf('cancel') >= 0;
+  var statut, typeNorm;
+  if (isAnnule) {
+    statut   = 'Annulé';
+    typeNorm = (prixEur > 0) ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
+  } else {
+    statut   = (paye && paye.toLowerCase() === 'oui') ? 'Payé' : 'En attente';
+    typeNorm = 'RESERVATION';
+  }
+
+  // ── Nuits : 0 pour annulation non payée ──
+  var nuitsFact  = (typeNorm === 'RESERVATION' || typeNorm === 'ANNULATION_PAYEE') ? nuits : 0;
+  var nuitsSejou = (typeNorm === 'RESERVATION') ? nuits : 0;
+
+  // ── Commission : réelle du CSV si disponible, sinon % standard ──
+  var comPct, comEurFinal;
+  if (commEur > 0 && prixEur > 0 && commEur < prixEur) {
+    comEurFinal = commEur;
+    comPct      = commEur / prixEur;
+  } else {
+    comPct      = COM[src] || 0;
+    comEurFinal = prixEur * comPct;
+  }
+  var netEur = prixEur - comEurFinal;
+
+  // ── Taxe de séjour ──
+  var taxeEur = normAmount(cityTaxR);
+  if (!taxeEur && src === 'Booking.com' && nuitsSejou > 0 && ap) {
+    taxeEur = nuitsSejou * adultes * tauxTaxe(ap);
+  }
+
+  // ── Date paiement (date de création = date entrée dans Smoobu) ──
+  var dp = normDate(rawCreate) || ci;
+
+  // ── Validation ──
+  var apKnown = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+  var warns = [];
+  if (!ci) warns.push('check-in manquant');
+  if (rawAppart && apKnown.indexOf(ap) < 0) warns.push('appart: ' + rawAppart.slice(0, 18));
+  if (!rawAppart) warns.push('appart manquant');
+  if (!prixEur && typeNorm !== 'ANNULATION_NON_PAYEE') warns.push('montant nul');
+
+  return {
+    id:            uid(),
+    ref:           entryRef,
+    smoobu_id:     smoobuId,
+    source:        src,
+    appart:        ap,
+    voyageur:      voyageur,
+    checkin:       ci,
+    checkout:      co,
+    nuits_sejour:  nuitsSejou,
+    nuits_fact:    nuitsFact,
+    nb_personnes:  adultes,
+    brut:          Math.round(prixEur * 100) / 100,
+    com_pct:       Math.round(comPct * 100000) / 100000,
+    commission:    Math.round(comEurFinal * 100) / 100,
+    net:           Math.round(netEur * 100) / 100,
+    taxe_sejour:   Math.round(taxeEur * 100) / 100,
+    type_norm:     typeNorm,
+    mode_paiement: 'Virement plateforme',
+    statut:        statut,
+    date_paiement: dp,
+    mois_kpi:      (dp || ci).slice(0, 7),
+    notes:         '',
+    _warns:        warns,
+    _hasWarn:      warns.length > 0
+  };
+}
+
 function handleCSV(input) {
-  var file=input.files[0]; if(!file)return;
-  var reader=new FileReader();
-  reader.onload=function(e){
-    var text=e.target.result;
-    var lines=text.split('\n').filter(function(l){return l.trim();});
-    if(lines.length<2){alert('CSV vide');return;}
-    var sep=lines[0].includes(';')?';':',';
-    var headers=lines[0].split(sep).map(function(h){return h.replace(/"/g,'').trim();});
-    var dataRows=lines.slice(1).map(function(l){
-      var vals=l.split(sep).map(function(v){return v.replace(/"/g,'').trim();});
-      var obj={}; headers.forEach(function(h,i){obj[h]=vals[i]||'';});
-      return obj;
-    }).filter(function(r){return Object.values(r).some(function(v){return v;});});
-    csvPending=dataRows.map(parseSmoobuRow);
-    showCSVPrev();
+  var file = input.files[0]; if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var parsed = parseCSVFull(e.target.result);
+    if (!parsed.data.length) { alert('CSV vide ou format non reconnu'); return; }
+    var results = [], parseErrors = 0;
+    parsed.data.forEach(function(row, idx) {
+      try { results.push(parseSmoobuRow(row, idx)); }
+      catch(err) { parseErrors++; console.warn('Ligne ' + idx + ':', err); }
+    });
+    csvPending = results;
+    showCSVPrev(parseErrors);
   };
-  reader.readAsText(file,'UTF-8');
-  input.value='';
+  reader.readAsText(file, 'UTF-8');
+  input.value = '';
 }
 
-function fc(row,keys) { for(var i=0;i<keys.length;i++){if(row[keys[i]]!==undefined&&row[keys[i]])return row[keys[i]];}return''; }
+function showCSVPrev(rejectedCount) {
+  rejectedCount = rejectedCount || 0;
+  // Détecter doublons vs DB (smoobu_id = clé fiable)
+  var dbSmoobu = {};
+  DB.resa.forEach(function(r) { if (r.smoobu_id) dbSmoobu[r.smoobu_id] = true; });
 
-function normDate(d) {
-  if(!d)return'';
-  var p=d.split(/[\/\-\.]/);
-  if(p.length!==3)return d;
-  if(p[0].length===4)return p[0]+'-'+p[1].padStart(2,'0')+'-'+p[2].padStart(2,'0');
-  return p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0');
-}
+  var nOk = 0, nWarn = 0, nDup = 0;
+  csvPending.forEach(function(r) {
+    r._isDup = !!(r.smoobu_id && dbSmoobu[r.smoobu_id]);
+    if (r._isDup) nDup++;
+    else if (r._hasWarn) nWarn++;
+    else nOk++;
+  });
 
-function parseSmoobuRow(row) {
-  var src=fc(row,['Canal','Channel','Source','Portail','portal'])||'Direct';
-  if(src.toLowerCase().includes('airbnb'))src='Airbnb';
-  else if(src.toLowerCase().includes('booking'))src='Booking.com';
-  else if(src.toLowerCase().includes('vrbo')||src.toLowerCase().includes('homeaway'))src='VRBO';
-  else if(src.toLowerCase().includes('direct')||!src)src='Direct';
-  var apRaw=fc(row,['Propriété','Property','Logement','Listing','listing_name','property_name'])||'';
-  var ap=apRaw;
-  var apMap={boustane:'Résidence Al Boustane','al boustane':'Résidence Al Boustane',agdal:'Agdal 13',touahri:'Touahri 11','riad':'Riad Ahl Sala','ahl sala':'Riad Ahl Sala'};
-  var apL=apRaw.toLowerCase();
-  Object.keys(apMap).forEach(function(k){if(apL.includes(k))ap=apMap[k];});
-  var ci=normDate(fc(row,['Arrivée','Check-in','checkin','check_in','arrival','Date d\'arrivée']));
-  var co=normDate(fc(row,['Départ','Check-out','checkout','check_out','departure','Date de départ']));
-  var voyageur=fc(row,['Voyageur','Guest','Nom','guest_name','Name']);
-  var brutRaw=fc(row,['Montant','Amount','Revenue','Prix','Total','brut','total_price','payout','Revenu'])||'0';
-  var brut=parseFloat(brutRaw.replace(/[^\d\.,]/g,'').replace(',','.'))||0;
-  var stRaw=fc(row,['Statut','Status','status'])||'';
-  var statut=stRaw.toLowerCase().includes('cancel')||stRaw.toLowerCase().includes('annul')?'Annulé':stRaw.toLowerCase().includes('attente')||stRaw.toLowerCase().includes('pending')?'En attente':'Payé';
-  var nuits=diffNuits(ci,co), np=1;
-  var comPct=COM[src]||0;
-  var dp=normDate(fc(row,['Date de paiement','payment_date','payout_date']));
-  var taxeEur = (src === 'Booking.com' && nuits > 0) ? nuits*np*tauxTaxe(ap) : 0;
-  var rawRef=fc(row,['Référence','Code','ID','confirmation','ref','reservation_id']);
-  var srcPfx2={'Airbnb':'AIR','Booking.com':'BKG','Direct':'DIR','VRBO':'VRB'}[src]||'SMB';
-  var entryRef=rawRef?rawRef.slice(-12):(srcPfx2+'-'+uid().slice(-8).toUpperCase());
-  return{
-    id:uid(),ref:entryRef,
-    source:src,appart:ap,voyageur:voyageur,checkin:ci,checkout:co,
-    nuits_sejour:nuits,nuits_fact:nuits,nb_personnes:np,
-    brut:brut,com_pct:comPct,commission:Math.round(brut*comPct*100)/100,net:Math.round((brut-brut*comPct)*100)/100,
-    taxe_sejour:taxeEur,
-    type_norm:'RESERVATION',mode_paiement:'Virement plateforme',statut:statut,
-    date_paiement:dp,mois_kpi:(dp||ci).slice(0,7),notes:''
-  };
-}
+  var stat =
+    '<span style="color:var(--gr)">✅ ' + nOk + ' nouvelles</span>' +
+    (nWarn  ? ' <span style="color:var(--go)">⚠️ ' + nWarn + ' alertes</span>' : '') +
+    (nDup   ? ' <span style="color:var(--bl)">🔁 ' + nDup + ' déjà importées</span>' : '') +
+    (rejectedCount ? ' <span style="color:var(--re)">✕ ' + rejectedCount + ' rejetées</span>' : '') +
+    ' <span style="color:var(--td)">· ' + csvPending.length + ' lues</span>';
 
-function showCSVPrev() {
-  var html='<div class="tw" style="margin-bottom:8px"><table><thead><tr><th>Réf.</th><th>Source</th><th>Appart</th><th>Voyageur</th><th>Check-in</th><th>Nuits</th><th>Brut</th><th>Net</th></tr></thead><tbody>'+
-    csvPending.map(function(r){
-      var warn=!r.appart||!r.checkin;
-      return'<tr style="'+(warn?'background:rgba(224,82,82,.08)':'')+'">'+
-        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+r.ref+'</td>'+
-        '<td>'+chip(r.source,srcClass(r.source))+'</td>'+
-        '<td style="color:'+(r.appart?'inherit':'var(--re)')+'">'+aptShort(r.appart||'⚠️ Inconnu')+'</td>'+
-        '<td style="font-size:12px">'+r.voyageur+'</td>'+
-        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+r.checkin+'</td>'+
-        '<td style="text-align:center">'+r.nuits_sejour+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace">'+e2m(r.brut).toLocaleString('fr-MA')+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;color:var(--gr)">'+e2m(r.net).toLocaleString('fr-MA')+'</td>'+
+  var APPARTS_OK = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+
+  var html =
+    '<div style="font-size:12px;font-family:\'DM Mono\',monospace;margin-bottom:10px">' + stat + '</div>' +
+    '<div class="tw" style="margin-bottom:8px"><table>' +
+    '<thead><tr>' +
+    '<th>Réf.</th><th>Source</th><th>Appart</th><th>Voyageur</th>' +
+    '<th>Check-in</th><th>Checkout</th><th>Nuits</th>' +
+    '<th>Brut EUR</th><th>Net EUR</th><th>Type</th><th>Statut</th><th>Alertes</th>' +
+    '</tr></thead><tbody>' +
+    csvPending.map(function(r) {
+      var bg  = r._isDup ? 'rgba(90,159,212,.07)' : r._hasWarn ? 'rgba(224,82,82,.07)' : '';
+      var op  = r._isDup ? 'opacity:.6;' : '';
+      var apOk = r.appart && APPARTS_OK.indexOf(r.appart) >= 0;
+      return '<tr style="background:' + bg + ';' + op + '">' +
+        '<td style="font-size:10px;font-family:\'DM Mono\',monospace;color:var(--tm)">' + (r._isDup ? '🔁 ' : '') + (r.ref || '—') + '</td>' +
+        '<td>' + chip(r.source, srcClass(r.source)) + '</td>' +
+        '<td style="font-size:12px;color:' + (apOk ? 'inherit' : 'var(--re)') + '">' + aptShort(r.appart || '⚠️') + '</td>' +
+        '<td style="font-size:12px;color:var(--tm)">' + (r.voyageur || '—') + '</td>' +
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">' + (r.checkin || '❌') + '</td>' +
+        '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--td)">' + (r.checkout || '—') + '</td>' +
+        '<td style="text-align:center">' + r.nuits_sejour + '</td>' +
+        '<td style="font-family:\'DM Mono\',monospace">' + (r.brut || 0).toFixed(2) + ' €</td>' +
+        '<td style="font-family:\'DM Mono\',monospace;color:var(--gr)">' + (r.net || 0).toFixed(2) + ' €</td>' +
+        '<td>' + chip(r.type_norm || '', r.type_norm === 'ANNULATION_NON_PAYEE' ? 'ann' : r.type_norm === 'RESERVATION' ? 'ok' : 'att') + '</td>' +
+        '<td>' + chip(r.statut || '', stClass(r.statut || '')) + '</td>' +
+        '<td style="font-size:11px;color:var(--re)">' + (r._isDup ? 'déjà importée' : (r._warns || []).join(', ')) + '</td>' +
         '</tr>';
-    }).join('')+'</tbody></table></div>'+
-    '<div style="font-size:12px;color:var(--tm)">'+csvPending.length+' réservation'+(csvPending.length>1?'s':'')+' détectée'+(csvPending.length>1?'s':'')+'. Lignes rouges = correction manuelle nécessaire après import.</div>';
-  set('csv-prev-content',html);
+    }).join('') + '</tbody></table></div>';
+
+  var skipDupsHtml = nDup > 0
+    ? '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;cursor:pointer">'+
+      '<input type="checkbox" id="csv-skip-dups" checked style="width:14px;height:14px;accent-color:var(--or)">'+
+      '<span>Ignorer les <strong>'+nDup+' doublons</strong> déjà présents en base <span style="color:var(--td)">(décocher pour importer quand même)</span></span>'+
+      '</label>'
+    : '';
+
+  set('csv-prev-content', skipDupsHtml + html);
   document.getElementById('csv-prev').classList.remove('hidden');
 }
 
 async function confirmCSV() {
-  csvPending.forEach(function(r){DB.resa.push(r);});
+  var skipDupsEl = document.getElementById('csv-skip-dups');
+  var skipDups = skipDupsEl && skipDupsEl.checked;
+  var toInsert = skipDups
+    ? csvPending.filter(function(r) { return !r._isDup; })
+    : csvPending.slice();
+  toInsert.forEach(function(r) {
+    delete r._warns; delete r._hasWarn; delete r._isDup;
+    DB.resa.push(r);
+  });
   await saveAll('resa');
-  csvPending=[];
+  csvPending = [];
   document.getElementById('csv-prev').classList.add('hidden');
+  updateDupBadge();
   renderResa();
 }
-function cancelCSV() { csvPending=[]; document.getElementById('csv-prev').classList.add('hidden'); }
+
+function cancelCSV() {
+  csvPending = [];
+  document.getElementById('csv-prev').classList.add('hidden');
+}
+
 
 // ============================================================
 // HELPERS
@@ -1736,6 +2106,17 @@ async function normalizeData() {
     }
   });
   if(changed) await saveAll('resa');
+
+  // Migration scope business : anciennes entrées sans scope → 'property'
+  var bizChanged = false;
+  DB.business.forEach(function(r) {
+    if(!r.scope) {
+      r.scope = (r.appart && r.appart !== 'Global') ? 'property' : 'global';
+      if(r.appart === 'Global') r.appart = null; // correction legacy
+      bizChanged = true;
+    }
+  });
+  if(bizChanged) await saveAll('business');
 }
 
 // Lancer
