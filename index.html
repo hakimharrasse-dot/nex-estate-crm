@@ -179,6 +179,29 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 /* ── RESET PASSWORD SCREEN ── */
 #reset-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;}
 #reset-screen.visible{display:flex;}
+/* Recherche live resa */
+.r-search{width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:9px 13px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:10px;}
+.r-search:focus{border-color:var(--gr);}
+/* Presets rapides */
+.r-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.rp{background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:5px 11px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.rp:hover{border-color:var(--gr);color:var(--gr);}
+.rp.on{background:var(--gr);color:#fff;border-color:var(--gr);}
+/* Couleurs de ligne selon statut */
+.tr-paye>td{background:rgba(76,175,125,.05);}
+.tr-att>td{background:rgba(200,119,58,.06);}
+.tr-ann>td{background:rgba(224,82,82,.05);opacity:.72;}
+tbody .tr-paye:hover>td{background:rgba(76,175,125,.12)!important;}
+tbody .tr-att:hover>td{background:rgba(200,119,58,.13)!important;}
+tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
+/* Badges type réservation */
+.ch-type-resa{background:var(--grs);color:var(--gr);font-size:10px;}
+.ch-type-aircover{background:rgba(90,159,212,.14);color:var(--bl);font-size:10px;}
+.ch-type-ajust{background:rgba(155,125,232,.14);color:var(--pu);font-size:10px;}
+.ch-type-reloc{background:rgba(61,189,170,.12);color:var(--te);font-size:10px;}
+.ch-type-direct{background:var(--grs);color:var(--gr);font-size:10px;}
+.ch-type-annp{background:var(--ors);color:var(--or);font-size:10px;}
+.ch-type-annnp{background:var(--res);color:var(--re);font-size:10px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
@@ -336,8 +359,21 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
     <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="r-com">0 MAD</div></div>
     <div class="kc"><div class="kl">Nuits facturées</div><div class="kv" id="r-nuits">0</div></div>
   </div>
+  <div class="kg">
+    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="r-adr">0 MAD</div><div class="ks">Net / nuits facturées</div></div>
+    <div class="kc"><div class="kl">Taux payé</div><div class="kv" style="color:var(--gr)" id="r-txpaye">—</div></div>
+    <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--or)" id="r-nbatt">0</div></div>
+    <div class="kc"><div class="kl">Annulées</div><div class="kv" style="color:var(--re)" id="r-nbann">0</div></div>
+  </div>
   <div class="sl">Revenus nets par appartement</div>
   <div class="rg" id="r-recap"></div>
+  <input class="r-search" id="r-search" type="text" placeholder="🔍  Rechercher — réf, voyageur, appart, source, statut..." oninput="R_SEARCH=this.value;renderResa()">
+  <div class="r-presets">
+    <button class="rp" id="rp-today" onclick="setResaPreset('today')">Aujourd'hui</button>
+    <button class="rp" id="rp-7j" onclick="setResaPreset('7j')">7 jours</button>
+    <button class="rp" id="rp-30j" onclick="setResaPreset('30j')">30 jours</button>
+    <button class="rp" id="rp-month" onclick="setResaPreset('month')">Mois en cours</button>
+  </div>
   <div class="fb"><div class="fr">
     <div class="tabs">
       <button class="tab" id="rtj" onclick="setPer('r','jour')">Jour</button>
@@ -800,6 +836,8 @@ var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
+var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
+var R_SEARCH = '';     // recherche live réservations
 
 // ============================================================
 // UTILS
@@ -860,6 +898,26 @@ function catClass(c) {
 }
 function chip(txt,cls) { return '<span class="ch ch-'+cls+'">'+txt+'</span>'; }
 function srcClass(s)   { var m={Airbnb:'airbnb','Booking.com':'booking',Direct:'direct',VRBO:'vrbo'}; return m[s]||'autre'; }
+function typeClass(t)  {
+  var m={
+    'RESERVATION':'type-resa','AIRCOVER':'type-aircover','AJUSTEMENT':'type-ajust',
+    'RELOCATION':'type-reloc','DIRECT':'type-direct',
+    'ANNULATION_PAYEE':'type-annp','ANNULATION_NON_PAYEE':'type-annnp'
+  };
+  return m[t]||'autre';
+}
+function setResaPreset(p) {
+  R_QUICK=null;
+  document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});
+  var el=document.getElementById('rp-'+p);
+  if(el) el.classList.add('on');
+  var t=today();
+  if(p==='today'){R_QUICK={from:t,to:t};}
+  else if(p==='7j'){var d=new Date();d.setDate(d.getDate()-6);R_QUICK={from:d.toISOString().slice(0,10),to:t};}
+  else if(p==='30j'){var d2=new Date();d2.setDate(d2.getDate()-29);R_QUICK={from:d2.toISOString().slice(0,10),to:t};}
+  else if(p==='month'){R_QUICK={from:t.slice(0,7)+'-01',to:t};}
+  renderResa();
+}
 function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
 function colClass(c)   { var m={Hakim:'hakim',Amal:'amal',Rabiaa:'rabiaa',Touria:'touria',Équipe:'equipe'}; return m[c]||'equipe'; }
 function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'); }
@@ -907,6 +965,7 @@ function filterResa(rows, k) {
 }
 
 function setPer(k, p) {
+  if(k==='r'){R_QUICK=null;document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});}
   P[k]=p;
   var tabMap={r:'rt',b:'bt',t:'tt',s:'st',p:'pt',d:'dt'};
   var pre=tabMap[k];
@@ -1110,28 +1169,49 @@ function renderDash() {
 // ============================================================
 function renderResa() {
   renderNav('r');
-  var rows = filterResa(DB.resa,'r');
+  var rows = R_QUICK
+    ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
+    : filterResa(DB.resa,'r');
   var fa=val('r-fap'),fsrc=val('r-fsrc'),ftype=val('r-ftype'),fst=val('r-fst');
   if(fa)   rows=rows.filter(function(r){return r.appart===fa;});
   if(fsrc) rows=rows.filter(function(r){return r.source===fsrc;});
   if(ftype)rows=rows.filter(function(r){return r.type_norm===ftype;});
   if(fst)  rows=rows.filter(function(r){return r.statut===fst;});
+  var srch=R_SEARCH.trim().toLowerCase();
+  if(srch) rows=rows.filter(function(r){
+    return [(r.ref||''),(r.voyageur||''),(r.appart||''),(r.source||''),(r.checkin||''),(r.checkout||''),(r.statut||''),(r.type_norm||'')].join(' ').toLowerCase().indexOf(srch)>=0;
+  });
   rows.sort(function(a,b){return (b.checkin||'').localeCompare(a.checkin||'');});
-  var rev = rows.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
-  var brut=sum(rev,'brut'), com=sum(rev,'commission'), net=sum(rev,'net');
+  // Map taxe réelle par ref réservation (source de vérité = table taxe)
+  var realTaxeMap={};
+  DB.taxe.forEach(function(t){
+    if(t.reservation_ref){realTaxeMap[t.reservation_ref]=(realTaxeMap[t.reservation_ref]||0)+t.montant;}
+  });
+  var rev=rows.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+  var brut=sum(rev,'brut'),com=sum(rev,'commission'),net=sum(rev,'net');
   var nuits=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
+  var adrMAD=nuits>0?Math.round(e2m(net)/nuits):0;
+  var nbPaye=rows.filter(function(r){return r.statut==='Payé';}).length;
+  var nbAtt=rows.filter(function(r){return r.statut==='En attente';}).length;
+  var nbAnn=rows.filter(function(r){return r.statut==='Annulé';}).length;
+  var txPaye=rows.length>0?Math.round(nbPaye/rows.length*100):0;
   set('r-net',fmtE(net)); set('r-brut',fmtE(brut)); set('r-com',fmtE(com));
   set('r-nuits',nuits); set('r-cnt',rows.length+' réservation'+(rows.length>1?'s':''));
+  set('r-adr',adrMAD.toLocaleString('fr-MA')+' MAD');
+  set('r-txpaye',rows.length?txPaye+'% payées':'—');
+  set('r-nbatt',nbAtt);
+  set('r-nbann',nbAnn);
   var allR=filterResa(DB.resa,'r').filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0&&r.statut!=='Annulé';});
   set('r-recap',APPARTS.map(function(ap){
-    var x=allR.filter(function(r){return r.appart===ap;}), n=x.reduce(function(s,r){return s+r.net;},0);
+    var x=allR.filter(function(r){return r.appart===ap;}),n=x.reduce(function(s,r){return s+r.net;},0);
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
   }).join(''));
-  var tb=document.getElementById('r-tb'), em=document.getElementById('r-em');
+  var tb=document.getElementById('r-tb'),em=document.getElementById('r-em');
   if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
   em.classList.add('hidden');
   tb.innerHTML=rows.map(function(r){
-    return '<tr>'+
+    var rowCls=r.statut==='Payé'?'tr-paye':r.statut==='En attente'?'tr-att':r.statut==='Annulé'?'tr-ann':'';
+    return '<tr class="'+rowCls+'">'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.ref||'')+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
@@ -1140,8 +1220,13 @@ function renderResa() {
       '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
       '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
-      '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+e2m(r.taxe_sejour||0).toLocaleString('fr-MA')+' MAD</td>'+
-      '<td>'+chip(r.type_norm||'',stClass(r.type_norm==='ANNULATION_NON_PAYEE'?'Annulé':r.type_norm==='RESERVATION'?'Payé':'Payé'))+'</td>'+
+      (function(){
+        var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
+        if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
+        var estMAD=e2m(r.taxe_sejour||0);
+        return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--td)">'+estMAD.toLocaleString('fr-MA')+' MAD <span title="Estimation réservation" style="font-size:10px;opacity:.5">~</span></td>';
+      })()+
+      '<td>'+chip(r.type_norm||'',typeClass(r.type_norm||''))+'</td>'+
       '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
       '<td>'+actBtns('resa',r.id)+'</td>'+
       '</tr>';
@@ -1432,9 +1517,13 @@ function openModal(type, id) {
   document.getElementById('modal-body').innerHTML=buildForm(type, id);
   document.getElementById('modal-overlay').classList.remove('hidden');
   if(type==='resa') {
-    ['fi-ci','fi-co','fi-np','fi-brut','fi-src','fi-app'].forEach(function(id){
+    ['fi-ci','fi-co','fi-np','fi-brut','fi-app','fi-com'].forEach(function(id){
       var el=document.getElementById(id);
       if(el) el.addEventListener('change', autoCalcResa);
+    });
+    ['fi-src','fi-type'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.addEventListener('change', resetComForSrcType);
     });
     autoCalcResa();
   }
@@ -1461,10 +1550,9 @@ function buildForm(type, editId) {
     var nf=v('nuits_fact',diffNuits(ci,co));
     var netMad=Math.round(brutMad-brutMad*comPct);
     var taxeMad = rec ? Math.round((rec.taxe_sejour||0)*EUR_MAD) : ((src==='Booking.com' && nf>0) ? Math.round(nf*np*tauxTaxe(ap)*EUR_MAD) : 0);
-    var taxeDisabled = (src !== 'Booking.com');
     var existingRef = rec ? (rec.ref||'') : '';
     return '<div class="fg">'+
-      '<input type="hidden" id="fi-ref" value="'+existingRef+'">'+
+      fieldFull('Référence *','fi-ref','text',existingRef,'AIR-XXXX / BKG-XXXX / SMB-XXXX')+
       field2('Source','fi-src','select',src,['Airbnb','Booking.com','Direct','VRBO'])+
       field2('Appartement','fi-app','select',ap,APPARTS)+
       fieldFull('Voyageur','fi-voy','text',v('voyageur',''),'Nom du voyageur')+
@@ -1473,9 +1561,9 @@ function buildForm(type, editId) {
       field2('Nuits facturées','fi-nf','number',nf)+
       field2('Nb personnes','fi-np','number',np)+
       field2('Montant brut (MAD)','fi-brut','number',brutMad)+
-      '<div><label class="fl">Commission (%)</label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" readonly style="opacity:0.6"></div>'+
+      '<div><label class="fl">Commission (%) <span style="font-size:10px;color:var(--td);font-weight:400">auto · modifiable</span></label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" step="0.1" min="0" max="100"></div>'+
       '<div><label class="fl">Montant net (MAD)</label><input type="number" class="fi" id="fi-net" value="'+netMad+'" readonly></div>'+
-      '<div><label class="fl">Taxe séjour (MAD)</label><input type="number" class="fi" id="fi-taxe" value="'+taxeMad+'"'+(taxeDisabled?' readonly style="opacity:0.5"':'')+'></div>'+
+      '<div><label class="fl">Taxe séjour MAD <span style="font-size:10px;color:var(--te);font-weight:400">estimation · source de vérité = table Taxe</span></label><input type="number" class="fi" id="fi-taxe" value="'+taxeMad+'"></div>'+
       field2('Type','fi-type','select',v('type_norm','RESERVATION'),TYPES_R)+
       field2('Mode paiement','fi-mode','select',v('mode_paiement','Virement plateforme'),['Virement plateforme','Cash','Virement MAD','Virement EUR'])+
       field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente','Annulé'])+
@@ -1513,6 +1601,7 @@ function buildForm(type, editId) {
       field2('Date','fi-date','date',v('date',T))+
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),APPARTS)+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
+      fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
       field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
@@ -1589,9 +1678,8 @@ function autoCalcResa() {
   var ci=gv('fi-ci'), co=gv('fi-co'), np=parseInt(gv('fi-np'))||1;
   var src=gv('fi-src'), ap=gv('fi-app');
   var brutMad=parseFloat(gv('fi-brut'))||0;
-  var comPct=COM[src]||0;
-  var comEl=document.getElementById('fi-com');
-  if(comEl) { comEl.value=Math.round(comPct*1000)/10; }
+  // Lire le % depuis le champ (peut être auto ou manuel)
+  var comPct=(parseFloat(gv('fi-com'))||0)/100;
   var nuits=diffNuits(ci,co);
   var netMad=Math.round(brutMad-brutMad*comPct);
   var nfEl=document.getElementById('fi-nf');
@@ -1599,20 +1687,26 @@ function autoCalcResa() {
   var netEl=document.getElementById('fi-net');
   if(netEl) netEl.value=netMad;
   var nf=parseInt(gv('fi-nf'))||nuits;
+  // Taxe : auto-calc Booking, 0 sinon (toujours modifiable)
   var taxeEl=document.getElementById('fi-taxe');
-  if(taxeEl) {
-    if(src !== 'Booking.com') {
-      taxeEl.value = 0;
-      taxeEl.readOnly = true;
-      taxeEl.style.opacity = '0.5';
-    } else {
-      taxeEl.readOnly = false;
-      taxeEl.style.opacity = '1';
-      if(!taxeEl._locked && nf>0) {
-        taxeEl.value = Math.round(nf*np*tauxTaxe(ap)*EUR_MAD);
-      }
+  if(taxeEl && !taxeEl._locked) {
+    if(src==='Booking.com' && nf>0) {
+      taxeEl.value=Math.round(nf*np*tauxTaxe(ap)*EUR_MAD);
+    } else if(src!=='Booking.com') {
+      taxeEl.value=0;
     }
   }
+}
+
+// Reset commission vers le taux standard quand source OU type change
+function resetComForSrcType() {
+  var src=gv('fi-src');
+  var type=gv('fi-type')||'RESERVATION';
+  var ZERO_COM=['AIRCOVER','AJUSTEMENT','DIRECT'];
+  var def = ZERO_COM.indexOf(type)>=0 ? 0 : (COM[src]||0);
+  var comEl=document.getElementById('fi-com');
+  if(comEl) comEl.value=Math.round(def*1000)/10;
+  autoCalcResa();
 }
 
 async function saveEntry() {
@@ -1625,23 +1719,21 @@ async function saveEntry() {
 
 async function saveResa() {
   var brutMad=parseFloat(gv('fi-brut'))||0, ci=gv('fi-ci');
+  var ref=gv('fi-ref').trim();
   if(!ci||!brutMad){alert('Check-in et montant brut requis');return;}
+  if(!ref){alert('La référence est obligatoire');return;}
   var src=gv('fi-src');
-  var comPct=COM[src]||0;
+  // Commission depuis le champ (peut être manuelle)
+  var comPct=(parseFloat(gv('fi-com'))||0)/100;
   var co=gv('fi-co'), dp=gv('fi-dp');
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
   var comEur = brutEur * comPct;
   var netEur = brutEur - comEur;
-  var taxeMad = (src === 'Booking.com') ? (parseFloat(gv('fi-taxe'))||0) : 0;
+  var taxeMad = parseFloat(gv('fi-taxe'))||0;
   var taxeEur = taxeMad / EUR_MAD;
-  var existingRef = gv('fi-ref');
-  if(!existingRef) {
-    var srcPfx = {'Airbnb':'AIR','Booking.com':'BKG','Direct':'DIR','VRBO':'VRB'}[src]||'SMB';
-    existingRef = srcPfx+'-'+uid().slice(-8).toUpperCase();
-  }
   var entry={
-    id:M_ID||uid(), ref:existingRef,
+    id:M_ID||uid(), ref:ref,
     source:src, appart:gv('fi-app'), voyageur:gv('fi-voy'),
     checkin:ci, checkout:co, nuits_sejour:diffNuits(ci,co), nuits_fact:nf,
     nb_personnes:parseInt(gv('fi-np'))||1,
@@ -1680,7 +1772,7 @@ async function saveBiz() {
 async function saveTaxe() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
-  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,rev:gv('fi-rev')});
+  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:gv('fi-col'),pay:gv('fi-pay'),montant:m,rev:gv('fi-rev')});
   closeModal(); renderTaxe();
 }
 
@@ -2087,18 +2179,7 @@ function importData(input) {
 async function normalizeData() {
   var changed = false;
   DB.resa.forEach(function(r) {
-    if(r.source === 'Booking.com' && r.statut !== 'Annulé' && Math.abs(r.com_pct - 0.22) > 0.001) {
-      r.com_pct = 0.22;
-      r.commission = Math.round(r.brut * 0.22 * 100) / 100;
-      r.net = Math.round((r.brut - r.commission) * 100) / 100;
-      changed = true;
-    }
-    if(r.source === 'Airbnb' && r.statut !== 'Annulé' && r.com_pct > 0 && Math.abs(r.com_pct - 0.155) > 0.002) {
-      r.com_pct = 0.155;
-      r.commission = Math.round(r.brut * 0.155 * 100) / 100;
-      r.net = Math.round((r.brut - r.commission) * 100) / 100;
-      changed = true;
-    }
+    // Corriger UNIQUEMENT les nuits sur AIRCOVER/AJUSTEMENT — ne jamais toucher aux commissions
     if((r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT') && (r.nuits_sejour > 0 || r.nuits_fact > 0)) {
       r.nuits_sejour = 0;
       r.nuits_fact = 0;
