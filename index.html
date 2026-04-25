@@ -179,6 +179,19 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 /* ── RESET PASSWORD SCREEN ── */
 #reset-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;}
 #reset-screen.visible{display:flex;}
+/* Sélection multiple réservations */
+.sel-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;}
+.sel-bar.hidden{display:none!important;}
+.sel-cnt{font-size:13px;font-weight:500;color:var(--tx);flex:1;}
+.bdel-sel{background:var(--re);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;opacity:.5;pointer-events:none;}
+.bdel-sel.active{opacity:1;pointer-events:auto;}
+.bdel-sel.active:hover{opacity:.85;}
+.bdel-mois{background:var(--or);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bdel-mois:hover{opacity:.85;}
+.bdel-mois:disabled{opacity:.4;cursor:default;}
+input[type=checkbox].rcb{width:15px;height:15px;accent-color:var(--re);cursor:pointer;flex-shrink:0;}
+.toast-ok{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gr);color:#fff;border-radius:10px;padding:11px 22px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:opacity .4s;}
+.toast-ok.hide{opacity:0;}
 /* Recherche live resa */
 .r-search{width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:9px 13px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:10px;}
 .r-search:focus{border-color:var(--gr);}
@@ -381,11 +394,18 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <div class="vw active" id="vw-resa">
   <div class="vh">
     <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="ba bar" onclick="openModal('resa')">+ Ajouter</button>
     </div>
+  </div>
+  <!-- Barre sélection multiple -->
+  <div class="sel-bar hidden" id="r-sel-bar">
+    <div class="sel-cnt" id="r-sel-cnt">0 sélectionnée(s)</div>
+    <button class="bdel-sel" id="r-bdel-sel" onclick="deleteResaSel()">🗑 Supprimer la sélection</button>
+    <button class="bdel-mois" id="r-bdel-mois" onclick="deleteResaMois()">🗑 Supprimer le mois affiché</button>
+    <button class="ba ba-ghost" onclick="clearResaSel()" style="padding:6px 12px;font-size:12px">✕ Désélectionner tout</button>
   </div>
   <div class="kg">
     <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
@@ -422,7 +442,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="r-fst" onchange="renderResa()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option></select>
   </div></div>
   <div class="tw"><table>
-    <thead><tr><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="r-chk-all" onchange="toggleResaAll(this.checked)" title="Tout sélectionner"></th><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
     <tbody id="r-tb"></tbody>
   </table><div class="empty hidden" id="r-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div></div>
   <div id="csv-prev" class="hidden" style="margin-top:16px">
@@ -873,6 +893,7 @@ var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Ch
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
 var R_SEARCH = '';     // recherche live réservations
+var RESA_SEL = {};     // {id: true} — sélection multiple
 
 // ============================================================
 // UTILS
@@ -1355,11 +1376,15 @@ function renderResa() {
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
   }).join(''));
   var tb=document.getElementById('r-tb'),em=document.getElementById('r-em');
-  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');updateResaSelBar();return;}
   em.classList.add('hidden');
+  // ids visibles (pour select-all)
+  window._R_VISIBLE_IDS = rows.map(function(r){return r.id;});
   tb.innerHTML=rows.map(function(r){
     var rowCls=r.statut==='Payé'?'tr-paye':r.statut==='En attente'?'tr-att':r.statut==='Annulé'?'tr-ann':'';
+    var checked=RESA_SEL[r.id]?' checked':'';
     return '<tr class="'+rowCls+'">'+
+      '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleResaSel(\''+r.id+'\',this.checked)"></td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.ref||'')+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
@@ -1379,6 +1404,119 @@ function renderResa() {
       '<td>'+actBtns('resa',r.id)+'</td>'+
       '</tr>';
   }).join('');
+  // Sync select-all checkbox
+  var allChk=document.getElementById('r-chk-all');
+  if(allChk) {
+    var visIds=window._R_VISIBLE_IDS||[];
+    var allSel=visIds.length>0&&visIds.every(function(id){return RESA_SEL[id];});
+    allChk.checked=allSel;
+    allChk.indeterminate=!allSel&&visIds.some(function(id){return RESA_SEL[id];});
+  }
+  updateResaSelBar();
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE + SUPPRESSION BULK — RÉSERVATIONS
+// ============================================================
+
+function toggleResaSel(id, checked) {
+  if(checked) RESA_SEL[id]=true; else delete RESA_SEL[id];
+  updateResaSelBar();
+  // Sync select-all indeterminate
+  var visIds=window._R_VISIBLE_IDS||[];
+  var allChk=document.getElementById('r-chk-all');
+  if(allChk) {
+    var allSel=visIds.length>0&&visIds.every(function(id){return RESA_SEL[id];});
+    allChk.checked=allSel;
+    allChk.indeterminate=!allSel&&visIds.some(function(id){return RESA_SEL[id];});
+  }
+}
+
+function toggleResaAll(checked) {
+  var visIds=window._R_VISIBLE_IDS||[];
+  visIds.forEach(function(id){ if(checked) RESA_SEL[id]=true; else delete RESA_SEL[id]; });
+  // Update all visible checkboxes
+  document.querySelectorAll('#r-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateResaSelBar();
+}
+
+function clearResaSel() {
+  RESA_SEL={};
+  var allChk=document.getElementById('r-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#r-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateResaSelBar();
+}
+
+function updateResaSelBar() {
+  var ids=Object.keys(RESA_SEL);
+  var n=ids.length;
+  var bar=document.getElementById('r-sel-bar');
+  var cnt=document.getElementById('r-sel-cnt');
+  var btn=document.getElementById('r-bdel-sel');
+  var btnM=document.getElementById('r-bdel-mois');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' réservation'+(n>1?'s':'')+ ' sélectionnée'+(n>1?'s':'');
+  if(btn) { btn.classList.toggle('active', n>0); }
+  // Bouton mois actif seulement en mode mensuel
+  if(btnM) btnM.disabled = (P['r']!=='mois');
+}
+
+async function deleteResaSel() {
+  var ids=Object.keys(RESA_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' réservation'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
+  // Supabase
+  if(SUPA) {
+    try {
+      var res=await SUPA.from('resa').delete().in('id', ids);
+      if(res.error) throw res.error;
+    } catch(e) { setDBStatus(false,'Erreur suppression'); console.error(e); return; }
+  }
+  // DB locale
+  DB.resa=DB.resa.filter(function(r){return !RESA_SEL[r.id];});
+  RESA_SEL={};
+  updateDupBadge();
+  renderResa();
+  showToast('✅ '+ids.length+' réservation'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
+}
+
+async function deleteResaMois() {
+  if(P['r']!=='mois') { alert('Activez le filtre "Mois" pour utiliser cette fonction.'); return; }
+  var mk=MO['r'].toISOString().slice(0,7);
+  var toDelete=filterResa(DB.resa,'r');
+  // Appliquer les mêmes filtres que la vue courante
+  var fa=val('r-fap'),fsrc=val('r-fsrc'),ftype=val('r-ftype'),fst=val('r-fst');
+  if(fa)    toDelete=toDelete.filter(function(r){return r.appart===fa;});
+  if(fsrc)  toDelete=toDelete.filter(function(r){return r.source===fsrc;});
+  if(ftype) toDelete=toDelete.filter(function(r){return r.type_norm===ftype;});
+  if(fst)   toDelete=toDelete.filter(function(r){return r.statut===fst;});
+  if(!toDelete.length) { alert('Aucune réservation à supprimer pour ce mois.'); return; }
+  if(!confirm('Supprimer les '+toDelete.length+' réservation'+(toDelete.length>1?'s':'')+' du mois '+mk+' ? Action irréversible.')) return;
+  var ids=toDelete.map(function(r){return r.id;});
+  // Supabase : supprimer par mois_kpi OU date_paiement commençant par mk
+  if(SUPA) {
+    try {
+      var res=await SUPA.from('resa').delete().in('id', ids);
+      if(res.error) throw res.error;
+    } catch(e) { setDBStatus(false,'Erreur suppression'); console.error(e); return; }
+  }
+  // DB locale
+  var idSet={};ids.forEach(function(id){idSet[id]=true;});
+  DB.resa=DB.resa.filter(function(r){return !idSet[r.id];});
+  RESA_SEL={};
+  updateDupBadge();
+  renderResa();
+  showToast('✅ '+ids.length+' réservation'+(ids.length>1?'s':'')+' du mois '+mk+' supprimée'+(ids.length>1?'s':''));
+}
+
+function showToast(msg) {
+  var old=document.getElementById('_toast');
+  if(old) old.remove();
+  var t=document.createElement('div');
+  t.id='_toast'; t.className='toast-ok'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.classList.add('hide');setTimeout(function(){t.remove();},500);},2800);
 }
 
 // ============================================================
