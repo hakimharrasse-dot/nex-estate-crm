@@ -1918,6 +1918,11 @@ function buildForm(type, editId) {
       field2('Source','fi-src','select',src,['Airbnb','Booking.com','Direct','VRBO'])+
       field2('Appartement','fi-app','select',ap,APPARTS)+
       fieldFull('Voyageur','fi-voy','text',v('voyageur',''),'Nom du voyageur')+
+      fieldFull('Téléphone','fi-phone','text',v('phone',''),'+212 6XX XXX XXX')+
+      fieldFull('Email','fi-email','text',v('email',''),'email@example.com')+
+      field2('Langue client','fi-lang','select',v('guest_language',''),['','fr','en','ar','de','es','it','nl','pt','ru','zh'])+
+      field2('Adultes','fi-adults','number',v('adults',v('nb_personnes',1)))+
+      field2('Enfants','fi-children','number',v('children',0))+
       field2('Check-in','fi-ci','date',ci)+
       field2('Check-out','fi-co','date',co)+
       field2('Nuits facturées','fi-nf','number',nf)+
@@ -2098,6 +2103,10 @@ async function saveResa() {
   var entry={
     id:M_ID||uid(), ref:ref,
     source:src, appart:gv('fi-app'), voyageur:gv('fi-voy'),
+    phone:gv('fi-phone')||null, email:gv('fi-email')||null,
+    guest_language:gv('fi-lang')||null,
+    adults:parseInt(gv('fi-adults'))||null,
+    children:parseInt(gv('fi-children'))||0,
     checkin:ci, checkout:co, nuits_sejour:diffNuits(ci,co), nuits_fact:nf,
     nb_personnes:parseInt(gv('fi-np'))||1,
     brut: Math.round(brutEur*100)/100,
@@ -2319,7 +2328,10 @@ function parseSmoobuRow(row, idx) {
   var voyageur  = fci(row,  4);
   var rawSrc    = fci(row,  5);
   var rawCreate = fci(row,  6);   // Créé ex: 23.04.26 14:37
+  var emailRaw  = fci(row,  7);   // E-mail
+  var phoneRaw  = fci(row,  8);   // Téléphone
   var adultes   = parseInt(fci(row, 10)) || 1;
+  var enfants   = parseInt(fci(row, 11)) || 0;
   // col 12 = heure check-in (même header "Arrivée" → ignoré via fci(1))
   var notes     = fci(row, 14);
   var prixRaw   = fci(row, 15);   // Prix EUR
@@ -2414,6 +2426,11 @@ function parseSmoobuRow(row, idx) {
     source:         src,
     appart:         ap,
     voyageur:       voyageur,
+    phone:          phoneRaw || null,
+    email:          emailRaw || null,
+    guest_language: null,   // non présent dans CSV Smoobu — rempli par API
+    adults:         adultes || null,
+    children:       enfants,
     checkin:        ci,
     checkout:       co,
     nuits_sejour:   nuitsSejou,
