@@ -572,8 +572,14 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div style="background:var(--s);border:1px solid var(--br);border-radius:10px;padding:13px 15px;margin-bottom:14px;font-size:12px;color:var(--tm)">
     ℹ️ Les doublons sont <strong style="color:var(--tx)">détectés uniquement</strong>, jamais bloqués. Supprime manuellement les entrées superflues via le bouton ✕ ci-dessous, ou navigue dans <strong style="color:var(--gr)">Réservations</strong> pour éditer.
   </div>
+  <!-- Barre sélection doublons -->
+  <div class="sel-bar hidden" id="dup-sel-bar">
+    <div class="sel-cnt" id="dup-sel-cnt">0 sélectionné(s)</div>
+    <button class="bdel-sel active" id="dup-bdel-sel" onclick="deleteDupSel()">🗑 Supprimer la sélection</button>
+    <button class="ba ba-ghost" onclick="clearDupSel()" style="padding:6px 12px;font-size:12px">✕ Désélectionner tout</button>
+  </div>
   <div class="tw"><table>
-    <thead><tr><th>Doublon</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Net</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="dup-chk-all" onchange="toggleDupAll(this.checked)" title="Tout sélectionner"></th><th>Doublon</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Net</th><th>Type</th><th>Statut</th><th></th></tr></thead>
     <tbody id="dup-tb"></tbody>
   </table><div class="empty hidden" id="dup-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté</div></div>
 </div>
@@ -893,7 +899,8 @@ var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Ch
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
 var R_SEARCH = '';     // recherche live réservations
-var RESA_SEL = {};     // {id: true} — sélection multiple
+var RESA_SEL = {};     // {id: true} — sélection multiple réservations
+var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 
 // ============================================================
 // UTILS
@@ -1748,15 +1755,19 @@ function renderDoublons() {
   }
 
   var tb = document.getElementById('dup-tb'), em = document.getElementById('dup-em');
-  if(!dups.length){ tb.innerHTML=''; em.classList.remove('hidden'); return; }
+  if(!dups.length){ tb.innerHTML=''; em.classList.remove('hidden'); DUP_SEL={}; updateDupSelBar(); return; }
   em.classList.add('hidden');
+
+  window._DUP_VISIBLE_IDS = dups.map(function(r){return r.id;});
 
   tb.innerHTML = dups.map(function(r) {
     var cnt = (r.smoobu_id && smoobuCount[r.smoobu_id]>1)
       ? smoobuCount[r.smoobu_id]
       : (refCount[r.ref]||1);
     var badge = '<span style="display:inline-block;background:var(--res);color:var(--re);border-radius:12px;padding:2px 9px;font-size:11px;font-weight:700;min-width:28px;text-align:center">×'+cnt+'</span>';
+    var checked = DUP_SEL[r.id] ? ' checked' : '';
     return '<tr>'+
+      '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></td>'+
       '<td>'+badge+'</td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--td)">'+(r.smoobu_id||'—')+'</td>'+
@@ -1770,6 +1781,16 @@ function renderDoublons() {
       '<td>'+actBtns('resa',r.id)+'</td>'+
       '</tr>';
   }).join('');
+
+  // Sync select-all
+  var allChk = document.getElementById('dup-chk-all');
+  if(allChk) {
+    var visIds = window._DUP_VISIBLE_IDS||[];
+    var allSel = visIds.length>0 && visIds.every(function(id){return DUP_SEL[id];});
+    allChk.checked = allSel;
+    allChk.indeterminate = !allSel && visIds.some(function(id){return DUP_SEL[id];});
+  }
+  updateDupSelBar();
 }
 
 function updateDupBadge() {
@@ -1787,6 +1808,64 @@ function updateDupBadge() {
     if(cnt>0){ badge.textContent=cnt; badge.classList.remove('hidden'); }
     else badge.classList.add('hidden');
   }
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE + SUPPRESSION BULK — DOUBLONS
+// ============================================================
+
+function toggleDupSel(id, checked) {
+  if(checked) DUP_SEL[id]=true; else delete DUP_SEL[id];
+  updateDupSelBar();
+  var visIds = window._DUP_VISIBLE_IDS||[];
+  var allChk = document.getElementById('dup-chk-all');
+  if(allChk) {
+    var allSel = visIds.length>0 && visIds.every(function(id){return DUP_SEL[id];});
+    allChk.checked = allSel;
+    allChk.indeterminate = !allSel && visIds.some(function(id){return DUP_SEL[id];});
+  }
+}
+
+function toggleDupAll(checked) {
+  var visIds = window._DUP_VISIBLE_IDS||[];
+  visIds.forEach(function(id){ if(checked) DUP_SEL[id]=true; else delete DUP_SEL[id]; });
+  document.querySelectorAll('#dup-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateDupSelBar();
+}
+
+function clearDupSel() {
+  DUP_SEL={};
+  var allChk=document.getElementById('dup-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#dup-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateDupSelBar();
+}
+
+function updateDupSelBar() {
+  var ids = Object.keys(DUP_SEL);
+  var n = ids.length;
+  var bar = document.getElementById('dup-sel-bar');
+  var cnt = document.getElementById('dup-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent = n+' doublon'+(n>1?'s':'')+' sélectionné'+(n>1?'s':'');
+}
+
+async function deleteDupSel() {
+  var ids = Object.keys(DUP_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' entrée'+(ids.length>1?'s':'')+' de la table resa ? Action irréversible.')) return;
+  if(SUPA) {
+    try {
+      var res = await SUPA.from('resa').delete().in('id', ids);
+      if(res.error) throw res.error;
+    } catch(e) { setDBStatus(false,'Erreur suppression'); console.error(e); return; }
+  }
+  DB.resa = DB.resa.filter(function(r){ return !DUP_SEL[r.id]; });
+  DUP_SEL = {};
+  updateDupBadge();
+  renderDoublons();
+  renderResa();
+  showToast('✅ '+ids.length+' entrée'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
 }
 var M_TYPE='', M_ID=null;
 
