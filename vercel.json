@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "functions": {
+    "api/smoobu-webhook.js": {
+      "maxDuration": 10
+    },
+    "api/smoobu-poll.js": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/smoobu-poll",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
