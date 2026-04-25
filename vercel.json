@@ -11,7 +11,7 @@
   "crons": [
     {
       "path": "/api/smoobu-poll",
-      "schedule": "0 * * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }
