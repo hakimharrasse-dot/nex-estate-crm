@@ -397,6 +397,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
+      <button class="bdel-mois" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button class="ba bar" onclick="openModal('resa')">+ Ajouter</button>
     </div>
   </div>
@@ -404,7 +405,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="sel-bar hidden" id="r-sel-bar">
     <div class="sel-cnt" id="r-sel-cnt">0 sélectionnée(s)</div>
     <button class="bdel-sel" id="r-bdel-sel" onclick="deleteResaSel()">🗑 Supprimer la sélection</button>
-    <button class="bdel-mois" id="r-bdel-mois" onclick="deleteResaMois()">🗑 Supprimer le mois affiché</button>
     <button class="ba ba-ghost" onclick="clearResaSel()" style="padding:6px 12px;font-size:12px">✕ Désélectionner tout</button>
   </div>
   <div class="kg">
@@ -1454,12 +1454,9 @@ function updateResaSelBar() {
   var bar=document.getElementById('r-sel-bar');
   var cnt=document.getElementById('r-sel-cnt');
   var btn=document.getElementById('r-bdel-sel');
-  var btnM=document.getElementById('r-bdel-mois');
   if(bar) bar.classList.toggle('hidden', n===0);
   if(cnt) cnt.textContent=n+' réservation'+(n>1?'s':'')+ ' sélectionnée'+(n>1?'s':'');
   if(btn) { btn.classList.toggle('active', n>0); }
-  // Bouton mois actif seulement en mode mensuel
-  if(btnM) btnM.disabled = (P['r']!=='mois');
 }
 
 async function deleteResaSel() {
