@@ -21,7 +21,7 @@
 const POLL_WINDOW_HOURS = parseInt(process.env.POLL_WINDOW_HOURS || '25');
 const SMOOBU_API        = 'https://login.smoobu.com/api';
 const SUPABASE_URL      = process.env.SUPABASE_URL;
-const SUPABASE_KEY      = process.env.SUPABASE_KEY;
+const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Taux de commission par source (fallback si non fourni par Smoobu)
 const COM = { Airbnb: 0.155, 'Booking.com': 0.22, Direct: 0, VRBO: 0.18 };
