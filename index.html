@@ -162,6 +162,20 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .circ-delta{font-size:11px;font-weight:500;margin-top:2px;}
 @keyframes ldbar{0%,100%{opacity:.25;transform:scaleX(.5)}50%{opacity:1;transform:scaleX(1)}}
 .ldbar{width:40px;height:3px;background:var(--or);border-radius:2px;animation:ldbar 1.1s ease-in-out infinite;transform-origin:center;}
+/* Bulk action bar business/taxe/serv */
+.bpay-sel{background:var(--gr);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bpay-sel:hover{opacity:.85;}
+.batt-sel{background:var(--or);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.batt-sel:hover{opacity:.85;}
+.brev-sel{background:var(--te);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.brev-sel:hover{opacity:.85;}
+.bnrev-sel{background:var(--s2);border:1px solid var(--re);color:var(--re);border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bnrev-sel:hover{background:var(--res);}
+.bdel2-sel{background:none;border:1px solid var(--re);color:var(--re);border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bdel2-sel:hover{background:var(--res);}
+input[type=checkbox].gcb{width:15px;height:15px;accent-color:var(--or);cursor:pointer;flex-shrink:0;}
+input[type=checkbox].tcb{width:15px;height:15px;accent-color:var(--te);cursor:pointer;flex-shrink:0;}
+input[type=checkbox].scb{width:15px;height:15px;accent-color:var(--go);cursor:pointer;flex-shrink:0;}
 /* ── LOGIN SCREEN ── */
 #login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;}
 #login-screen.hidden{display:none;}
@@ -469,6 +483,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
+  <!-- Récap paiement femme de ménage (déplacé depuis Taxe) -->
+  <div class="wb">
+    <div class="wbt">🧮 Récap paiement par femme de ménage</div>
+    <div class="wn">
+      <button class="nb2" onclick="shiftWk(-1)">‹</button>
+      <div class="wl" id="wk-lbl">Semaine</div>
+      <button class="nb2" onclick="shiftWk(1)">›</button>
+    </div>
+    <div class="cg" id="wk-cards"></div>
+  </div>
   <div class="fb"><div class="fr">
     <div class="tabs">
       <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
@@ -481,8 +505,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="b-fmen" onchange="renderBiz()"><option value="">Toutes femmes de ménage</option><option>Amal</option><option>Rabiaa</option><option>Touria</option></select>
     <select class="fsel" id="b-fst" onchange="renderBiz()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
   </div></div>
+  <!-- Barre sélection business -->
+  <div class="sel-bar hidden" id="biz-sel-bar">
+    <div class="sel-cnt" id="biz-sel-cnt">0 sélectionné(s)</div>
+    <button class="bpay-sel" onclick="bulkBiz('Payé')">✅ Marquer Payé</button>
+    <button class="batt-sel" onclick="bulkBiz('En attente')">⏳ En attente</button>
+    <button class="bdel2-sel" onclick="deleteBizSel()">🗑 Supprimer</button>
+    <button class="ba ba-ghost" onclick="clearBizSel()" style="padding:6px 12px;font-size:12px">✕ Tout désélectionner</button>
+  </div>
   <div class="tw"><table>
-    <thead><tr><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="b-tb"></tbody>
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
 </div>
@@ -499,16 +531,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Par l'équipe</div><div class="kv" id="t-eqp">0 MAD</div></div>
     <div class="kc"><div class="kl">Non reversé</div><div class="kv" style="color:var(--re)" id="t-nr">0 MAD</div></div>
   </div>
-  <!-- Récap hebdo -->
-  <div class="wb">
-    <div class="wbt">🧮 Récap paiement par femme de ménage</div>
-    <div class="wn">
-      <button class="nb2" onclick="shiftWk(-1)">‹</button>
-      <div class="wl" id="wk-lbl">Semaine</div>
-      <button class="nb2" onclick="shiftWk(1)">›</button>
-    </div>
-    <div class="cg" id="wk-cards"></div>
-  </div>
+
   <div class="fb"><div class="fr">
     <div class="tabs">
       <button class="tab" id="ttj" onclick="setPer('t','jour')">Jour</button>
@@ -520,8 +543,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="t-fcol" onchange="renderTaxe()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
     <select class="fsel" id="t-fst" onchange="renderTaxe()"><option value="">Tous statuts</option><option>Reversé</option><option>Non reversé</option></select>
   </div></div>
+  <!-- Barre sélection taxe -->
+  <div class="sel-bar hidden" id="taxe-sel-bar">
+    <div class="sel-cnt" id="taxe-sel-cnt">0 sélectionné(s)</div>
+    <button class="brev-sel" onclick="bulkTaxe('Reversé')">✅ Marquer Reversé</button>
+    <button class="bnrev-sel" onclick="bulkTaxe('Non reversé')">⏳ Non reversé</button>
+    <button class="bdel2-sel" onclick="deleteTaxeSel()">🗑 Supprimer</button>
+    <button class="ba ba-ghost" onclick="clearTaxeSel()" style="padding:6px 12px;font-size:12px">✕ Tout désélectionner</button>
+  </div>
   <div class="tw"><table>
-    <thead><tr><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="tcb" id="taxe-chk-all" onchange="toggleTaxeAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
     <tbody id="t-tb"></tbody>
   </table><div class="empty hidden" id="t-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe</div></div>
 </div>
@@ -552,8 +583,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="s-fcol" onchange="renderServ()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
     <select class="fsel" id="s-fst" onchange="renderServ()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
   </div></div>
+  <!-- Barre sélection services -->
+  <div class="sel-bar hidden" id="serv-sel-bar">
+    <div class="sel-cnt" id="serv-sel-cnt">0 sélectionné(s)</div>
+    <button class="bpay-sel" onclick="bulkServ('Payé')">✅ Marquer Payé</button>
+    <button class="batt-sel" onclick="bulkServ('En attente')">⏳ En attente</button>
+    <button class="bdel2-sel" onclick="deleteServSel()">🗑 Supprimer</button>
+    <button class="ba ba-ghost" onclick="clearServSel()" style="padding:6px 12px;font-size:12px">✕ Tout désélectionner</button>
+  </div>
   <div class="tw"><table>
-    <thead><tr><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="scb" id="serv-chk-all" onchange="toggleServAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="s-tb"></tbody>
   </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service</div></div>
 </div>
@@ -901,6 +940,9 @@ var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
 var R_SEARCH = '';     // recherche live réservations
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
+var BIZ_SEL  = {};     // {id: true} — sélection multiple business
+var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
+var SERV_SEL = {};     // {id: true} — sélection multiple services
 
 // ============================================================
 // UTILS
@@ -1528,6 +1570,7 @@ function showToast(msg) {
 // ============================================================
 function renderBiz() {
   renderNav('b');
+  renderWkCards();
   var rows=filterPer(DB.business,'b');
   var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst');
   if(fa)rows=rows.filter(function(r){return r.appart===fa;}); // scope global (appart null) exclu automatiquement
@@ -1551,10 +1594,14 @@ function renderBiz() {
     return '<div class="rc" style="border-color:var(--or)"><div><div class="rn" style="color:var(--or)">🌐 Global</div><div class="rsb">'+g.length+' entrée'+(g.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(g,'montant'))+'</div></div>';
   }());
   var tb=document.getElementById('b-tb'), em=document.getElementById('b-em');
-  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');updateBizSelBar();return;}
   em.classList.add('hidden');
+  // ids visibles (pour select-all)
+  window._BIZ_VISIBLE_IDS = rows.map(function(r){return r.id;});
   tb.innerHTML=rows.map(function(r){
+    var checked=BIZ_SEL[r.id]?' checked':'';
     return '<tr>'+
+      '<td><input type="checkbox" class="gcb" data-id="'+r.id+'"'+checked+' onchange="toggleBizSel(\''+r.id+'\',this.checked)"></td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
       '<td>'+(r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+'</td>'+
       '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
@@ -1565,6 +1612,10 @@ function renderBiz() {
       '<td>'+actBtns('business',r.id)+'</td>'+
       '</tr>';
   }).join('');
+  // Sync select-all
+  var bizAllChk=document.getElementById('biz-chk-all');
+  if(bizAllChk){var vis=window._BIZ_VISIBLE_IDS||[];var allS=vis.length>0&&vis.every(function(id){return BIZ_SEL[id];});bizAllChk.checked=allS;bizAllChk.indeterminate=!allS&&vis.some(function(id){return BIZ_SEL[id];});}
+  updateBizSelBar();
 }
 
 // ============================================================
@@ -1574,11 +1625,12 @@ function renderWkCards() {
   var w=wkRange(wkRef);
   set('wk-lbl',w.s+' → '+w.e.slice(5));
   set('wk-cards',CLEANERS.map(function(name){
-    var bRows=DB.business.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.fmen===name;});
+    // Uniquement les dépenses "En attente" pour le calcul à payer
+    var bRows=DB.business.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.fmen===name&&r.statut==='En attente';});
     var men=sum(bRows.filter(function(r){return r.cat==='Ménage';}),'montant');
     var adv=sum(bRows.filter(function(r){return r.cat!=='Ménage';}),'montant');
     var tax=sum(DB.taxe.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name&&r.rev==='Non reversé';}),'montant');
-    var ext=sum(DB.serv.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name;}),'montant');
+    var ext=sum(DB.serv.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name&&r.statut!=='Payé';}),'montant');
     var total=men+adv, net=total-tax-ext;
     var col=net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
     var lbl=net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
@@ -1596,7 +1648,6 @@ function renderWkCards() {
 
 function renderTaxe() {
   renderNav('t');
-  renderWkCards();
   var rows=filterPer(DB.taxe,'t');
   var fa=val('t-fap'),fc=val('t-fcol'),fs=val('t-fst');
   if(fa)rows=rows.filter(function(r){return r.appart===fa;});
@@ -1610,10 +1661,13 @@ function renderTaxe() {
   set('t-tot',fmt(tot)); set('t-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('t-hak',fmt(hak)); set('t-eqp',fmt(eqp)); set('t-nr',fmt(nr));
   var tb=document.getElementById('t-tb'), em=document.getElementById('t-em');
-  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');updateTaxeSelBar();return;}
   em.classList.add('hidden');
+  window._TAXE_VISIBLE_IDS = rows.map(function(r){return r.id;});
   tb.innerHTML=rows.map(function(r){
+    var checked=TAXE_SEL[r.id]?' checked':'';
     return '<tr>'+
+      '<td><input type="checkbox" class="tcb" data-id="'+r.id+'"'+checked+' onchange="toggleTaxeSel(\''+r.id+'\',this.checked)"></td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
@@ -1624,6 +1678,9 @@ function renderTaxe() {
       '<td>'+actBtns('taxe',r.id)+'</td>'+
       '</tr>';
   }).join('');
+  var taxeAllChk=document.getElementById('taxe-chk-all');
+  if(taxeAllChk){var vis=window._TAXE_VISIBLE_IDS||[];var allS=vis.length>0&&vis.every(function(id){return TAXE_SEL[id];});taxeAllChk.checked=allS;taxeAllChk.indeterminate=!allS&&vis.some(function(id){return TAXE_SEL[id];});}
+  updateTaxeSelBar();
 }
 
 // ============================================================
@@ -1651,10 +1708,13 @@ function renderServ() {
     return'<div class="rc"><div><div class="rn">'+sv+'</div><div class="rsb">'+x.length+'×</div></div><div class="rv" style="color:var(--go)">'+fmt(sum(x,'montant'))+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucun service</div>');
   var tb=document.getElementById('s-tb'),em=document.getElementById('s-em');
-  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');return;}
+  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');updateServSelBar();return;}
   em.classList.add('hidden');
+  window._SERV_VISIBLE_IDS = rows.map(function(r){return r.id;});
   tb.innerHTML=rows.map(function(r){
+    var checked=SERV_SEL[r.id]?' checked':'';
     return '<tr>'+
+      '<td><input type="checkbox" class="scb" data-id="'+r.id+'"'+checked+' onchange="toggleServSel(\''+r.id+'\',this.checked)"></td>'+
       '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td>'+chip(r.svc,'serv')+'</td>'+
@@ -1666,6 +1726,9 @@ function renderServ() {
       '<td>'+actBtns('serv',r.id)+'</td>'+
       '</tr>';
   }).join('');
+  var servAllChk=document.getElementById('serv-chk-all');
+  if(servAllChk){var vis=window._SERV_VISIBLE_IDS||[];var allS=vis.length>0&&vis.every(function(id){return SERV_SEL[id];});servAllChk.checked=allS;servAllChk.indeterminate=!allS&&vis.some(function(id){return SERV_SEL[id];});}
+  updateServSelBar();
 }
 
 // ============================================================
@@ -1867,6 +1930,156 @@ async function deleteDupSel() {
   renderResa();
   showToast('✅ '+ids.length+' entrée'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
 }
+// ============================================================
+// SÉLECTION MULTIPLE — BUSINESS
+// ============================================================
+function toggleBizSel(id, checked) {
+  if(checked) BIZ_SEL[id]=true; else delete BIZ_SEL[id];
+  updateBizSelBar();
+  var visIds=window._BIZ_VISIBLE_IDS||[];
+  var allChk=document.getElementById('biz-chk-all');
+  if(allChk){var allSel=visIds.length>0&&visIds.every(function(id){return BIZ_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return BIZ_SEL[id];});}
+}
+function toggleBizAll(checked) {
+  var visIds=window._BIZ_VISIBLE_IDS||[];
+  visIds.forEach(function(id){if(checked) BIZ_SEL[id]=true; else delete BIZ_SEL[id];});
+  document.querySelectorAll('#b-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateBizSelBar();
+}
+function clearBizSel() {
+  BIZ_SEL={};
+  var allChk=document.getElementById('biz-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#b-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateBizSelBar();
+}
+function updateBizSelBar() {
+  var ids=Object.keys(BIZ_SEL), n=ids.length;
+  var bar=document.getElementById('biz-sel-bar');
+  var cnt=document.getElementById('biz-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' dépense'+(n>1?'s':'')+' sélectionnée'+(n>1?'s':'');
+}
+async function bulkBiz(statut) {
+  var ids=Object.keys(BIZ_SEL);
+  if(!ids.length) return;
+  for(var i=0;i<ids.length;i++){
+    var idx=DB.business.findIndex(function(x){return x.id===ids[i];});
+    if(idx>=0){DB.business[idx].statut=statut; await saveOne('business',DB.business[idx]);}
+  }
+  clearBizSel(); renderBiz();
+  showToast('✅ '+ids.length+' dépense'+(ids.length>1?'s':'')+' marquée'+(ids.length>1?'s':'')+' "'+statut+'"');
+}
+async function deleteBizSel() {
+  var ids=Object.keys(BIZ_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' dépense'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
+  if(SUPA){try{var res=await SUPA.from('business').delete().in('id',ids);if(res.error) throw res.error;}catch(e){setDBStatus(false,'Erreur suppression');console.error(e);return;}}
+  DB.business=DB.business.filter(function(r){return !BIZ_SEL[r.id];});
+  clearBizSel(); renderBiz();
+  showToast('✅ '+ids.length+' dépense'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE — TAXE
+// ============================================================
+function toggleTaxeSel(id, checked) {
+  if(checked) TAXE_SEL[id]=true; else delete TAXE_SEL[id];
+  updateTaxeSelBar();
+  var visIds=window._TAXE_VISIBLE_IDS||[];
+  var allChk=document.getElementById('taxe-chk-all');
+  if(allChk){var allSel=visIds.length>0&&visIds.every(function(id){return TAXE_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return TAXE_SEL[id];});}
+}
+function toggleTaxeAll(checked) {
+  var visIds=window._TAXE_VISIBLE_IDS||[];
+  visIds.forEach(function(id){if(checked) TAXE_SEL[id]=true; else delete TAXE_SEL[id];});
+  document.querySelectorAll('#t-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateTaxeSelBar();
+}
+function clearTaxeSel() {
+  TAXE_SEL={};
+  var allChk=document.getElementById('taxe-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#t-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateTaxeSelBar();
+}
+function updateTaxeSelBar() {
+  var ids=Object.keys(TAXE_SEL), n=ids.length;
+  var bar=document.getElementById('taxe-sel-bar');
+  var cnt=document.getElementById('taxe-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' taxe'+(n>1?'s':'')+' sélectionnée'+(n>1?'s':'');
+}
+async function bulkTaxe(statut) {
+  var ids=Object.keys(TAXE_SEL);
+  if(!ids.length) return;
+  for(var i=0;i<ids.length;i++){
+    var idx=DB.taxe.findIndex(function(x){return x.id===ids[i];});
+    if(idx>=0){DB.taxe[idx].rev=statut; await saveOne('taxe',DB.taxe[idx]);}
+  }
+  clearTaxeSel(); renderTaxe();
+  showToast('✅ '+ids.length+' taxe'+(ids.length>1?'s':'')+' marquée'+(ids.length>1?'s':'')+' "'+statut+'"');
+}
+async function deleteTaxeSel() {
+  var ids=Object.keys(TAXE_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' taxe'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
+  if(SUPA){try{var res=await SUPA.from('taxe').delete().in('id',ids);if(res.error) throw res.error;}catch(e){setDBStatus(false,'Erreur suppression');console.error(e);return;}}
+  DB.taxe=DB.taxe.filter(function(r){return !TAXE_SEL[r.id];});
+  clearTaxeSel(); renderTaxe();
+  showToast('✅ '+ids.length+' taxe'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE — SERVICES
+// ============================================================
+function toggleServSel(id, checked) {
+  if(checked) SERV_SEL[id]=true; else delete SERV_SEL[id];
+  updateServSelBar();
+  var visIds=window._SERV_VISIBLE_IDS||[];
+  var allChk=document.getElementById('serv-chk-all');
+  if(allChk){var allSel=visIds.length>0&&visIds.every(function(id){return SERV_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return SERV_SEL[id];});}
+}
+function toggleServAll(checked) {
+  var visIds=window._SERV_VISIBLE_IDS||[];
+  visIds.forEach(function(id){if(checked) SERV_SEL[id]=true; else delete SERV_SEL[id];});
+  document.querySelectorAll('#s-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateServSelBar();
+}
+function clearServSel() {
+  SERV_SEL={};
+  var allChk=document.getElementById('serv-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#s-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateServSelBar();
+}
+function updateServSelBar() {
+  var ids=Object.keys(SERV_SEL), n=ids.length;
+  var bar=document.getElementById('serv-sel-bar');
+  var cnt=document.getElementById('serv-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' service'+(n>1?'s':'')+' sélectionné'+(n>1?'s':'');
+}
+async function bulkServ(statut) {
+  var ids=Object.keys(SERV_SEL);
+  if(!ids.length) return;
+  for(var i=0;i<ids.length;i++){
+    var idx=DB.serv.findIndex(function(x){return x.id===ids[i];});
+    if(idx>=0){DB.serv[idx].statut=statut; await saveOne('serv',DB.serv[idx]);}
+  }
+  clearServSel(); renderServ();
+  showToast('✅ '+ids.length+' service'+(ids.length>1?'s':'')+' marqué'+(ids.length>1?'s':'')+' "'+statut+'"');
+}
+async function deleteServSel() {
+  var ids=Object.keys(SERV_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' service'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
+  if(SUPA){try{var res=await SUPA.from('serv').delete().in('id',ids);if(res.error) throw res.error;}catch(e){setDBStatus(false,'Erreur suppression');console.error(e);return;}}
+  DB.serv=DB.serv.filter(function(r){return !SERV_SEL[r.id];});
+  clearServSel(); renderServ();
+  showToast('✅ '+ids.length+' service'+(ids.length>1?'s':'')+' supprimé'+(ids.length>1?'s':''));
+}
+
 var M_TYPE='', M_ID=null;
 
 function openModal(type, id) {
@@ -1967,7 +2180,7 @@ function buildForm(type, editId) {
       '<div class="ff"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen"><option value="">— Non applicable —</option>'+CLEANERS.map(function(c){return '<option'+(v('fmen')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
-      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
+      field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
       '</div>';
   }
 
@@ -1993,7 +2206,7 @@ function buildForm(type, editId) {
       field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
-      field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
+      field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
       '</div>';
   }
 
