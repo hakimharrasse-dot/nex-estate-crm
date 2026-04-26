@@ -1392,7 +1392,7 @@ function renderResa() {
     var checked=RESA_SEL[r.id]?' checked':'';
     return '<tr class="'+rowCls+'">'+
       '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleResaSel(\''+r.id+'\',this.checked)"></td>'+
-      '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.ref||'')+'</td>'+
+      '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.override_manual?'<span title="Protégé — Smoobu ne peut pas écraser" style="color:var(--or);margin-right:3px">🔒</span>':'')+(r.ref||'')+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
       '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
@@ -1937,6 +1937,13 @@ function buildForm(type, editId) {
       fieldFull('Date de paiement','fi-dp','date',v('date_paiement',''))+
       fieldFull('Date de création (réservation)','fi-dc','date',v('date_creation',''))+
       fieldFull('Notes','fi-notes','text',v('notes',''),'Annulation, relocation, cas spécial...')+
+      '<div class="ff" style="background:rgba(200,119,58,.08);border:1.5px solid rgba(200,119,58,.3);border-radius:8px;padding:10px 13px;margin-top:2px">'+
+      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'+
+      '<input type="checkbox" id="fi-override" style="width:16px;height:16px;accent-color:var(--or);flex-shrink:0" '+(v('override_manual',M_ID?false:true)?'checked':'')+'>'+
+      '<div><div style="font-size:13px;font-weight:600;color:var(--or)">🔒 Protéger les données financières</div>'+
+      '<div style="font-size:11px;color:var(--tm);margin-top:2px">Si coché, les synchronisations Smoobu ne pourront pas écraser brut, net, commission, statut, type et notes.</div></div>'+
+      '</label>'+
+      '</div>'+
       '</div>';
   }
 
@@ -2118,7 +2125,16 @@ async function saveResa() {
     mode_paiement:gv('fi-mode')||'Virement plateforme',
     statut:gv('fi-st')||'Payé', date_paiement:dp,
     date_creation:gv('fi-dc')||null,
-    mois_kpi:(dp||ci).slice(0,7), notes:gv('fi-notes')
+    mois_kpi:(dp||ci).slice(0,7), notes:gv('fi-notes'),
+    // override_manual : protège les champs financiers contre l'écrasement Smoobu
+    // Préserve la valeur existante si déjà true, ou applique la case cochée dans le formulaire
+    override_manual: (function(){
+      var cb = document.getElementById('fi-override');
+      if (cb) return cb.checked;
+      // Pas de checkbox = édition rapide — conserver la valeur existante si présente
+      if (M_ID) { var ex = DB.resa.find(function(x){return x.id===M_ID;}); if(ex) return !!ex.override_manual; }
+      return true; // nouvelle entrée manuelle = protégée par défaut
+    })()
   };
   await upsert('resa',entry); closeModal(); renderResa();
 }
@@ -2448,6 +2464,7 @@ function parseSmoobuRow(row, idx) {
     date_paiement:  dp,
     mois_kpi:       (dp || ci).slice(0, 7),
     notes:          '',
+    override_manual: false,
     _warns:         warns,
     _hasWarn:       warns.length > 0
   };
@@ -2473,14 +2490,18 @@ function handleCSV(input) {
 
 function showCSVPrev(rejectedCount) {
   rejectedCount = rejectedCount || 0;
-  // Détecter doublons vs DB (smoobu_id = clé fiable)
+  // Détecter doublons vs DB — smoobu_id = clé unique
+  // dbSmoobu[id] = { idx, protected } — protected = override_manual = true (champs financiers figés)
   var dbSmoobu = {};
-  DB.resa.forEach(function(r) { if (r.smoobu_id) dbSmoobu[r.smoobu_id] = true; });
+  DB.resa.forEach(function(r, idx) { if (r.smoobu_id) dbSmoobu[r.smoobu_id] = { idx: idx, protected: !!r.override_manual }; });
 
-  var nOk = 0, nWarn = 0, nDup = 0;
+  var nOk = 0, nWarn = 0, nDup = 0, nProt = 0;
   csvPending.forEach(function(r) {
-    r._isDup = !!(r.smoobu_id && dbSmoobu[r.smoobu_id]);
-    if (r._isDup) nDup++;
+    var existing = r.smoobu_id ? dbSmoobu[r.smoobu_id] : null;
+    r._isDup       = !!(existing);
+    r._isProtected = !!(existing && existing.protected);
+    if (r._isProtected) nProt++;
+    else if (r._isDup) nDup++;
     else if (r._hasWarn) nWarn++;
     else nOk++;
   });
@@ -2488,7 +2509,8 @@ function showCSVPrev(rejectedCount) {
   var stat =
     '<span style="color:var(--gr)">✅ ' + nOk + ' nouvelles</span>' +
     (nWarn  ? ' <span style="color:var(--go)">⚠️ ' + nWarn + ' alertes</span>' : '') +
-    (nDup   ? ' <span style="color:var(--bl)">🔁 ' + nDup + ' déjà importées</span>' : '') +
+    (nDup   ? ' <span style="color:var(--bl)">🔁 ' + nDup + ' mises à jour</span>' : '') +
+    (nProt  ? ' <span style="color:var(--or)">🔒 ' + nProt + ' protégées (override_manual)</span>' : '') +
     (rejectedCount ? ' <span style="color:var(--re)">✕ ' + rejectedCount + ' rejetées</span>' : '') +
     ' <span style="color:var(--td)">· ' + csvPending.length + ' lues</span>';
 
@@ -2504,12 +2526,13 @@ function showCSVPrev(rejectedCount) {
     '<th>Création</th><th>Paiement CRM</th><th>Statut CRM</th><th>Alertes</th>' +
     '</tr></thead><tbody>' +
     csvPending.map(function(r) {
-      var bg  = r._isDup ? 'rgba(90,159,212,.07)' : r._hasWarn ? 'rgba(224,82,82,.07)' : '';
-      var op  = r._isDup ? 'opacity:.6;' : '';
+      var bg  = r._isProtected ? 'rgba(200,119,58,.07)' : r._isDup ? 'rgba(76,175,125,.07)' : r._hasWarn ? 'rgba(224,82,82,.07)' : '';
+      var op  = r._isProtected ? 'opacity:.75;' : '';
       var apOk = r.appart && APPARTS_OK.indexOf(r.appart) >= 0;
       var stCls = r.statut==='Payé'?'color:var(--gr)':r.statut==='En attente'?'color:var(--or)':'color:var(--re)';
+      var rowIcon = r._isProtected ? '🔒 ' : r._isDup ? '🔄 ' : '';
       return '<tr style="background:' + bg + ';' + op + '">' +
-        '<td style="font-size:10px;font-family:\'DM Mono\',monospace;color:var(--tm)">' + (r._isDup ? '🔁 ' : '') + (r.ref || '—') + '</td>' +
+        '<td style="font-size:10px;font-family:\'DM Mono\',monospace;color:var(--tm)">' + rowIcon + (r.ref || '—') + '</td>' +
         '<td>' + chip(r.source, srcClass(r.source)) + '</td>' +
         '<td style="font-size:12px;color:' + (apOk ? 'inherit' : 'var(--re)') + '">' + aptShort(r.appart || '⚠️') + '</td>' +
         '<td style="font-size:12px;color:var(--tm)">' + (r.voyageur || '—') + '</td>' +
@@ -2522,36 +2545,80 @@ function showCSVPrev(rejectedCount) {
         '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--td)">' + (r.date_creation || '—') + '</td>' +
         '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--bl);font-weight:500">' + (r.date_paiement || '—') + '</td>' +
         '<td style="font-size:11px;font-weight:600;' + stCls + '">' + (r.statut || '—') + '</td>' +
-        '<td style="font-size:11px;color:var(--re)">' + (r._isDup ? 'déjà importée' : (r._warns || []).join(', ')) + '</td>' +
+        '<td style="font-size:11px;color:var(--re)">' + (r._isProtected ? '🔒 override_manual — finances figées' : r._isDup ? '🔄 sera mise à jour' : (r._warns || []).join(', ')) + '</td>' +
         '</tr>';
     }).join('') + '</tbody></table></div>';
 
-  var skipDupsHtml = nDup > 0
-    ? '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;cursor:pointer">'+
-      '<input type="checkbox" id="csv-skip-dups" checked style="width:14px;height:14px;accent-color:var(--or)">'+
-      '<span>Ignorer les <strong>'+nDup+' doublons</strong> déjà présents en base <span style="color:var(--td)">(décocher pour importer quand même)</span></span>'+
-      '</label>'
-    : '';
+  // Note: les doublons (🔄) seront MIS À JOUR par smoobu_id (pas réinsérés)
+  // Les protégées (🔒) ne verront jamais leurs champs financiers modifiés
+  var skipDupsHtml = '';
+  if (nDup > 0 || nProt > 0) {
+    skipDupsHtml =
+      '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;line-height:1.6">' +
+      (nDup  > 0 ? '<div>🔄 <strong>'+nDup+' mise'+(nDup>1?'s':'')+' à jour</strong> — remplacées en base par smoobu_id (champs CRM recalculés sauf si 🔒)</div>' : '') +
+      (nProt > 0 ? '<div>🔒 <strong>'+nProt+' protégée'+(nProt>1?'s':'')+' (override_manual)</strong> — voyageur/dates mis à jour, finances conservées</div>' : '') +
+      '</div>';
+  }
 
   set('csv-prev-content', skipDupsHtml + html);
   document.getElementById('csv-prev').classList.remove('hidden');
 }
 
 async function confirmCSV() {
-  var skipDupsEl = document.getElementById('csv-skip-dups');
-  var skipDups = skipDupsEl && skipDupsEl.checked;
-  var toInsert = skipDups
-    ? csvPending.filter(function(r) { return !r._isDup; })
-    : csvPending.slice();
-  toInsert.forEach(function(r) {
-    delete r._warns; delete r._hasWarn; delete r._isDup;
-    DB.resa.push(r);
+  // Index smoobu_id → position dans DB.resa
+  var dbSmoobuIdx = {};
+  DB.resa.forEach(function(r, idx) { if (r.smoobu_id) dbSmoobuIdx[r.smoobu_id] = idx; });
+
+  var nInserted = 0, nUpdated = 0, nProtected = 0;
+
+  csvPending.forEach(function(r) {
+    delete r._warns; delete r._hasWarn;
+    var isProtected = r._isProtected;
+    var isDup       = r._isDup;
+    delete r._isDup; delete r._isProtected;
+
+    var existingIdx = (r.smoobu_id != null && r.smoobu_id !== '') ? dbSmoobuIdx[r.smoobu_id] : -1;
+
+    if (existingIdx >= 0) {
+      var existing = DB.resa[existingIdx];
+      if (existing.override_manual) {
+        // 🔒 Protégé — mettre à jour uniquement les champs non-financiers
+        existing.checkin   = r.checkin;
+        existing.checkout  = r.checkout;
+        existing.voyageur  = r.voyageur;
+        existing.adults    = r.adults;
+        existing.children  = r.children;
+        existing.nb_personnes = r.nb_personnes;
+        existing.appart    = r.appart;
+        existing.source    = r.source;
+        existing.phone     = r.phone;
+        existing.email     = r.email;
+        existing.nuits_sejour = r.nuits_sejour;
+        existing.nuits_fact   = r.nuits_fact;
+        // Champs protégés intacts : brut, net, commission, com_pct,
+        // statut, type_norm, date_paiement, mois_kpi, notes, taxe_sejour
+        nProtected++;
+      } else {
+        // 🔄 Mise à jour complète — réutilise l'id existant pour éviter les doublons
+        r.id = existing.id;
+        r.override_manual = false;
+        DB.resa[existingIdx] = r;
+        nUpdated++;
+      }
+    } else {
+      // Nouvelle réservation — INSERT
+      r.override_manual = false;
+      DB.resa.push(r);
+      nInserted++;
+    }
   });
+
   await saveAll('resa');
   csvPending = [];
   document.getElementById('csv-prev').classList.add('hidden');
   updateDupBadge();
   renderResa();
+  showToast('✅ ' + nInserted + ' insérées · ' + nUpdated + ' mises à jour · ' + nProtected + ' protégées');
 }
 
 function cancelCSV() {
