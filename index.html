@@ -236,6 +236,37 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .spark-svg{width:100%;height:48px;display:block;}
 .spark-axis{display:flex;justify-content:space-between;margin-top:3px;}
 .spark-ax{font-size:9px;color:var(--td);font-family:'DM Mono',monospace;}
+/* ── CASH & ALERTES DASHBOARD ── */
+.cash-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+@media(max-width:700px){.cash-row{grid-template-columns:1fr;}}
+.cash-card{background:var(--s);border:1px solid var(--br);border-radius:14px;padding:16px 18px;}
+.cash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.cash-row-item{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--br);font-size:13px;}
+.cash-row-item:last-of-type{border-bottom:none;}
+.cash-row-label{color:var(--tm);}
+.cash-row-val{font-family:'DM Mono',monospace;font-weight:600;font-size:13px;}
+.cash-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 12px;border-radius:8px;}
+.cash-total-lbl{font-size:13px;font-weight:700;}
+.cash-total-val{font-family:'DM Mono',monospace;font-size:17px;font-weight:700;}
+/* Alert block */
+.alert-block{background:var(--s);border:1px solid var(--br);border-radius:14px;padding:14px 18px;margin-bottom:20px;}
+.alert-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:10px;}
+.alert-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--br);font-size:13px;}
+.alert-item:last-child{border-bottom:none;}
+.alert-ok{color:var(--gr);}
+.alert-warn{color:var(--or);}
+.alert-crit{color:var(--re);}
+/* Performance appart badge */
+.ap-perf-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:20px;}
+.ap-perf-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;}
+.ap-perf-top{display:flex;justify-content:space-between;align-items:center;}
+.ap-perf-name{font-size:13px;font-weight:600;}
+.ap-perf-badge{font-size:12px;padding:2px 8px;border-radius:12px;font-weight:600;}
+.badge-bon{background:var(--grs);color:var(--gr);}
+.badge-moyen{background:var(--ors);color:var(--or);}
+.badge-faible{background:var(--res);color:var(--re);}
+.ap-perf-net{font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--gr);}
+.ap-perf-occ{font-size:11px;color:var(--tm);}
 /* Decision cards */
 .dec-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
 .dec-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;flex:1;min-width:150px;}
@@ -346,6 +377,52 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div id="d-nav"></div>
     <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
   </div></div>
+  <!-- ══ FLUX CASH ══ -->
+  <div class="cash-row">
+    <!-- Cash à payer -->
+    <div class="cash-card" style="border-color:rgba(224,82,82,.35)">
+      <div class="cash-card-title" style="color:var(--re)">💸 Cash à payer</div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Ménage (en attente)</span>
+        <span class="cash-row-val" id="d-menage-att" style="color:var(--or)">0 MAD</span>
+      </div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Autres dépenses (en attente)</span>
+        <span class="cash-row-val" id="d-autres-att" style="color:var(--or)">0 MAD</span>
+      </div>
+      <div class="cash-total" style="background:var(--res)">
+        <span class="cash-total-lbl" style="color:var(--re)">Total à payer</span>
+        <span class="cash-total-val" style="color:var(--re)" id="d-total-att">0 MAD</span>
+      </div>
+    </div>
+    <!-- Cash encaissé -->
+    <div class="cash-card" style="border-color:rgba(76,175,125,.35)">
+      <div class="cash-card-title" style="color:var(--gr)">💰 Cash encaissé</div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Revenus nets</span>
+        <span class="cash-row-val" id="d-cash-net" style="color:var(--gr)">0 MAD</span>
+      </div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Services payés</span>
+        <span class="cash-row-val" id="d-cash-serv" style="color:var(--go)">0 MAD</span>
+      </div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Taxe non reversée</span>
+        <span class="cash-row-val" id="d-cash-taxe" style="color:var(--te)">0 MAD</span>
+      </div>
+      <div class="cash-total" style="background:var(--grs)">
+        <span class="cash-total-lbl" style="color:var(--gr)">Résultat réel <span id="d-res-reel-delta" style="font-size:10px;font-weight:400;margin-left:6px"></span></span>
+        <span class="cash-total-val" style="color:var(--gr)" id="d-res-reel">0 MAD</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ALERTES ══ -->
+  <div class="alert-block" id="d-alert-block">
+    <div class="alert-title">🚨 Alertes &amp; Performance</div>
+    <div id="d-alert-items"></div>
+  </div>
+
   <div class="kg">
     <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="kd" id="d-delta-net"></div></div>
     <div class="kc"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
@@ -398,8 +475,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Taxe collectée</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Hors CA — argent État</div></div>
     <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
   </div>
-  <div class="sl">Revenus nets par appartement</div>
-  <div class="rg" id="d-recap-ap"></div>
+  <div class="sl">Performance par appartement</div>
+  <div class="ap-perf-row" id="d-recap-ap"></div>
   <div class="sl" style="margin-top:18px">Répartition par source</div>
   <div class="rg" id="d-recap-src"></div>
 </div>
@@ -1250,6 +1327,28 @@ function renderDash() {
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
+  // ── Nouveaux calculs cash ──
+  var bizPeriod=filterPer(DB.business,'d').filter(function(r){return !fa||(r.appart===fa||r.scope==='global');});
+  var depAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente';}),'montant');
+  var menageAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente'&&r.cat==='Ménage';}),'montant');
+  var autresAtt=depAtt-menageAtt;
+  var depPaye=sum(bizPeriod.filter(function(r){return r.statut==='Payé';}),'montant');
+  var servPaye=sum(filterPer(DB.serv,'d').filter(function(r){return (!fa||r.appart===fa)&&r.statut==='Payé';}),'montant');
+  var taxeNonRev=sum(filterPer(DB.taxe,'d').filter(function(r){return (!fa||r.appart===fa)&&r.rev==='Non reversé';}),'montant');
+  var resultatReel=cur.netMad-depPaye;
+
+  // ── Cash à payer ──
+  set('d-menage-att',fmt(menageAtt));
+  set('d-autres-att',fmt(autresAtt));
+  set('d-total-att',fmt(depAtt));
+  // ── Cash encaissé ──
+  set('d-cash-net',fmt(cur.netMad));
+  set('d-cash-serv',fmt(servPaye));
+  set('d-cash-taxe',fmt(taxeNonRev));
+  set('d-res-reel',fmt(resultatReel));
+  var el_rres=document.getElementById('d-res-reel');
+  if(el_rres) el_rres.style.color=resultatReel>=0?'var(--gr)':'var(--re)';
+
   // ── Affichage KPI ──
   set('d-net',fmt(cur.netMad));
   set('d-brut','Brut : '+fmt(brutEur*EUR_MAD));
@@ -1330,6 +1429,52 @@ function renderDash() {
   set('d-spark-net-ax','<span class="spark-ax">'+sparkLabels[0]+'</span><span class="spark-ax">'+sparkLabels[sparkLabels.length-1]+'</span>');
   set('d-spark-occ-ax','<span class="spark-ax">'+sparkLabels[0]+'</span><span class="spark-ax">'+sparkLabels[sparkLabels.length-1]+'</span>');
 
+  // ── Alertes intelligentes ──
+  var alertItems=[];
+  // Alerte dépenses en attente élevées
+  if(cur.netMad>0 && depAtt/cur.netMad>0.30)
+    alertItems.push({cls:'alert-crit',txt:'⚠️ Dépenses en attente élevées ('+(Math.round(depAtt/cur.netMad*100))+'% des revenus nets)'});
+  // Alerte marge faible
+  if(cur.netMad>0 && cur.marge<30)
+    alertItems.push({cls:'alert-warn',txt:'⚠️ Rentabilité faible — marge '+Math.round(cur.marge)+'%'});
+  // Alerte occupation par appart (mode mois uniquement, si pas de filtre appart)
+  if(!fa && P['d']==='mois') {
+    var mk2=MO['d'].toISOString().slice(0,7);
+    var daysM=periodDays('d');
+    APPARTS.forEach(function(ap){
+      var apRes=DB.resa.filter(function(r){
+        return r.appart===ap&&['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0
+          &&r.statut!=='Annulé'&&(r.mois_kpi||r.checkin||'').startsWith(mk2);
+      });
+      var apNuits=apRes.reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+      var apOcc=daysM>0?apNuits/daysM*100:0;
+      if(apOcc>0&&apOcc<50)
+        alertItems.push({cls:'alert-warn',txt:'⚠️ Occupation faible : '+aptShort(ap)+' ('+Math.round(apOcc)+'%)'});
+    });
+  } else if(!fa && cur.occ>0&&cur.occ<40) {
+    alertItems.push({cls:'alert-warn',txt:'⚠️ Occupation faible ('+Math.round(cur.occ)+'%)'});
+  }
+  var alertBlock=document.getElementById('d-alert-block');
+  var alertItemsEl=document.getElementById('d-alert-items');
+  if(alertItemsEl) {
+    if(alertItems.length===0) {
+      if(alertBlock) alertBlock.style.borderColor='rgba(76,175,125,.35)';
+      alertItemsEl.innerHTML='<div class="alert-item alert-ok">✅ Performance globale OK — aucune anomalie détectée</div>';
+    } else {
+      if(alertBlock) alertBlock.style.borderColor='rgba(224,82,82,.35)';
+      alertItemsEl.innerHTML=alertItems.map(function(a){
+        return '<div class="alert-item '+a.cls+'">'+a.txt+'</div>';
+      }).join('');
+    }
+  }
+
+  // ── Résultat réel delta vs précédent ──
+  if(prev && prev.netMad!==undefined) {
+    var prevDepPaye=sum(prevBiz.filter(function(r){return r.statut==='Payé';}), 'montant');
+    var prevResReel=prev.netMad - prevDepPaye;
+    set('d-res-reel-delta', deltaArrow(resultatReel, prevResReel, 'mad', prevLbl));
+  }
+
   // ── Décisions rapides ──
   var revRes=allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
   // Meilleur appart
@@ -1344,24 +1489,33 @@ function renderDash() {
     return {s:s,n:n};
   }).filter(function(x){return x.n>0;}).sort(function(a,b){return b.n-a.n;});
   var bestSrc=srcNet[0];
-  // Alerte
-  var alertHtml='';
-  var alerts=[];
-  if(cur.occ>0&&cur.occ<40) alerts.push('Occupation faible ('+Math.round(cur.occ)+'%)');
-  if(cur.netMad>0&&cur.marge<20) alerts.push('Marge basse ('+Math.round(cur.marge)+'%)');
-  if(alerts.length) alertHtml='<div class="dec-card dec-alert"><div class="dec-icon">⚠️</div><div class="dec-lbl">Alerte</div><div class="dec-val" style="color:var(--re);font-size:12px">'+alerts.join('<br>')+'</div></div>';
-  else alertHtml='<div class="dec-card dec-ok"><div class="dec-icon">✅</div><div class="dec-lbl">Performance</div><div class="dec-val" style="color:var(--gr);font-size:12px">Occupation et marge OK</div></div>';
   set('d-decisions',
     (bestAp&&bestAp.n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(bestAp.ap)+'</div><div class="dec-sub">'+fmt(bestAp.n)+'</div></div>':'')+
-    (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div><div class="dec-sub">'+fmt(bestSrc.n)+'</div></div>':'')+
-    alertHtml
+    (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div><div class="dec-sub">'+fmt(bestSrc.n)+'</div></div>':'')
   );
 
-  // ── Récap par appart + source ──
+  // ── Performance par appartement (enhanced) ──
+  var perf_mk=P['d']==='mois'?MO['d'].toISOString().slice(0,7):null;
+  var perf_days=periodDays('d');
   set('d-recap-ap',APPARTS.map(function(ap){
-    var x=revRes.filter(function(r){return r.appart===ap;});
-    var n=sum(x,'net');
-    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
+    var apR=revRes.filter(function(r){return r.appart===ap;});
+    var apNet2=sum(apR,'net')*EUR_MAD;
+    // occupation physique
+    var apNuits2=apR.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+    var apOcc2=perf_days>0?apNuits2/perf_days*100:0;
+    var badge,bdgCls;
+    if(apNet2===0&&apOcc2===0){badge='—';bdgCls='';}
+    else if(apOcc2>=60){badge='🟢 Bon';bdgCls='badge-bon';}
+    else if(apOcc2>=35){badge='🟠 Moyen';bdgCls='badge-moyen';}
+    else{badge='🔴 Faible';bdgCls='badge-faible';}
+    return '<div class="ap-perf-card">'+
+      '<div class="ap-perf-top">'+
+        '<div class="ap-perf-name">'+aptShort(ap)+'</div>'+
+        (bdgCls?'<span class="ap-perf-badge '+bdgCls+'">'+badge+'</span>':'<span style="font-size:11px;color:var(--td)">—</span>')+
+      '</div>'+
+      '<div class="ap-perf-net">'+fmt(apNet2)+'</div>'+
+      '<div class="ap-perf-occ">'+(apOcc2>0?Math.round(apOcc2)+'% occupation · '+apNuits2+' nuits':'Aucun séjour')+'</div>'+
+    '</div>';
   }).join(''));
   var sources=['Airbnb','Booking.com','Direct','VRBO'];
   set('d-recap-src',sources.map(function(src){
