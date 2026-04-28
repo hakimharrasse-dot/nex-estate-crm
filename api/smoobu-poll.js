@@ -286,6 +286,88 @@ async function enrichFromSmoobu(mapped, apiKey, stats) {
   }
 }
 
+// ── Filet de sécurité : ré-enrichir les enregistrements incomplets ──────────
+// Appelé après le traitement normal pour corriger les enregistrements déjà en
+// base qui ont un voyageur vide ou une ref absente/égale au smoobu_id, mais
+// qui ne figuraient pas dans la fenêtre de polling actuelle.
+//
+// Limité à MAX_REMEDIATE appels Smoobu par run pour rester dans le timeout Vercel.
+
+const MAX_REMEDIATE = 30;
+
+async function remediateStragglers(processedIds, apiKey, stats) {
+  // Construire la clause d'exclusion des IDs déjà traités dans ce run
+  const excl = processedIds.length
+    ? `&smoobu_id=not.in.(${processedIds.join(',')})`
+    : '';
+
+  // Récupérer les enregistrements incomplets (voyageur vide OU ref vide/null)
+  let incomplete;
+  try {
+    incomplete = await sbGet(
+      `resa?select=id,smoobu_id,ref,voyageur,source` +
+      `&smoobu_id=not.is.null` +
+      `&or=(voyageur.is.null,voyageur.eq.,ref.is.null,ref.eq.)` +
+      `&limit=${MAX_REMEDIATE}` + excl
+    );
+  } catch (err) {
+    console.log('[poll] WARN remediateStragglers query failed:', err.message);
+    return;
+  }
+
+  if (!incomplete || !incomplete.length) return;
+
+  console.log(`[poll] remediateStragglers: ${incomplete.length} enregistrement(s) incomplet(s) détecté(s)`);
+
+  for (const rec of incomplete) {
+    try {
+      const detailRes = await fetch(`${SMOOBU_API}/reservations/${rec.smoobu_id}`, {
+        headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' }
+      });
+      if (!detailRes.ok) {
+        console.log(`[poll] WARN remediate ${rec.smoobu_id}: HTTP ${detailRes.status}`);
+        stats.warnings++;
+        continue;
+      }
+      const detail = await detailRes.json();
+
+      const patch = {};
+
+      // Corriger le voyageur si absent
+      if (!rec.voyageur) {
+        const name = detail['guest-name'] ||
+          [detail.firstname, detail.lastname].filter(Boolean).join(' ').trim() ||
+          [detail.firstName, detail.lastName].filter(Boolean).join(' ').trim() || '';
+        if (name) {
+          patch.voyageur = name;
+        } else {
+          console.log(`[poll] WARN remediate ${rec.smoobu_id}: voyageur introuvable même en détail`);
+          stats.warnings++;
+        }
+      }
+
+      // Corriger la ref si absente ou égale au smoobu_id (sauf réservations directes)
+      const refDetail = detail['reference-id'] || detail.referenceId || detail.reference || '';
+      if (refDetail && (!rec.ref || rec.ref === rec.smoobu_id) && rec.source !== 'Direct') {
+        patch.ref = refDetail;
+      }
+
+      if (Object.keys(patch).length) {
+        await sbPatch('resa', rec.id, patch);
+        stats.remediated++;
+        console.log(`[poll] REMEDIATED ${rec.smoobu_id}:`, JSON.stringify(patch));
+      }
+    } catch (err) {
+      console.log(`[poll] WARN remediate ${rec.smoobu_id}: ${err.message}`);
+      stats.warnings++;
+    }
+  }
+
+  if (stats.remediated > 0) {
+    console.log(`[poll] remediateStragglers: ${stats.remediated} corrigé(s)`);
+  }
+}
+
 // ── Handler principal ─────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -354,7 +436,7 @@ export default async function handler(req, res) {
   const existingMap = {};
   (existing || []).forEach(r => { existingMap[r.smoobu_id] = r; });
 
-  const stats = { fetched: bookings.length, skipped: 0, warnings: 0, errors: 0, upserted: 0, enriched: 0 };
+  const stats = { fetched: bookings.length, skipped: 0, warnings: 0, errors: 0, upserted: 0, enriched: 0, remediated: 0 };
 
   // 3. Traiter chaque réservation
   for (const b of bookings) {
@@ -410,6 +492,9 @@ export default async function handler(req, res) {
       console.error(`[poll] ERROR booking ${b.id}:`, err.message);
     }
   }
+
+  // 4. Filet de sécurité — ré-enrichir les enregistrements incomplets hors fenêtre
+  await remediateStragglers(smoobuIds, process.env.SMOOBU_API_KEY, stats);
 
   console.log('[poll] terminé:', JSON.stringify(stats));
   return res.json({ ok: true, modifiedFrom, stats });
