@@ -1870,7 +1870,7 @@ function goTo(name) {
   if (ROLE) {
     var allowed = {
       admin:   null,  // accès total
-      manager: ['dash','resa','business','taxe','serv','doublons'],
+      manager: ['dash','resa','business','taxe','serv','doublons','team'],
       user:    ['resa'],
     };
     var list = allowed[ROLE];
@@ -1885,7 +1885,7 @@ function goTo(name) {
   allNav.forEach(function(el){
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
