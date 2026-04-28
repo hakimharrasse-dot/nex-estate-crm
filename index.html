@@ -111,6 +111,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .ch-booking{background:rgba(90,159,212,.12);color:var(--bl);}
 .ch-direct{background:var(--grs);color:var(--gr);}
 .ch-vrbo{background:rgba(155,125,232,.12);color:var(--pu);}
+.ch-smoobu-wait{background:rgba(90,159,212,.08);color:var(--bl);border:1px dashed rgba(90,159,212,.35);font-style:italic;}
 .apt{font-size:11px;color:var(--tm);background:var(--s2);border-radius:4px;padding:2px 6px;font-family:'DM Mono',monospace;}
 .empty{text-align:center;padding:36px;color:var(--td);}
 /* Buttons */
@@ -530,7 +531,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="r-fap" onchange="renderResa()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="r-fsrc" onchange="renderResa()"><option value="">Toutes sources</option><option>Airbnb</option><option>Booking.com</option><option>Direct</option><option>VRBO</option></select>
     <select class="fsel" id="r-ftype" onchange="renderResa()"><option value="">Tous types</option><option>RESERVATION</option><option>ANNULATION_PAYEE</option><option>ANNULATION_NON_PAYEE</option><option>RELOCATION</option><option>AIRCOVER</option><option>AJUSTEMENT</option><option>DIRECT</option></select>
-    <select class="fsel" id="r-fst" onchange="renderResa()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option></select>
+    <select class="fsel" id="r-fst" onchange="renderResa()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option><option value="__infos_manquantes__">Infos manquantes</option></select>
   </div></div>
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="r-chk-all" onchange="toggleResaAll(this.checked)" title="Tout sélectionner"></th><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
@@ -1101,6 +1102,11 @@ function setResaPreset(p) {
   renderResa();
 }
 function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
+function isInfoManquante(r) {
+  var vide = !(r.voyageur||'').trim() || (r.voyageur||'').trim()==='—';
+  var refNumeric = r.ref && r.smoobu_id && String(r.ref)===String(r.smoobu_id) && /^\d+$/.test(String(r.smoobu_id));
+  return !!(vide || refNumeric);
+}
 function colClass(c)   { var m={Hakim:'hakim',Amal:'amal',Rabiaa:'rabiaa',Touria:'touria',Équipe:'equipe'}; return m[c]||'equipe'; }
 function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'); }
 
@@ -1548,7 +1554,8 @@ function renderResa() {
   if(fa)   rows=rows.filter(function(r){return r.appart===fa;});
   if(fsrc) rows=rows.filter(function(r){return r.source===fsrc;});
   if(ftype)rows=rows.filter(function(r){return r.type_norm===ftype;});
-  if(fst)  rows=rows.filter(function(r){return r.statut===fst;});
+  if(fst==='__infos_manquantes__') rows=rows.filter(function(r){return isInfoManquante(r);});
+  else if(fst) rows=rows.filter(function(r){return r.statut===fst;});
   var srch=R_SEARCH.trim().toLowerCase();
   if(srch) rows=rows.filter(function(r){
     return [(r.ref||''),(r.voyageur||''),(r.appart||''),(r.source||''),(r.checkin||''),(r.checkout||''),(r.statut||''),(r.type_norm||'')].join(' ').toLowerCase().indexOf(srch)>=0;
@@ -1591,7 +1598,7 @@ function renderResa() {
       '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.override_manual?'<span title="Protégé — Smoobu ne peut pas écraser" style="color:var(--or);margin-right:3px">🔒</span>':'')+(r.ref||'')+'</td>'+
       '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
       '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
-      '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
+      '<td style="font-size:12px;color:var(--tm)">'+(isInfoManquante(r)?chip('Infos client en attente Smoobu','smoobu-wait'):(r.voyageur||'—'))+'</td>'+
       '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
       '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
       '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
