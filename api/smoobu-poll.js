@@ -144,15 +144,17 @@ async function sbPatch(table, id, fields) {
 // ── Mapper Smoobu booking → CRM row ──────────────────────────
 
 function mapSmoobuBooking(b) {
-  const src  = detectSrc(b.channel?.name || b.type || '');
-  const ap   = detectAp(b.apartment?.name || '');
+  // Les champs Smoobu API sont hyphenated/lowercase (ex: 'guest-name', 'reference-id')
+  if (b['is-blocked-booking'] === true) return null;
+
+  const src  = detectSrc((b.channel && b.channel.name) || b.type || '');
+  const ap   = detectAp((b.apartment && b.apartment.name) || '');
   const ci   = normDate(b.arrival || '');
   const co   = normDate(b.departure || '');
   const smoobuId = String(b.id);
-  const dateCreation = normDate(b.createdAt || b.created_at || '');
+  const dateCreation = normDate(b['created-at'] || b.createdAt || b.created_at || '');
 
   const prixEur = parseFloat(b.price || 0);
-  const commEur = parseFloat(b.commission || 0);
   const nuits   = parseInt(b.nights || '') || diffNuits(ci, co) || 0;
   const adultes = parseInt(b.adults || 1) || 1;
   const enfants = parseInt(b.children || 0) || 0;
@@ -170,11 +172,12 @@ function mapSmoobuBooking(b) {
   const nuitsFact  = (typeNorm === 'RESERVATION' || typeNorm === 'ANNULATION_PAYEE') ? nuits : 0;
   const nuitsSejou = typeNorm === 'RESERVATION' ? nuits : 0;
 
-  // Commission
+  // Commission — Smoobu renvoie 'commission-included' en POURCENTAGE (22.0 = 22%)
   let comPct, comEurFinal;
-  if (commEur > 0 && prixEur > 0 && commEur < prixEur) {
-    comEurFinal = commEur;
-    comPct      = commEur / prixEur;
+  const comRaw = parseFloat(b['commission-included'] || b.commission || 0);
+  if (comRaw > 0 && comRaw <= 100) {
+    comPct      = comRaw / 100;
+    comEurFinal = prixEur * comPct;
   } else {
     comPct      = COM[src] || 0;
     comEurFinal = prixEur * comPct;
@@ -185,7 +188,7 @@ function mapSmoobuBooking(b) {
   }
 
   // Taxe
-  let taxeEur = parseFloat(b.cityTax || b.city_tax || 0);
+  let taxeEur = parseFloat(b['city-tax'] || b.cityTax || b.city_tax || 0);
   if (!taxeEur && src === 'Booking.com' && nuitsSejou > 0 && ap) {
     taxeEur = nuitsSejou * adultes * tauxTaxe(ap);
   }
@@ -195,20 +198,31 @@ function mapSmoobuBooking(b) {
   const statut = typeNorm === 'ANNULATION_NON_PAYEE' ? 'Annulé'
     : (dp && today >= dp) ? 'Payé' : 'En attente';
 
-  // Ref plateforme
-  const notesRaw = b.note || b.notes || '';
+  // Ref plateforme — 'reference-id' est le champ natif Smoobu
+  const refPlateforme = b['reference-id'] || b.referenceId || '';
+  const notesRaw = b.notice || b.note || b.notes || '';
   const mRef = notesRaw.match(/Num[eé]ro de r[eé]servation[:\s]+([A-Za-z0-9]+)/i);
-  const entryRef = mRef ? mRef[1] : smoobuId;
+  const entryRef = refPlateforme || (mRef ? mRef[1] : smoobuId);
+
+  // Voyageur — 'guest-name' est le champ natif, sinon firstname/lastname (lowercase)
+  const voyageur = b['guest-name'] ||
+    [b.firstname, b.lastname].filter(Boolean).join(' ').trim() ||
+    [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || '';
+
+  if (!voyageur) {
+    console.log(`[poll] WARN voyageur vide après mapping ${smoobuId} — clés reçues:`,
+      Object.keys(b).filter(k => /name|guest|first|last/i.test(k)));
+  }
 
   return {
     smoobu_id:      smoobuId,
     ref:            entryRef,
     source:         src,
     appart:         ap,
-    voyageur:       [b.guestName, b.guest?.firstName, b.guest?.lastName].filter(Boolean).join(' ') || '',
-    phone:          b.guestPhone || b.guest?.phone || null,
-    email:          b.guestEmail || b.guest?.email || null,
-    guest_language: b.guestLanguage || b.guest?.language || null,
+    voyageur,
+    phone:          b.phone || null,
+    email:          b.email || null,
+    guest_language: b.language || null,
     adults:         adultes,
     children:       enfants,
     nb_personnes:   adultes,
@@ -245,20 +259,26 @@ async function enrichFromSmoobu(mapped, apiKey, stats) {
       return;
     }
     const detail = await detailRes.json();
-    const fn = detail.guest?.firstName || detail.firstName || detail.guestName || '';
-    const ln = detail.guest?.lastName  || detail.lastName  || '';
-    const fullName = [fn, ln].filter(Boolean).join(' ').trim();
+
+    // Smoobu detail endpoint: mêmes champs hyphenated/lowercase que le listing
+    const fullName = detail['guest-name'] ||
+      [detail.firstname, detail.lastname].filter(Boolean).join(' ').trim() ||
+      [detail.firstName, detail.lastName].filter(Boolean).join(' ').trim() || '';
+
     if (fullName) {
       mapped.voyageur = fullName;
       console.log(`[poll] ENRICHI voyageur ${mapped.smoobu_id}: "${fullName}"`);
     } else {
-      console.log(`[poll] WARNING voyageur toujours vide pour ${mapped.smoobu_id} (absent chez Smoobu)`);
+      console.log(`[poll] WARNING ${mapped.smoobu_id} vide même en détail — clés:`,
+        Object.keys(detail).filter(k => /name|guest|first|last/i.test(k)));
       stats.warnings++;
     }
-    // Enrichir ref seulement si encore = smoobu_id (pas de ref plateforme extraite)
-    if (mapped.ref === mapped.smoobu_id && detail.reference) {
-      mapped.ref = detail.reference;
-      console.log(`[poll] ENRICHI ref ${mapped.smoobu_id}: "${detail.reference}"`);
+
+    // Ref plateforme : 'reference-id' est le champ natif Smoobu
+    const refDetail = detail['reference-id'] || detail.referenceId || detail.reference || '';
+    if (mapped.ref === mapped.smoobu_id && refDetail) {
+      mapped.ref = refDetail;
+      console.log(`[poll] ENRICHI ref ${mapped.smoobu_id}: "${refDetail}"`);
     }
   } catch (err) {
     console.log(`[poll] WARNING enrichissement ${mapped.smoobu_id}: ${err.message}`);
@@ -283,6 +303,16 @@ export default async function handler(req, res) {
   }
   if (!process.env.SMOOBU_API_KEY) {
     return res.status(500).json({ error: 'SMOOBU_API_KEY manquant' });
+  }
+
+  // ?probe=SMOOBU_ID — retourne le JSON brut du détail pour diagnostiquer les champs
+  const probeId = req.query?.probe;
+  if (probeId) {
+    const pr = await fetch(`${SMOOBU_API}/reservations/${probeId}`, {
+      headers: { 'Api-Key': process.env.SMOOBU_API_KEY, 'Content-Type': 'application/json' }
+    });
+    const raw = await pr.json();
+    return res.json({ probe: probeId, status: pr.status, keys: Object.keys(raw), raw });
   }
 
   // Fenêtre temporelle — ?from=YYYY-MM-DD override la fenêtre automatique (backfill)
@@ -330,6 +360,7 @@ export default async function handler(req, res) {
   for (const b of bookings) {
     try {
       const mapped = mapSmoobuBooking(b);
+      if (!mapped) { stats.skipped++; continue; } // is-blocked-booking
       const smoobuId = mapped.smoobu_id;
 
       // Enrichissement individuel si voyageur vide après mapping
