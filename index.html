@@ -215,6 +215,59 @@ input[type=checkbox].scb{width:15px;height:15px;accent-color:var(--go);cursor:po
 input[type=checkbox].rcb{width:15px;height:15px;accent-color:var(--re);cursor:pointer;flex-shrink:0;}
 .toast-ok{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gr);color:#fff;border-radius:10px;padding:11px 22px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:opacity .4s;}
 .toast-ok.hide{opacity:0;}
+/* ── Visibilité par rôle ─────────────────────────────────────── */
+body.role-user #ng-pilotage,
+body.role-user .manager-plus,
+body.role-user #ng-perso,
+body.role-user #ng-admin { display:none!important; }
+body.role-manager .admin-only,
+body.role-manager #ng-perso,
+body.role-manager #ng-admin { display:none!important; }
+/* Dashboard — masquer résultat net / dépenses / marge / cash pour manager */
+body.role-manager #kc-res,
+body.role-manager #kc-dep,
+body.role-manager #kc-marge,
+body.role-manager #kc-circ-marge,
+body.role-manager .cash-row,
+body.role-manager #d-decisions { display:none!important; }
+/* Réservations — masquer col. net / taxe / checkbox / actions pour user */
+body.role-user #vw-resa .tw table th:nth-child(1),
+body.role-user #vw-resa .tw table td:nth-child(1),
+body.role-user #vw-resa .tw table th:nth-child(9),
+body.role-user #vw-resa .tw table td:nth-child(9),
+body.role-user #vw-resa .tw table th:nth-child(10),
+body.role-user #vw-resa .tw table td:nth-child(10),
+body.role-user #vw-resa .tw table th:last-child,
+body.role-user #vw-resa .tw table td:last-child { display:none!important; }
+body.role-user .r-card-net,
+body.role-user .r-card-acts,
+body.role-user .r-card-chk { display:none!important; }
+body.role-user .sel-bar { display:none!important; }
+body.role-user #r-add-btn { display:none!important; }
+/* Badge rôle sidebar */
+.role-badge { display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px; }
+.rb-admin   { background:rgba(224,82,82,.15);color:var(--re); }
+.rb-manager { background:rgba(200,119,58,.15);color:var(--or); }
+.rb-user    { background:var(--s2);color:var(--tm); }
+/* Bloc utilisateur sidebar */
+#user-info { margin-top:8px;background:var(--s2);border-radius:6px;padding:6px 8px;display:flex;align-items:center;gap:6px; }
+#user-email { flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'DM Mono',monospace;font-size:10px;color:var(--tm); }
+/* Admin — table utilisateurs */
+.au-row td { padding:10px 12px;border-bottom:1px solid var(--br);font-size:13px;vertical-align:middle; }
+.au-role-sel { background:var(--s);border:1px solid var(--br);border-radius:6px;padding:4px 8px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--tx);cursor:pointer; }
+.au-rl { display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px; }
+.au-rl-admin   { background:rgba(224,82,82,.15);color:var(--re); }
+.au-rl-manager { background:rgba(200,119,58,.15);color:var(--or); }
+.au-rl-user    { background:var(--s2);color:var(--tm); }
+.au-st { display:inline-block;font-size:11px;padding:2px 9px;border-radius:10px; }
+.au-on  { background:rgba(76,175,125,.15);color:var(--gr); }
+.au-off { background:rgba(224,82,82,.1);color:var(--re); }
+/* Formulaire création utilisateur */
+.cu-box { background:var(--s);border:1px solid var(--br);border-radius:14px;padding:20px 22px;margin-bottom:20px;display:none; }
+.cu-box.open { display:block; }
+.cu-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+@media(max-width:700px){.cu-grid{grid-template-columns:1fr;}}
+.sel-inline { background:var(--s);border:1px solid var(--br);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--tt);cursor:pointer; }
 /* Recherche live resa */
 .r-search{width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:9px 13px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:10px;}
 .r-search:focus{border-color:var(--gr);}
@@ -387,28 +440,36 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="bs">CRM v3.0 · Supabase</div>
     <div id="rate-disp" style="margin-top:8px;font-size:10px;color:var(--tm);font-family:'DM Mono',monospace;background:var(--s2);border-radius:6px;padding:5px 8px;text-align:center">1 EUR = — MAD</div>
     <div id="db-status" style="margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;background:var(--s2);border-radius:6px;padding:4px 8px;text-align:center;color:var(--td)">● Connexion...</div>
-    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
-      <button onclick="exportData()" style="background:var(--gr);color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">💾 Sauvegarder</button>
-      <button onclick="document.getElementById('imp-file').click()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">📂 Restaurer</button>
+    <div id="user-info">
+      <span id="user-email"></span>
+      <span id="user-role-badge" class="role-badge"></span>
+    </div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+      <button id="btn-save" class="admin-only" onclick="exportData()" style="background:var(--gr);color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">💾 Sauvegarder</button>
+      <button id="btn-restore" class="admin-only" onclick="document.getElementById('imp-file').click()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">📂 Restaurer</button>
       <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importData(this)">
       <button onclick="doLogout()" style="background:var(--s2);border:1px solid var(--br);color:var(--td);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🔒 Déconnexion</button>
     </div>
   </div>
-  <div class="ng">
+  <div class="ng manager-plus" id="ng-pilotage">
     <div class="nl">Pilotage</div>
     <div class="ni" id="ni-dash" onclick="goTo('dash')"><span class="dot"></span>Dashboard</div>
   </div>
   <div class="ng">
     <div class="nl">Business</div>
     <div class="ni on on-r" id="ni-resa" onclick="goTo('resa')"><span class="dot"></span>Réservations</div>
-    <div class="ni" id="ni-business" onclick="goTo('business')"><span class="dot"></span>Dépenses Business</div>
-    <div class="ni" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
-    <div class="ni" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
-    <div class="ni" id="ni-doublons" onclick="goTo('doublons')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Doublons <span id="dup-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
+    <div class="ni manager-plus" id="ni-business" onclick="goTo('business')"><span class="dot"></span>Dépenses Business</div>
+    <div class="ni manager-plus" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
+    <div class="ni manager-plus" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
+    <div class="ni manager-plus" id="ni-doublons" onclick="goTo('doublons')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Doublons <span id="dup-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
   </div>
-  <div class="ng">
+  <div class="ng" id="ng-perso">
     <div class="nl">Personnel</div>
     <div class="ni" id="ni-perso" onclick="goTo('perso')"><span class="dot"></span>Dépenses Perso</div>
+  </div>
+  <div class="ng admin-only" id="ng-admin">
+    <div class="nl">Administration</div>
+    <div class="ni" id="ni-admin" onclick="goTo('admin')"><span class="dot" style="background:var(--pu)"></span>Utilisateurs</div>
   </div>
 </div>
 
@@ -478,15 +539,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 
   <div class="kg">
     <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="kd" id="d-delta-net"></div></div>
-    <div class="kc"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
+    <div class="kc" id="kc-res"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
     <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div><div class="kd" id="d-delta-occ2"></div></div>
     <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
   </div>
   <div class="kg">
     <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="d-com">0 MAD</div></div>
-    <div class="kc"><div class="kl">Dépenses business</div><div class="kv" style="color:var(--or)" id="d-dep">0 MAD</div></div>
+    <div class="kc" id="kc-dep"><div class="kl">Dépenses business</div><div class="kv" style="color:var(--or)" id="d-dep">0 MAD</div></div>
     <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div><div class="kd" id="d-delta-revpan"></div></div>
-    <div class="kc"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div><div class="kd" id="d-delta-marge2"></div></div>
+    <div class="kc" id="kc-marge"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div><div class="kd" id="d-delta-marge2"></div></div>
   </div>
   <!-- Circle KPIs -->
   <div class="circ-row">
@@ -499,7 +560,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         <div class="circ-delta" id="d-delta-occ" style="color:var(--td)"></div>
       </div>
     </div>
-    <div class="circ-card">
+    <div class="circ-card" id="kc-circ-marge">
       <svg class="circ-svg" id="d-svg-marge" width="80" height="80" viewBox="0 0 80 80"></svg>
       <div class="circ-info">
         <div class="circ-lbl">Marge nette</div>
@@ -539,10 +600,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="vh">
     <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="ba ba-ghost" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
+      <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
-      <button class="bdel-mois" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
-      <button class="ba bar" onclick="openModal('resa')">+ Ajouter</button>
+      <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
+      <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
     </div>
   </div>
   <!-- Barre sélection multiple -->
@@ -796,6 +857,51 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div id="p-cards" class="p-cards"></div>
 </div>
 
+<!-- ═══ VIEW: ADMIN UTILISATEURS ═══ -->
+<div class="vw" id="vw-admin">
+  <div class="vh">
+    <div><div class="vt" style="background:linear-gradient(135deg,var(--pu),var(--bl));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Administration</div><div class="vsub">Gestion des comptes utilisateurs</div></div>
+    <button class="ba bab" onclick="toggleCreateUserForm()">+ Nouvel utilisateur</button>
+  </div>
+
+  <!-- Formulaire création -->
+  <div class="cu-box" id="cu-box">
+    <div class="sl" style="margin-top:0;margin-bottom:14px">Créer un compte</div>
+    <div class="cu-grid">
+      <div><label class="fl">Email *</label><input class="fi" id="cu-email" type="email" placeholder="agent@nex-estate.ma" autocomplete="off"></div>
+      <div><label class="fl">Nom complet</label><input class="fi" id="cu-name" type="text" placeholder="Prénom Nom"></div>
+      <div><label class="fl">Mot de passe temporaire *</label><input class="fi" id="cu-pass" type="password" placeholder="Min. 6 caractères" autocomplete="new-password"></div>
+      <div><label class="fl">Rôle *</label>
+        <select class="fi" id="cu-role">
+          <option value="user">👤 User — lecture seule</option>
+          <option value="manager">🔧 Manager — gestion opérationnelle</option>
+          <option value="admin">⚡ Admin — accès total</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <button class="ba bar" id="cu-submit-btn" onclick="adminCreateUser()">Créer l'utilisateur</button>
+      <button class="ba ba-ghost" onclick="toggleCreateUserForm()">Annuler</button>
+    </div>
+    <div class="login-err" id="cu-err" style="text-align:left;margin-top:10px"></div>
+    <div class="login-ok"  id="cu-ok"  style="text-align:left;margin-top:10px"></div>
+  </div>
+
+  <!-- Table utilisateurs -->
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Email</th>
+      <th class="hm">Nom</th>
+      <th>Rôle</th>
+      <th>Statut</th>
+      <th class="hm">Créé le</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="admin-users-tb"></tbody>
+  </table>
+  <div class="empty hidden" id="admin-users-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">👥</div>Aucun utilisateur</div></div>
+</div>
+
 </div><!-- /content -->
 </div><!-- /layout -->
 
@@ -894,6 +1000,8 @@ async function deleteOne(k, id) {
 
 // DB in-memory
 var DB = { resa:[], business:[], taxe:[], serv:[], perso:[] };
+var ROLE = null;          // 'admin' | 'manager' | 'user'
+var CURRENT_USER = null;  // { id, email, full_name, role, active }
 
 // ============================================================
 // AUTH — Supabase Auth (signInWithPassword + session persistante)
@@ -966,6 +1074,193 @@ async function doResetPassword() {
 }
 
 // ============================================================
+// RBAC — contrôle d'accès par rôle
+// ============================================================
+
+// Vérifie si l'utilisateur connecté peut effectuer une action
+function canDo(action) {
+  if (ROLE === 'admin') return true;
+  if (ROLE === 'manager') {
+    var ok = ['write_resa','write_biz','write_taxe','write_serv',
+              'bulk_biz','bulk_taxe','bulk_serv'];
+    return ok.indexOf(action) >= 0;
+  }
+  return false; // user : lecture seule
+}
+
+// Applique les restrictions visuelles et JS selon le rôle courant
+function applyRoleUI() {
+  var r = ROLE || 'user';
+  // Classe sur body pour les règles CSS
+  document.body.classList.remove('role-admin','role-manager','role-user');
+  document.body.classList.add('role-' + r);
+
+  // Badge et email dans la sidebar
+  var badge  = document.getElementById('user-role-badge');
+  var emailEl = document.getElementById('user-email');
+  if (badge) {
+    var lbl = { admin:'⚡ Admin', manager:'🔧 Manager', user:'👤 User' };
+    badge.textContent = lbl[r] || r;
+    badge.className   = 'role-badge rb-' + r;
+  }
+  if (emailEl && CURRENT_USER) {
+    emailEl.textContent = CURRENT_USER.full_name || CURRENT_USER.email || '';
+  }
+
+  // User : forcer vue resa
+  if (r === 'user') goTo('resa');
+}
+
+// ============================================================
+// ADMIN — Gestion utilisateurs
+// ============================================================
+
+function toggleCreateUserForm() {
+  var box = document.getElementById('cu-box');
+  if (!box) return;
+  var hidden = box.style.display === 'none' || box.style.display === '';
+  box.style.display = hidden ? 'block' : 'none';
+  if (hidden) {
+    // Reset form
+    ['cu-email','cu-name','cu-pass'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    var sel = document.getElementById('cu-role'); if (sel) sel.value = 'user';
+  }
+}
+
+async function adminCreateUser() {
+  var email    = (document.getElementById('cu-email')  || {}).value || '';
+  var fullName = (document.getElementById('cu-name')   || {}).value || '';
+  var password = (document.getElementById('cu-pass')   || {}).value || '';
+  var role     = (document.getElementById('cu-role')   || {}).value || 'user';
+  if (!email || !password) { showToast('⚠️ Email et mot de passe requis'); return; }
+  var btn = document.getElementById('cu-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Création…'; }
+  try {
+    var token = (await SUPA.auth.getSession()).data.session?.access_token;
+    var res = await fetch('/api/admin-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ email: email, full_name: fullName, password: password, role: role }),
+    });
+    var json = await res.json();
+    if (!res.ok) { showToast('❌ ' + (json.error || 'Erreur')); return; }
+    showToast('✅ Utilisateur créé');
+    toggleCreateUserForm();
+    renderAdminUsers();
+  } catch(e) {
+    showToast('❌ ' + (e.message || 'Erreur réseau'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Créer'; }
+  }
+}
+
+async function adminChangeRole(id, role) {
+  try {
+    var token = (await SUPA.auth.getSession()).data.session?.access_token;
+    var res = await fetch('/api/admin-users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ id: id, role: role }),
+    });
+    var json = await res.json();
+    if (!res.ok) { showToast('❌ ' + (json.error || 'Erreur')); renderAdminUsers(); return; }
+    showToast('✅ Rôle mis à jour');
+  } catch(e) {
+    showToast('❌ ' + (e.message || 'Erreur réseau'));
+    renderAdminUsers();
+  }
+}
+
+async function adminToggleActive(id, active) {
+  try {
+    var token = (await SUPA.auth.getSession()).data.session?.access_token;
+    var res = await fetch('/api/admin-users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ id: id, active: active }),
+    });
+    var json = await res.json();
+    if (!res.ok) { showToast('❌ ' + (json.error || 'Erreur')); renderAdminUsers(); return; }
+    showToast(active ? '✅ Compte activé' : '✅ Compte désactivé');
+    renderAdminUsers();
+  } catch(e) {
+    showToast('❌ ' + (e.message || 'Erreur réseau'));
+    renderAdminUsers();
+  }
+}
+
+async function adminResetPwd(email) {
+  if (!confirm('Envoyer un email de réinitialisation à ' + email + ' ?')) return;
+  var r = await SUPA.auth.resetPasswordForEmail(email);
+  if (r.error) { showToast('❌ ' + r.error.message); return; }
+  showToast('📧 Email envoyé à ' + email);
+}
+
+async function renderAdminUsers() {
+  if (ROLE !== 'admin') return;
+  var tb = document.getElementById('admin-users-tb');
+  var em = document.getElementById('admin-users-em');
+  if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--tm);padding:18px">Chargement…</td></tr>';
+  try {
+    var token = (await SUPA.auth.getSession()).data.session?.access_token;
+    var res = await fetch('/api/admin-users', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    var json = await res.json();
+    if (!res.ok) { tb.innerHTML = ''; showToast('❌ ' + (json.error || 'Erreur chargement')); return; }
+    var users = json.users || [];
+    if (!users.length) {
+      tb.innerHTML = '';
+      if (em) em.classList.remove('hidden');
+      return;
+    }
+    if (em) em.classList.add('hidden');
+    var rows = users.map(function(u) {
+      var isSelf = u.id === CURRENT_USER?.id;
+      var roleOpts = ['admin','manager','user'].map(function(r) {
+        return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
+      }).join('');
+      var activeLbl = u.active
+        ? '<span style="color:var(--gr);font-weight:700">● Actif</span>'
+        : '<span style="color:var(--re);font-weight:700">○ Inactif</span>';
+      var createdAt = u.created_at ? u.created_at.slice(0,10) : '—';
+      var actions = '';
+      if (!isSelf) {
+        actions += '<button class="ba" style="font-size:11px;padding:3px 8px;margin-right:4px" '
+          + 'onclick="adminToggleActive(\'' + u.id + '\',' + (!u.active) + ')">'
+          + (u.active ? 'Désactiver' : 'Activer') + '</button>';
+      }
+      actions += '<button class="ba" style="font-size:11px;padding:3px 8px" '
+        + 'onclick="adminResetPwd(\'' + u.email + '\')">Reset pwd</button>';
+      var roleSel = isSelf
+        ? '<span class="role-badge rb-' + u.role + '">' + u.role + '</span>'
+        : '<select class="sel-inline" onchange="adminChangeRole(\'' + u.id + '\',this.value)">'
+          + roleOpts + '</select>';
+      return '<tr>'
+        + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis">' + escHtml(u.email) + '</td>'
+        + '<td>' + escHtml(u.full_name || '—') + '</td>'
+        + '<td>' + roleSel + '</td>'
+        + '<td>' + activeLbl + '</td>'
+        + '<td>' + createdAt + '</td>'
+        + '<td style="white-space:nowrap">' + actions + '</td>'
+        + '</tr>';
+    }).join('');
+    tb.innerHTML = rows;
+  } catch(e) {
+    tb.innerHTML = '';
+    showToast('❌ ' + (e.message || 'Erreur réseau'));
+  }
+}
+
+// Échappe le HTML pour éviter XSS dans renderAdminUsers
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
 // INIT — checkAuth avant tout
 // ============================================================
 async function initApp() {
@@ -1021,29 +1316,55 @@ async function launchApp() {
   var overlay = document.getElementById('loading-overlay');
   var loadMsg = document.getElementById('loading-msg');
 
-  // Charger les données depuis Supabase — bloquant
+  // ── Charger le profil utilisateur (rôle) ──────────────────
+  loadMsg.textContent = 'Vérification du profil...';
+  var userRes = await SUPA.auth.getUser();
+  if (!userRes.data || !userRes.data.user) { await doLogout(); return; }
+  var userId    = userRes.data.user.id;
+  var userEmail = userRes.data.user.email;
+
+  var profRes = await SUPA.from('profiles')
+    .select('role,full_name,active,email')
+    .eq('id', userId)
+    .single();
+
+  if (profRes.error || !profRes.data) {
+    // Aucun profil trouvé — traiter comme admin (1ère connexion / migration)
+    ROLE = 'admin';
+    CURRENT_USER = { id: userId, email: userEmail, role: 'admin', full_name: '', active: true };
+    console.warn('[auth] Profil manquant — traité comme admin');
+  } else if (!profRes.data.active) {
+    var liErr = document.getElementById('li-err');
+    if (liErr) liErr.textContent = 'Compte désactivé. Contactez l\'administrateur.';
+    await doLogout(); return;
+  } else {
+    ROLE = profRes.data.role;
+    CURRENT_USER = { id: userId, email: userEmail,
+      full_name: profRes.data.full_name || '',
+      role:      profRes.data.role,
+      active:    profRes.data.active };
+  }
+  // ──────────────────────────────────────────────────────────
+
+  // Charger les données — RLS s'applique automatiquement via le JWT
   loadMsg.textContent = 'Chargement des données...';
   var ok = await loadAllDB();
 
   if (!ok) {
-    // Supabase inaccessible : garder l'overlay, afficher l'erreur, NE PAS rendre l'UI
     setDBStatus(false, 'Erreur Supabase');
     loadMsg.textContent = '⚠️ Impossible de charger les données. Vérifier la connexion.';
     if (overlay) {
-      overlay.style.display = 'flex'; // forcer l'overlay à rester visible
-      // Ajouter un bouton de reconnexion
+      overlay.style.display = 'flex';
       var retryBtn = document.createElement('button');
       retryBtn.textContent = 'Réessayer';
       retryBtn.style.cssText = 'margin-top:16px;background:#c8773a;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;';
       retryBtn.onclick = function() { overlay.removeChild(retryBtn); launchApp(); };
       overlay.appendChild(retryBtn);
     }
-    return; // STOP — UI non rendue
+    return;
   }
 
   setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
-
-  // Cacher l'overlay
   if (overlay) overlay.style.display = 'none';
 
   // Init UI
@@ -1052,7 +1373,12 @@ async function launchApp() {
   setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
   updateRateDisplay();
   fetchEurMad();
-  goTo('resa');
+
+  // Appliquer le rôle (CSS body + badge + navigation initiale)
+  applyRoleUI();
+
+  // goTo('resa') n'est appelé que si l'utilisateur n'est pas user (applyRoleUI le fait déjà)
+  if (ROLE !== 'user') goTo('resa');
 }
 
 // Enter key sur les formulaires auth
@@ -1346,14 +1672,26 @@ function renderView(k) {
 // ============================================================
 var CUR = 'resa';
 function goTo(name) {
+  // ── Bloquer la navigation selon le rôle ──
+  if (ROLE) {
+    var allowed = {
+      admin:   null,  // accès total
+      manager: ['dash','resa','business','taxe','serv','doublons'],
+      user:    ['resa'],
+    };
+    var list = allowed[ROLE];
+    if (list && list.indexOf(name) === -1) name = list[0];
+  }
   CUR = name;
   document.querySelectorAll('.vw').forEach(function(v){v.classList.remove('active');});
-  document.getElementById('vw-'+name).classList.add('active');
+  var vw = document.getElementById('vw-'+name);
+  if (!vw) return;
+  vw.classList.add('active');
   var allNav = document.querySelectorAll('.ni,.mbt');
   allNav.forEach(function(el){
-    el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d');
+    el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
@@ -1361,6 +1699,7 @@ function goTo(name) {
   if(mn){mn.classList.add(cls);}
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
   if(navKey) renderNav(navKey);
+  if (name === 'admin') { renderAdminUsers(); return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
@@ -1866,6 +2205,7 @@ function updateResaSelBar() {
 }
 
 async function deleteResaSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   var ids=Object.keys(RESA_SEL);
   if(!ids.length) return;
   if(!confirm('Supprimer '+ids.length+' réservation'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
@@ -1885,6 +2225,7 @@ async function deleteResaSel() {
 }
 
 async function deleteResaMois() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   if(P['r']!=='mois') { alert('Activez le filtre "Mois" pour utiliser cette fonction.'); return; }
   var mk=MO['r'].toISOString().slice(0,7);
   var toDelete=filterResa(DB.resa,'r');
@@ -2454,6 +2795,7 @@ function updateDupSelBar() {
 }
 
 async function deleteDupSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   var ids = Object.keys(DUP_SEL);
   if(!ids.length) return;
   if(!confirm('Supprimer '+ids.length+' entrée'+(ids.length>1?'s':'')+' de la table resa ? Action irréversible.')) return;
@@ -2511,6 +2853,7 @@ async function bulkBiz(statut) {
   showToast('✅ '+ids.length+' dépense'+(ids.length>1?'s':'')+' marquée'+(ids.length>1?'s':'')+' "'+statut+'"');
 }
 async function deleteBizSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   var ids=Object.keys(BIZ_SEL);
   if(!ids.length) return;
   if(!confirm('Supprimer '+ids.length+' dépense'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
@@ -2561,6 +2904,7 @@ async function bulkTaxe(statut) {
   showToast('✅ '+ids.length+' taxe'+(ids.length>1?'s':'')+' marquée'+(ids.length>1?'s':'')+' "'+statut+'"');
 }
 async function deleteTaxeSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   var ids=Object.keys(TAXE_SEL);
   if(!ids.length) return;
   if(!confirm('Supprimer '+ids.length+' taxe'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
@@ -2611,6 +2955,7 @@ async function bulkServ(statut) {
   showToast('✅ '+ids.length+' service'+(ids.length>1?'s':'')+' marqué'+(ids.length>1?'s':'')+' "'+statut+'"');
 }
 async function deleteServSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
   var ids=Object.keys(SERV_SEL);
   if(!ids.length) return;
   if(!confirm('Supprimer '+ids.length+' service'+(ids.length>1?'s':'')+' ? Action irréversible.')) return;
@@ -2623,6 +2968,12 @@ async function deleteServSel() {
 var M_TYPE='', M_ID=null;
 
 function openModal(type, id) {
+  // ── Guard rôle ──
+  var writeMap = { resa:'write_resa', business:'write_biz',
+                   taxe:'write_taxe', serv:'write_serv', perso:'__admin__' };
+  if (type === 'perso' && ROLE !== 'admin') { showToast('⛔ Réservé aux admins'); return; }
+  if (type !== 'perso' && !canDo(writeMap[type]||'')) { showToast('⛔ Accès refusé'); return; }
+
   M_TYPE=type; M_ID=id||null;
   var title=id?'Modifier':'Nouvelle entrée';
   var saveCls={resa:'bar',business:'bab',taxe:'bat',serv:'bas',perso:'bap'}[type]||'bab';
@@ -2632,15 +2983,33 @@ function openModal(type, id) {
   document.getElementById('modal-body').innerHTML=buildForm(type, id);
   document.getElementById('modal-overlay').classList.remove('hidden');
   if(type==='resa') {
-    ['fi-ci','fi-co','fi-np','fi-brut','fi-app','fi-com'].forEach(function(id){
-      var el=document.getElementById(id);
+    ['fi-ci','fi-co','fi-np','fi-brut','fi-app','fi-com'].forEach(function(fid){
+      var el=document.getElementById(fid);
       if(el) el.addEventListener('change', autoCalcResa);
     });
-    ['fi-src','fi-type'].forEach(function(id){
-      var el=document.getElementById(id);
+    ['fi-src','fi-type'].forEach(function(fid){
+      var el=document.getElementById(fid);
       if(el) el.addEventListener('change', resetComForSrcType);
     });
     autoCalcResa();
+
+    // Manager éditant une réservation existante : verrouiller les champs financiers
+    if (id && ROLE === 'manager') {
+      setTimeout(function() {
+        ['fi-brut','fi-com','fi-net','fi-taxe','fi-override'].forEach(function(fid) {
+          var el = document.getElementById(fid);
+          if (!el) return;
+          el.disabled = true;
+          el.style.opacity = '0.45';
+          el.style.pointerEvents = 'none';
+        });
+        var notice = document.createElement('div');
+        notice.style.cssText = 'background:rgba(200,119,58,.1);border:1px solid rgba(200,119,58,.3);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--or);margin-bottom:10px';
+        notice.textContent = '🔒 Champs financiers verrouillés — modification réservée aux admins.';
+        var fg = document.querySelector('#modal-body .fg');
+        if (fg) fg.insertBefore(notice, fg.firstChild);
+      }, 30);
+    }
   }
 }
 
@@ -3318,6 +3687,7 @@ function showCSVPrev(rejectedCount) {
 }
 
 async function confirmCSV() {
+  if (ROLE !== 'admin') { showToast('⛔ Import réservé aux admins'); return; }
   // Index smoobu_id → position dans DB.resa
   var dbSmoobuIdx = {};
   DB.resa.forEach(function(r, idx) { if (r.smoobu_id) dbSmoobuIdx[r.smoobu_id] = idx; });
@@ -3394,6 +3764,7 @@ document.getElementById('modal-overlay').addEventListener('click',function(e){if
 // EXPORT / IMPORT
 // ============================================================
 function exportData() {
+  if (ROLE !== 'admin') { showToast('⛔ Export réservé aux admins'); return; }
   var backup = {
     version: 2,
     date: new Date().toISOString().slice(0,10),
@@ -3413,6 +3784,7 @@ function exportData() {
 }
 
 function importData(input) {
+  if (ROLE !== 'admin') { showToast('⛔ Import réservé aux admins'); return; }
   var file = input.files[0]; if(!file) return;
   var reader = new FileReader();
   reader.onload = async function(e) {
