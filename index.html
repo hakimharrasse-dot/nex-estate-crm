@@ -923,7 +923,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div class="mt" id="team-modal-title">Nouveau membre</div>
       <div class="fg">
         <div class="ff ffw"><label class="fl">Nom complet *</label><input class="fi" id="tm-name" type="text" placeholder="Prénom Nom"></div>
-        <div class="ff"><label class="fl">Rôle *</label><select class="fi" id="tm-role"><option value="cleaner">Femme de ménage</option><option value="manager">Manager</option><option value="staff">Staff</option></select></div>
+        <div class="ff"><label class="fl">Rôle *</label><select class="fi" id="tm-role"><option value="cleaner">Femme de ménage</option><option value="manager">Manager</option><option value="technician">Technicien</option><option value="driver">Chauffeur</option><option value="other">Autre</option></select></div>
         <div class="ff"><label class="fl">Téléphone</label><input class="fi" id="tm-phone" type="tel" placeholder="+212 6XX XXX XXX"></div>
         <div class="ff"><label class="fl">Email</label><input class="fi" id="tm-email" type="email" placeholder="membre@exemple.com"></div>
         <div class="ff ffw"><label class="fl">Notes</label><input class="fi" id="tm-notes" type="text" placeholder="Notes internes"></div>
@@ -1346,24 +1346,55 @@ async function saveTeamModal() {
   var email = (document.getElementById('tm-email')||{}).value||'';
   var notes = (document.getElementById('tm-notes')||{}).value||'';
   var errEl = document.getElementById('team-err');
-  if (!name.trim()) {
-    if (errEl) { errEl.textContent='Le nom est requis'; errEl.classList.remove('hidden'); }
+  var showErr = function(msg) {
+    if (errEl) { errEl.textContent=msg; errEl.classList.remove('hidden'); }
+    showToast('❌ '+msg);
+  };
+  if (!name.trim()) { showErr('Le nom est requis'); return; }
+
+  var isNew = !TM_ID;
+  // Payload sans id pour INSERT (PostgreSQL génère le UUID via gen_random_uuid())
+  var payload = {
+    name:   name.trim(),
+    role:   role,
+    phone:  phone.trim() || null,
+    email:  email.trim() || null,
+    notes:  notes.trim() || null,
+    active: true
+  };
+
+  var res;
+  if (isNew) {
+    // INSERT — pas d'id côté client (colonne uuid, uid() n'est pas un UUID valide)
+    res = await SUPA.from(TABLE.team).insert(payload).select().single();
+  } else {
+    // UPDATE — on fournit l'id existant (vrai UUID)
+    var existing = DB.team.find(function(m){return m.id===TM_ID;});
+    payload.id     = TM_ID;
+    payload.active = existing ? existing.active : true;
+    res = await SUPA.from(TABLE.team).upsert(payload, {onConflict:'id'}).select().single();
+  }
+
+  if (res.error) {
+    showErr(res.error.message || 'Erreur Supabase');
     return;
   }
-  var entry = { id: TM_ID||uid(), name:name.trim(), role:role, phone:phone.trim(), email:email.trim(), notes:notes.trim(), active:true };
-  if (TM_ID) {
-    // Update existing (keep active flag)
-    var existing = DB.team.find(function(m){return m.id===TM_ID;});
-    if (existing) entry.active = existing.active;
+
+  // Reload liste depuis Supabase
+  var listRes = await SUPA.from(TABLE.team).select('*').order('name');
+  if (!listRes.error) {
+    DB.team = listRes.data || [];
+  } else {
+    // Fallback : mise à jour mémoire uniquement
+    var saved = res.data;
+    var idx = DB.team.findIndex(function(m){return m.id===saved.id;});
+    if (idx >= 0) DB.team[idx] = saved; else DB.team.push(saved);
   }
-  await upsert('team', entry);
-  // Reload team from DB
-  var res = await SUPA.from(TABLE.team).select('*');
-  if (!res.error) DB.team = res.data||[];
+
   closeTeamModal();
   populateTeamSelects();
   renderTeamAdmin();
-  showToast(TM_ID ? '✅ Membre mis à jour' : '✅ Membre ajouté');
+  showToast(isNew ? '✅ Membre ajouté' : '✅ Membre mis à jour');
 }
 
 async function teamToggleActive(id, active) {
@@ -1392,7 +1423,7 @@ function renderTeamAdmin() {
     return;
   }
   if (em) em.classList.add('hidden');
-  var roleLabels = { cleaner:'Femme de ménage', manager:'Manager', staff:'Staff' };
+  var roleLabels = { cleaner:'Femme de ménage', manager:'Manager', technician:'Technicien', driver:'Chauffeur', field_agent:'Agent terrain', customer_support:'Support client', other:'Autre' };
   tb.innerHTML = list.map(function(m){
     var cc = colClass(m.name);
     return '<tr style="opacity:'+(m.active?1:.5)+'">'+
