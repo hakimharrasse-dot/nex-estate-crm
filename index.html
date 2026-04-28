@@ -106,6 +106,11 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .ch-rabiaa{background:rgba(61,189,170,.12);color:var(--te);}
 .ch-touria{background:rgba(232,200,74,.12);color:var(--go);}
 .ch-equipe{background:var(--s2);color:var(--tm);}
+/* Palette dynamique membres équipe (tm0..tm7) */
+.ch-tm0{background:rgba(155,125,232,.12);color:var(--pu);}.ch-tm1{background:rgba(61,189,170,.12);color:var(--te);}
+.ch-tm2{background:rgba(232,200,74,.12);color:var(--go);}.ch-tm3{background:rgba(90,159,212,.12);color:var(--bl);}
+.ch-tm4{background:rgba(200,119,58,.12);color:var(--or);}.ch-tm5{background:rgba(224,82,82,.12);color:var(--re);}
+.ch-tm6{background:rgba(127,186,0,.12);color:var(--gr);}.ch-tm7{background:var(--s2);color:var(--tm);}
 .ch-rev{background:var(--grs);color:var(--gr);}
 .ch-airbnb{background:rgba(224,82,82,.12);color:var(--re);}
 .ch-booking{background:rgba(90,159,212,.12);color:var(--bl);}
@@ -131,6 +136,7 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .bap{background:var(--pu);color:#fff;}
 .bar{background:var(--gr);color:#fff;}
 .ba-ghost{background:var(--s2);border:1px solid var(--br);color:var(--tm);}
+.ba-sm{background:var(--s2);border:1px solid var(--br);color:var(--tm);padding:5px 11px;font-size:12px;}
 /* Chips selector */
 .chips-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
 .achip{background:var(--s2);border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;user-select:none;transition:all .15s;}
@@ -471,6 +477,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="ng admin-only" id="ng-admin">
     <div class="nl">Administration</div>
     <div class="ni" id="ni-admin" onclick="goTo('admin')"><span class="dot" style="background:var(--pu)"></span>Utilisateurs</div>
+    <div class="ni admin-only" id="ni-team" onclick="goTo('team')"><span class="dot" style="background:var(--te)"></span>Équipe</div>
   </div>
 </div>
 
@@ -697,7 +704,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div id="b-nav"></div>
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="b-fcat" onchange="bizFilter()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
-    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toutes femmes de ménage</option><option>Amal</option><option>Rabiaa</option><option>Touria</option></select>
+    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toutes femmes de ménage</option></select>
     <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
   </div></div>
   <!-- Barre sélection business -->
@@ -903,6 +910,47 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="empty hidden" id="admin-users-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">👥</div>Aucun utilisateur</div></div>
 </div>
 
+<!-- ═══ VIEW: ADMIN ÉQUIPE ═══ -->
+<div class="vw" id="vw-team">
+  <div class="vh">
+    <div><div class="vt" style="background:linear-gradient(135deg,var(--te),var(--bl));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Équipe</div><div class="vsub">Gestion des membres du personnel</div></div>
+    <button class="ba bab" onclick="openTeamModal(null)">+ Nouveau membre</button>
+  </div>
+
+  <!-- Modal team member -->
+  <div class="ov hidden" id="team-ov" onclick="if(event.target===this)closeTeamModal()">
+    <div class="mbox" style="max-width:440px">
+      <div class="mt" id="team-modal-title">Nouveau membre</div>
+      <div class="fg">
+        <div class="ff ffw"><label class="fl">Nom complet *</label><input class="fi" id="tm-name" type="text" placeholder="Prénom Nom"></div>
+        <div class="ff"><label class="fl">Rôle *</label><select class="fi" id="tm-role"><option value="cleaner">Femme de ménage</option><option value="manager">Manager</option><option value="staff">Staff</option></select></div>
+        <div class="ff"><label class="fl">Téléphone</label><input class="fi" id="tm-phone" type="tel" placeholder="+212 6XX XXX XXX"></div>
+        <div class="ff"><label class="fl">Email</label><input class="fi" id="tm-email" type="email" placeholder="membre@exemple.com"></div>
+        <div class="ff ffw"><label class="fl">Notes</label><input class="fi" id="tm-notes" type="text" placeholder="Notes internes"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+        <button class="ba bar" onclick="saveTeamModal()">Enregistrer</button>
+        <button class="ba ba-ghost" onclick="closeTeamModal()">Annuler</button>
+      </div>
+      <div class="login-err hidden" id="team-err" style="text-align:left;margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Table membres -->
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Nom</th>
+      <th>Rôle</th>
+      <th class="hm">Téléphone</th>
+      <th class="hm">Email</th>
+      <th>Statut</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="team-tb"></tbody>
+  </table>
+  <div class="empty hidden" id="team-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">👥</div>Aucun membre</div></div>
+</div>
+
 </div><!-- /content -->
 </div><!-- /layout -->
 
@@ -938,7 +986,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 var SUPA_URL = 'https://zjultuaqkzjupiiewxhy.supabase.co';
 var SUPA_KEY = 'sb_publishable_r106TzPRWMQ9xfDavbiDIA_FQF1Nz2E';
 var SUPA = null;
-var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso'};
+var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso', team:'team_members'};
 
 function initSupabase() {
   if (typeof supabase === 'undefined') { setDBStatus(false, 'SDK non chargé'); return false; }
@@ -1000,7 +1048,7 @@ async function deleteOne(k, id) {
 }
 
 // DB in-memory
-var DB = { resa:[], business:[], taxe:[], serv:[], perso:[] };
+var DB = { resa:[], business:[], taxe:[], serv:[], perso:[], team:[] };
 var ROLE = null;          // 'admin' | 'manager' | 'user'
 var CURRENT_USER = null;  // { id, email, full_name, role, active }
 
@@ -1264,6 +1312,108 @@ function escHtml(str) {
 }
 
 // ============================================================
+// TEAM MANAGEMENT
+// ============================================================
+var TM_ID = null;
+
+function openTeamModal(id) {
+  TM_ID = id || null;
+  var rec = id ? DB.team.find(function(m){return m.id===id;}) : null;
+  var title = document.getElementById('team-modal-title');
+  if (title) title.textContent = rec ? 'Modifier ' + (rec.name||'membre') : 'Nouveau membre';
+  var setVal = function(elId, val){ var el=document.getElementById(elId); if(el) el.value=val||''; };
+  setVal('tm-name',  rec ? rec.name  : '');
+  setVal('tm-role',  rec ? rec.role  : 'cleaner');
+  setVal('tm-phone', rec ? rec.phone : '');
+  setVal('tm-email', rec ? rec.email : '');
+  setVal('tm-notes', rec ? rec.notes : '');
+  var errEl = document.getElementById('team-err');
+  if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
+  var ov = document.getElementById('team-ov');
+  if (ov) ov.classList.remove('hidden');
+}
+
+function closeTeamModal() {
+  TM_ID = null;
+  var ov = document.getElementById('team-ov');
+  if (ov) ov.classList.add('hidden');
+}
+
+async function saveTeamModal() {
+  var name  = (document.getElementById('tm-name')||{}).value||'';
+  var role  = (document.getElementById('tm-role')||{}).value||'cleaner';
+  var phone = (document.getElementById('tm-phone')||{}).value||'';
+  var email = (document.getElementById('tm-email')||{}).value||'';
+  var notes = (document.getElementById('tm-notes')||{}).value||'';
+  var errEl = document.getElementById('team-err');
+  if (!name.trim()) {
+    if (errEl) { errEl.textContent='Le nom est requis'; errEl.classList.remove('hidden'); }
+    return;
+  }
+  var entry = { id: TM_ID||uid(), name:name.trim(), role:role, phone:phone.trim(), email:email.trim(), notes:notes.trim(), active:true };
+  if (TM_ID) {
+    // Update existing (keep active flag)
+    var existing = DB.team.find(function(m){return m.id===TM_ID;});
+    if (existing) entry.active = existing.active;
+  }
+  await upsert('team', entry);
+  // Reload team from DB
+  var res = await SUPA.from(TABLE.team).select('*');
+  if (!res.error) DB.team = res.data||[];
+  closeTeamModal();
+  populateTeamSelects();
+  renderTeamAdmin();
+  showToast(TM_ID ? '✅ Membre mis à jour' : '✅ Membre ajouté');
+}
+
+async function teamToggleActive(id, active) {
+  var patch = { active: active };
+  var res = await SUPA.from(TABLE.team).update(patch).eq('id', id);
+  if (res.error) { showToast('❌ Erreur mise à jour'); return; }
+  var m = DB.team.find(function(x){return x.id===id;});
+  if (m) m.active = active;
+  populateTeamSelects();
+  renderTeamAdmin();
+  showToast(active ? '✅ Membre activé' : '✅ Membre désactivé');
+}
+
+function renderTeamAdmin() {
+  if (ROLE !== 'admin' && ROLE !== 'manager') return;
+  var tb = document.getElementById('team-tb');
+  var em = document.getElementById('team-em');
+  if (!tb) return;
+  var list = DB.team.slice().sort(function(a,b){
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    return (a.name||'').localeCompare(b.name||'');
+  });
+  if (!list.length) {
+    tb.innerHTML='';
+    if (em) em.classList.remove('hidden');
+    return;
+  }
+  if (em) em.classList.add('hidden');
+  var roleLabels = { cleaner:'Femme de ménage', manager:'Manager', staff:'Staff' };
+  tb.innerHTML = list.map(function(m){
+    var cc = colClass(m.name);
+    return '<tr style="opacity:'+(m.active?1:.5)+'">'+
+      '<td><span class="ch '+cc+'" style="font-size:13px;padding:3px 9px">'+escHtml(m.name)+'</span></td>'+
+      '<td style="font-size:12px;color:var(--td)">'+escHtml(roleLabels[m.role]||m.role)+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(m.phone||'—')+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(m.email||'—')+'</td>'+
+      '<td><span class="ch '+(m.active?'ch-ok':'ch-att')+'" style="font-size:12px">'+
+        (m.active?'Actif':'Inactif')+'</span></td>'+
+      '<td style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+
+        '<button class="ba ba-sm" onclick="openTeamModal(\''+m.id+'\')">✏️ Modifier</button>'+
+        (m.active
+          ? '<button class="ba ba-sm" style="color:var(--re);border-color:var(--re)" onclick="teamToggleActive(\''+m.id+'\',false)">Désactiver</button>'
+          : '<button class="ba ba-sm" style="color:var(--gr);border-color:var(--gr)" onclick="teamToggleActive(\''+m.id+'\',true)">Activer</button>'
+        )+
+      '</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// ============================================================
 // INIT — checkAuth avant tout
 // ============================================================
 async function initApp() {
@@ -1379,6 +1529,7 @@ async function launchApp() {
 
   // Appliquer le rôle (CSS body + badge + navigation initiale)
   applyRoleUI();
+  populateTeamSelects();
 
   // goTo('resa') n'est appelé que si l'utilisateur n'est pas user (applyRoleUI le fait déjà)
   if (ROLE !== 'user') goTo('resa');
@@ -1403,7 +1554,6 @@ var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
-var CLEANERS = ['Amal','Rabiaa','Touria'];
 var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
@@ -1556,7 +1706,48 @@ function isInfoManquante(r) {
   var refNumeric = r.ref && r.smoobu_id && String(r.ref)===String(r.smoobu_id) && /^\d+$/.test(String(r.smoobu_id));
   return !!(vide || refNumeric);
 }
-function colClass(c)   { var m={Hakim:'hakim',Amal:'amal',Rabiaa:'rabiaa',Touria:'touria',Équipe:'equipe'}; return m[c]||'equipe'; }
+function colClass(c) {
+  var fixed={Hakim:'hakim',Équipe:'equipe'};
+  if (fixed[c]) return fixed[c];
+  if (!c) return 'equipe';
+  var h=0; for(var i=0;i<c.length;i++) h=((h<<5)-h+c.charCodeAt(i))|0;
+  return 'tm'+(Math.abs(h)%8);
+}
+
+// ── Helpers équipe ──────────────────────────────────────────
+function getCleaners(onlyActive) {
+  var list = DB.team.filter(function(m){ return m.role==='cleaner' && (!onlyActive || m.active); });
+  list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  return list;
+}
+
+function buildFmenOptions(selectedName) {
+  var opts = '<option value="">— Non applicable —</option>';
+  getCleaners(true).forEach(function(m){
+    opts += '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(m.name)+'</option>';
+  });
+  return opts;
+}
+
+function populateTeamSelects() {
+  // b-fmen filter select
+  var bfmen = document.getElementById('b-fmen');
+  if (bfmen) {
+    var cur = bfmen.value;
+    bfmen.innerHTML = '<option value="">Toutes femmes de ménage</option>';
+    getCleaners(true).forEach(function(m){
+      bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
+    });
+  }
+}
+
+function onBizCatChange(sel) {
+  var ffFmen = document.getElementById('ff-fmen');
+  if (!ffFmen) return;
+  ffFmen.style.display = (sel && sel.value === 'Ménage') ? 'block' : 'none';
+}
+// ───────────────────────────────────────────────────────────
+
 function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'); }
 
 function actBtns(type,id) {
@@ -1703,6 +1894,7 @@ function goTo(name) {
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
   if(navKey) renderNav(navKey);
   if (name === 'admin') { renderAdminUsers(); return; }
+  if (name === 'team') { renderTeamAdmin(); return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
@@ -2362,7 +2554,7 @@ function renderBiz() {
 function renderWkCards() {
   var w=wkRange(wkRef);
   set('wk-lbl',w.s+' → '+w.e.slice(5));
-  set('wk-cards',CLEANERS.map(function(name){
+  set('wk-cards',getCleaners(true).map(function(m){ var name=m.name;
     // Uniquement les dépenses "En attente" pour le calcul à payer
     var bRows=DB.business.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.fmen===name&&r.statut==='En attente';});
     var men=sum(bRows.filter(function(r){return r.cat==='Ménage';}),'montant');
@@ -3150,8 +3342,8 @@ function buildForm(type, editId) {
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
-      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen"><option value="">— Non applicable —</option>'+CLEANERS.map(function(c){return '<option'+(v('fmen')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(v('cat')==='Ménage'?'block':'none')+'"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
@@ -3329,17 +3521,20 @@ async function saveResa() {
 async function saveBiz() {
   var montant=parseFloat(gv('fi-montant'))||0, date=gv('fi-date');
   if(!date||!montant){alert('Date et montant requis');return;}
+  var fmenName=gv('fi-fmen')||'';
+  var fmenMember=DB.team.find(function(m){return m.name===fmenName&&m.active;});
+  var fmenId=fmenMember?fmenMember.id:null;
   var scope = gv('fi-scope') || 'property';
   if(scope === 'global') {
     // Entrée unique, appart = null (pas de string 'Global'), scope = 'global'
-    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
+    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:gv('fi-cat'),fmen:fmenName,fmen_id:fmenId,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:gv('fi-cat'),fmen:gv('fi-fmen')||'',desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:gv('fi-cat'),fmen:fmenName,fmen_id:fmenId,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
     }
   }
   closeModal(); renderBiz();
