@@ -801,7 +801,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: DOUBLONS ═══ -->
 <div class="vw" id="vw-doublons">
   <div class="vh">
-    <div><div class="vt" style="color:var(--re)">Doublons</div><div class="vsub">Réservations importées en double — détection par ref / Smoobu ID</div></div>
+    <div><div class="vt" style="color:var(--re)">Doublons</div><div class="vsub">Détection par Smoobu ID · ref identique · même séjour + voyageur + type</div></div>
     <button class="ba ba-ghost" onclick="renderDoublons()">🔄 Rafraîchir</button>
   </div>
   <div class="kg">
@@ -820,7 +820,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="dup-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="dup-chk-all" onchange="toggleDupAll(this.checked)" title="Tout sélectionner"></th><th>Doublon</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Net</th><th>Type</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="dup-chk-all" onchange="toggleDupAll(this.checked)" title="Tout sélectionner"></th><th>Raison</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Net</th><th>Type</th><th>Statut</th><th></th></tr></thead>
     <tbody id="dup-tb"></tbody>
   </table><div class="empty hidden" id="dup-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté</div></div>
   <div id="dup-cards" class="dup-cards"></div>
@@ -2624,33 +2624,99 @@ function renderPerso() {
 // ============================================================
 // RENDER: DOUBLONS
 // ============================================================
-function renderDoublons() {
-  var smoobuCount = {}, refCount = {};
+
+// ── Normalise un nom pour comparaison (accents, casse, ordre des mots) ──
+function _normName(s) {
+  if (!s) return '';
+  return s.toLowerCase().trim()
+    .replace(/[àáâãäå]/g,'a').replace(/[éèêë]/g,'e')
+    .replace(/[íìîï]/g,'i').replace(/[óòôõö]/g,'o')
+    .replace(/[úùûü]/g,'u').replace(/[ç]/g,'c').replace(/[ñ]/g,'n')
+    .replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim()
+    .split(' ').sort().join(' ');
+}
+function _sameName(a, b) {
+  if (!a || !b) return false;
+  var na = _normName(a), nb = _normName(b);
+  return na.length > 0 && nb.length > 0 && na === nb;
+}
+
+// ── Détecte tous les doublons avec raison — source unique de vérité ──────
+// Retourne { dups[], dupReasons{id->string}, groupKey{id->string},
+//            smoobuCount{}, refCount{} }
+function detectDups() {
+  var smoobuCount = {}, refCount = {}, stayGroups = {};
+
   DB.resa.forEach(function(r) {
+    // Règle 1 : même smoobu_id
     if (r.smoobu_id) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
-    // Ref générées localement (uid) ne comptent pas comme vrai doublon
-    var isNativeRef = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
-    if (r.ref && !isNativeRef) refCount[r.ref] = (refCount[r.ref]||0)+1;
+    // Règle 2 : même ref (hors refs générées localement AIR-xxx, BKG-xxx…)
+    var isNative = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+    if (r.ref && !isNative) refCount[r.ref] = (refCount[r.ref]||0)+1;
+    // Règle 3 : même séjour (appart + checkin + checkout + nuits + type_norm)
+    if (r.appart && r.checkin && r.checkout && r.type_norm) {
+      var nuits = (r.nuits_sejour != null) ? r.nuits_sejour : diffNuits(r.checkin, r.checkout);
+      var sk = [r.appart, r.checkin, r.checkout, nuits, r.type_norm].join('||');
+      if (!stayGroups[sk]) stayGroups[sk] = [];
+      stayGroups[sk].push(r);
+    }
   });
 
-  var seen = {};
-  var dups = DB.resa.filter(function(r) {
-    var bySmoobu = r.smoobu_id && smoobuCount[r.smoobu_id] > 1;
-    var byRef    = r.ref && refCount[r.ref] > 1;
-    return bySmoobu || byRef;
+  // Pour chaque groupe de séjour identique, vérifier qu'au moins 2 entrées
+  // ont le même voyageur (normalized) — sinon c'est une coïncidence de dates.
+  var sejourId2Key = {}; // resa.id -> 'st:'+sk
+  Object.keys(stayGroups).forEach(function(sk) {
+    var grp = stayGroups[sk];
+    if (grp.length < 2) return;
+    var found = false;
+    for (var i = 0; i < grp.length && !found; i++) {
+      for (var j = i+1; j < grp.length; j++) {
+        if (_sameName(grp[i].voyageur, grp[j].voyageur)) { found = true; break; }
+      }
+    }
+    if (found) grp.forEach(function(r) { sejourId2Key[r.id] = 'st:'+sk; });
   });
+
+  var dupReasons = {}, groupKey = {};
+  var dups = DB.resa.filter(function(r) {
+    var reasons = [], gk = null;
+    if (r.smoobu_id && smoobuCount[r.smoobu_id] > 1) {
+      reasons.push('Même Smoobu ID');
+      if (!gk) gk = 's:'+r.smoobu_id;
+    }
+    var isNative = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+    if (r.ref && !isNative && refCount[r.ref] > 1) {
+      reasons.push('Même ref');
+      if (!gk) gk = 'r:'+r.ref;
+    }
+    if (sejourId2Key[r.id]) {
+      reasons.push('Même séjour + voyageur + type');
+      if (!gk) gk = sejourId2Key[r.id];
+    }
+    if (reasons.length) {
+      dupReasons[r.id] = reasons.join(' · ');
+      groupKey[r.id]   = gk || ('u:'+r.id);
+      return true;
+    }
+    return false;
+  });
+
+  return { dups: dups, dupReasons: dupReasons, groupKey: groupKey,
+           smoobuCount: smoobuCount, refCount: refCount };
+}
+
+function renderDoublons() {
+  var d = detectDups();
+  var dups = d.dups, dupReasons = d.dupReasons, groupKey = d.groupKey;
 
   dups.sort(function(a,b){
-    var ka = a.smoobu_id || a.ref || '';
-    var kb = b.smoobu_id || b.ref || '';
-    return ka.localeCompare(kb);
+    var ka = groupKey[a.id]||'', kb = groupKey[b.id]||'';
+    if (ka !== kb) return ka.localeCompare(kb);
+    return (a.checkin||'').localeCompare(b.checkin||'');
   });
 
   var groups = {};
-  dups.forEach(function(r) {
-    var gk = (r.smoobu_id && smoobuCount[r.smoobu_id]>1) ? ('s:'+r.smoobu_id) : ('r:'+r.ref);
-    groups[gk] = (groups[gk]||0)+1;
-  });
+  dups.forEach(function(r) { groups[groupKey[r.id]] = (groups[groupKey[r.id]]||0)+1; });
   var nbGroups = Object.keys(groups).length;
   var netImpact = dups.reduce(function(s,r){return s+(r.net||0);},0);
 
@@ -2659,15 +2725,11 @@ function renderDoublons() {
   set('dup-grp', nbGroups);
   set('dup-net', fmtE(netImpact));
 
-  // Mettre à jour le badge sidebar
+  // Badge sidebar
   var badge = document.getElementById('dup-badge');
   if(badge) {
-    if(dups.length > 0) {
-      badge.textContent = dups.length;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
-    }
+    if(dups.length > 0) { badge.textContent = dups.length; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
   }
 
   var tb = document.getElementById('dup-tb'), em = document.getElementById('dup-em');
@@ -2687,16 +2749,26 @@ function renderDoublons() {
   if(DUP_PAGE<1) DUP_PAGE=1;
   var pageRows=dups.slice((DUP_PAGE-1)*DUP_PER, DUP_PAGE*DUP_PER);
   window._DUP_VISIBLE_IDS = pageRows.map(function(r){return r.id;});
+
+  // Chip raison — couleur selon type de détection
+  function reasonChip(id) {
+    var txt = dupReasons[id] || '';
+    var isSmoobu  = txt.indexOf('Smoobu') >= 0;
+    var isRef     = txt.indexOf('ref') >= 0;
+    var isSejour  = txt.indexOf('séjour') >= 0;
+    var col = isSmoobu ? 'var(--or)' : isRef ? 'var(--re)' : 'var(--bl)';
+    var bg  = isSmoobu ? 'rgba(200,119,58,.13)' : isRef ? 'var(--res)' : 'rgba(100,149,237,.13)';
+    return '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:'+bg+';color:'+col+';white-space:nowrap">'+txt+'</span>';
+  }
+
   if(mobile) {
     if(cardsCont) cardsCont.innerHTML=pageRows.map(function(r){
-      var cnt=(r.smoobu_id&&smoobuCount[r.smoobu_id]>1)?smoobuCount[r.smoobu_id]:(refCount[r.ref]||1);
-      var bdg='<span style="background:var(--res);color:var(--re);border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700">×'+cnt+'</span>';
       var checked=DUP_SEL[r.id]?' checked':'';
       return '<div class="r-card r-card-ann">'+
         '<div class="r-card-row1">'+
           '<label class="r-card-chk"><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></label>'+
-          bdg+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm);flex:1;overflow:hidden;text-overflow:ellipsis">'+(r.ref||'—')+'</span>'+
+          reasonChip(r.id)+
+          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm);flex:1;overflow:hidden;text-overflow:ellipsis;margin-left:6px">'+(r.ref||'—')+'</span>'+
           chip(r.statut||'',stClass(r.statut||''))+
         '</div>'+
         '<div class="r-card-row2">'+
@@ -2706,7 +2778,7 @@ function renderDoublons() {
         '</div>'+
         '<div style="font-size:13px;color:var(--tm)">'+(r.voyageur||'—')+'</div>'+
         '<div class="r-card-row3">'+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--td)">'+( r.checkin||'—')+'</span>'+
+          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--td)">'+(r.checkin||'—')+'</span>'+
           '<span class="r-card-net">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</span>'+
           '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
         '</div>'+
@@ -2715,12 +2787,10 @@ function renderDoublons() {
   } else {
     if(cardsCont) cardsCont.innerHTML='';
     tb.innerHTML = pageRows.map(function(r) {
-      var cnt=(r.smoobu_id&&smoobuCount[r.smoobu_id]>1)?smoobuCount[r.smoobu_id]:(refCount[r.ref]||1);
-      var badge='<span style="display:inline-block;background:var(--res);color:var(--re);border-radius:12px;padding:2px 9px;font-size:11px;font-weight:700;min-width:28px;text-align:center">×'+cnt+'</span>';
       var checked=DUP_SEL[r.id]?' checked':'';
       return '<tr>'+
         '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></td>'+
-        '<td>'+badge+'</td>'+
+        '<td>'+reasonChip(r.id)+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--td)">'+(r.smoobu_id||'—')+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
@@ -2741,15 +2811,7 @@ function renderDoublons() {
 }
 
 function updateDupBadge() {
-  var smoobuCount = {}, refCount = {};
-  DB.resa.forEach(function(r) {
-    if (r.smoobu_id) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
-    var isNativeRef = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
-    if (r.ref && !isNativeRef) refCount[r.ref] = (refCount[r.ref]||0)+1;
-  });
-  var cnt = DB.resa.filter(function(r) {
-    return (r.smoobu_id && smoobuCount[r.smoobu_id]>1) || (r.ref && refCount[r.ref]>1);
-  }).length;
+  var cnt = detectDups().dups.length;
   var badge = document.getElementById('dup-badge');
   if(badge) {
     if(cnt>0){ badge.textContent=cnt; badge.classList.remove('hidden'); }
