@@ -1067,6 +1067,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt" id="mn-serv" onclick="goTo('serv')"><span class="mic">⭐</span>Extras</div>
   <div class="mbt" id="mn-doublons" onclick="goTo('doublons')"><span class="mic">🔁</span>Dbl.</div>
   <div class="mbt" id="mn-perso" onclick="goTo('perso')"><span class="mic">👤</span>Perso</div>
+  <div class="mbt" id="mn-more" onclick="toggleMobMore()"><span class="mic">⋯</span>Plus</div>
+</div>
+
+<!-- Mobile — Backdrop + drawer "Plus" -->
+<div id="mob-backdrop" style="display:none;position:fixed;inset:0;z-index:21;background:rgba(0,0,0,.45)" onclick="closeMobMore()"></div>
+<div id="mob-drawer" style="display:none;position:fixed;bottom:58px;left:0;right:0;background:var(--s);border-top:1px solid var(--br);border-radius:16px 16px 0 0;padding:16px 12px 14px;z-index:22;justify-content:space-around;align-items:center;box-shadow:0 -8px 32px rgba(0,0,0,.5)">
+  <div class="mbt manager-plus" id="mn-recur" onclick="goTo('recur');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">🔄</span>Charges</div>
+  <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">👥</span>Équipe</div>
+  <div class="mbt admin-only" id="mn-admin" onclick="goTo('admin');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">⚙️</span>Utilisateurs</div>
 </div>
 
 <!-- MODAL UNIQUE -->
@@ -2331,6 +2340,24 @@ function renderView(k) {
 // NAVIGATION
 // ============================================================
 var CUR = 'resa';
+// ── Mobile drawer "Plus" ─────────────────────────────────────
+function toggleMobMore() {
+  var drawer   = document.getElementById('mob-drawer');
+  var backdrop = document.getElementById('mob-backdrop');
+  if (!drawer) return;
+  var isOpen = drawer.style.display === 'flex';
+  if (isOpen) { closeMobMore(); } else {
+    drawer.style.display   = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+  }
+}
+function closeMobMore() {
+  var drawer   = document.getElementById('mob-drawer');
+  var backdrop = document.getElementById('mob-backdrop');
+  if (drawer)   drawer.style.display   = 'none';
+  if (backdrop) backdrop.style.display = 'none';
+}
+
 function goTo(name) {
   // ── Bloquer la navigation selon le rôle ──
   if (ROLE) {
@@ -2351,12 +2378,18 @@ function goTo(name) {
   allNav.forEach(function(el){
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
+  closeMobMore();
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
   if(ni){ni.classList.add('on');ni.classList.add(cls);}
   if(mn){mn.classList.add(cls);}
+  // Highlight "Plus" button when a drawer page is active
+  var moreBtn = document.getElementById('mn-more');
+  if (moreBtn && ['admin','team','recur'].indexOf(name) !== -1) {
+    moreBtn.classList.add('on-admin');
+  }
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
   if(navKey) renderNav(navKey);
   if (name === 'admin') { renderAdminUsers(); return; }
