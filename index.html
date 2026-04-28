@@ -56,6 +56,16 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .ccl{color:var(--tm);}.ccv{font-family:'DM Mono',monospace;font-weight:500;}
 .cct{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--s);}
 .cctl{font-size:13px;font-weight:600;}.cctv{font-family:'DM Mono',monospace;font-size:16px;font-weight:600;}
+/* Bloc paiement ménage — modes période */
+.wm{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+.wmb{background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:5px 13px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s,color .15s;}
+.wmb:hover{opacity:.8;}
+.wmb.on{background:var(--te);border-color:var(--te);color:#fff;}
+.wpc{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.wpc input[type=date]{background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:5px 9px;font-size:12px;color:var(--tm);font-family:'DM Sans',sans-serif;}
+.wci{font-size:12px;color:var(--td);font-style:italic;padding:4px 0 10px;text-align:center;}
+.ccnt{font-size:11px;color:var(--td);font-weight:400;margin-left:6px;}
+.ccpaid{display:flex;justify-content:space-between;padding:5px 0 0;font-size:12px;color:var(--td);border-top:1px dashed var(--br);margin-top:6px;}
 /* Filter bar */
 .fb{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:12px;margin-bottom:12px;}
 .fr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
@@ -685,14 +695,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
-  <!-- Récap paiement femme de ménage (déplacé depuis Taxe) -->
+  <!-- Récap paiement femme de ménage -->
   <div class="wb">
     <div class="wbt">🧮 Récap paiement par femme de ménage</div>
-    <div class="wn">
-      <button class="nb2" onclick="shiftWk(-1)">‹</button>
-      <div class="wl" id="wk-lbl">Semaine</div>
-      <button class="nb2" onclick="shiftWk(1)">›</button>
+    <div class="wm">
+      <button class="wmb on" id="wmt-semaine" onclick="setWkMode('semaine')">Semaine</button>
+      <button class="wmb" id="wmt-mois" onclick="setWkMode('mois')">Mois</button>
+      <button class="wmb" id="wmt-perso" onclick="setWkMode('perso')">Période</button>
+      <button class="wmb" id="wmt-cumul" onclick="setWkMode('cumul')">Cumulé</button>
     </div>
+    <div id="wk-nav-row"></div>
     <div class="cg" id="wk-cards"></div>
   </div>
   <div class="fb"><div class="fr">
@@ -1796,7 +1808,11 @@ var DAY = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
 var WK  = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
 var MO  = {r:new Date(),b:new Date(),t:new Date(),s:new Date(),p:new Date(),d:new Date()};
 var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().getFullYear(),s:new Date().getFullYear(),p:new Date().getFullYear(),d:new Date().getFullYear()};
-var wkRef = today();
+var wkRef     = today();
+var WK_MODE   = 'semaine';  // 'semaine' | 'mois' | 'perso' | 'cumul'
+var WK_MO_REF = today().slice(0,7); // 'YYYY-MM' pour le mode mois
+var WK_FROM   = '';         // date début période perso
+var WK_TO     = '';         // date fin période perso
 
 function wkRange(ref) {
   var d=new Date(ref), day=d.getDay()||7;
@@ -1881,6 +1897,63 @@ function shiftY(k,d) {
   renderNav(k); renderView(k);
 }
 function shiftWk(d)  { var dt=new Date(wkRef); dt.setDate(dt.getDate()+d*7); wkRef=dt.toISOString().slice(0,10); renderWkCards(); }
+
+function setWkMode(mode) {
+  WK_MODE = mode;
+  if (mode === 'perso' && !WK_FROM) { var w=wkRange(wkRef); WK_FROM=w.s; WK_TO=w.e; }
+  renderWkCards();
+}
+
+function shiftWkMo(d) {
+  var parts = WK_MO_REF.split('-');
+  var dt = new Date(parseInt(parts[0]), parseInt(parts[1])-1+d, 1);
+  WK_MO_REF = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  renderWkCards();
+}
+
+function wkMoRange(ref) {
+  var parts = ref.split('-'), y=parseInt(parts[0]), m=parseInt(parts[1]);
+  var s = ref+'-01';
+  var last = new Date(y, m, 0);
+  var e = last.getFullYear()+'-'+String(last.getMonth()+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0');
+  return { s:s, e:e };
+}
+
+function getWkRange() {
+  if (WK_MODE==='semaine') return wkRange(wkRef);
+  if (WK_MODE==='mois')    return wkMoRange(WK_MO_REF);
+  if (WK_MODE==='perso')   return { s:WK_FROM, e:WK_TO };
+  return null; // cumul = pas de filtre date
+}
+
+var MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function renderWkNavRow() {
+  var html = '';
+  if (WK_MODE==='semaine') {
+    var w = wkRange(wkRef);
+    html = '<div class="wn"><button class="nb2" onclick="shiftWk(-1)">‹</button>'
+         + '<div class="wl">'+w.s+' → '+w.e.slice(5)+'</div>'
+         + '<button class="nb2" onclick="shiftWk(1)">›</button></div>';
+  } else if (WK_MODE==='mois') {
+    var parts = WK_MO_REF.split('-');
+    var lbl = MONTHS_FR[parseInt(parts[1])-1]+' '+parts[0];
+    html = '<div class="wn"><button class="nb2" onclick="shiftWkMo(-1)">‹</button>'
+         + '<div class="wl">'+lbl+'</div>'
+         + '<button class="nb2" onclick="shiftWkMo(1)">›</button></div>';
+  } else if (WK_MODE==='perso') {
+    html = '<div class="wpc">'
+         + '<span style="font-size:12px;color:var(--td)">Du</span>'
+         + '<input type="date" value="'+WK_FROM+'" onchange="WK_FROM=this.value;renderWkCards()">'
+         + '<span style="font-size:12px;color:var(--td)">au</span>'
+         + '<input type="date" value="'+WK_TO+'" onchange="WK_TO=this.value;renderWkCards()">'
+         + '</div>';
+  } else {
+    html = '<div class="wci">Toutes les dépenses en attente — sans limite de période</div>';
+  }
+  var el = document.getElementById('wk-nav-row');
+  if (el) el.innerHTML = html;
+}
 
 function renderView(k) {
   if(k==='r') renderResa();
@@ -2583,27 +2656,59 @@ function renderBiz() {
 // RENDER: TAXE
 // ============================================================
 function renderWkCards() {
-  var w=wkRange(wkRef);
-  set('wk-lbl',w.s+' → '+w.e.slice(5));
-  set('wk-cards',getCleaners(true).map(function(m){ var name=m.name;
-    // Uniquement les dépenses "En attente" pour le calcul à payer
-    var bRows=DB.business.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.fmen===name&&r.statut==='En attente';});
-    var men=sum(bRows.filter(function(r){return r.cat==='Ménage';}),'montant');
-    var adv=sum(bRows.filter(function(r){return r.cat!=='Ménage';}),'montant');
-    var tax=sum(DB.taxe.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name&&r.rev==='Non reversé';}),'montant');
-    var ext=sum(DB.serv.filter(function(r){return r.date>=w.s&&r.date<=w.e&&r.col===name&&r.statut!=='Payé';}),'montant');
-    var total=men+adv, net=total-tax-ext;
-    var col=net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
-    var lbl=net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
+  // Mise à jour des onglets mode
+  ['semaine','mois','perso','cumul'].forEach(function(m){
+    var btn=document.getElementById('wmt-'+m);
+    if(btn) btn.classList.toggle('on', m===WK_MODE);
+  });
+  // Nav contextuelle
+  renderWkNavRow();
+
+  // Plage de dates (null = pas de filtre = mode cumulé)
+  var range = getWkRange();
+  var inRange = range
+    ? function(d){ return d && d>=range.s && d<=range.e; }
+    : function(){ return true; };
+
+  var cleaners = getCleaners(true);
+  if (!cleaners.length) {
+    set('wk-cards','<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune femme de ménage active</div>');
+    return;
+  }
+
+  set('wk-cards', cleaners.map(function(m) {
+    var name = m.name;
+
+    // ── Calcul (règles inchangées) ────────────────────────────
+    // Dépenses En attente uniquement
+    var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'; });
+    var men   = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
+    var adv   = sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
+    var tax   = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
+    var ext   = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
+    var total = men+adv, net = total-tax-ext;
+    var col   = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
+    var lbl   = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
+    // ─────────────────────────────────────────────────────────
+
+    // Infos complémentaires
+    var nbMen  = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
+    var paid   = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+
     return '<div class="cc">'+
-      '<div class="ccn '+colClass(name)+'">'+name+'</div>'+
-      '<div class="ccr"><div class="ccl">Ménage effectué</div><div class="ccv">'+fmt(men)+'</div></div>'+
-      (adv>0?'<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>':'')+
-      '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px"><div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div></div>'+
-      '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>'+
-      '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>'+
+      '<div class="ccn '+colClass(name)+'">'+name+
+        (nbMen ? '<span class="ccnt">'+nbMen+' intervention'+(nbMen>1?'s':'')+'</span>' : '')+
+      '</div>'+
+      '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
+      (adv>0 ? '<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
+      '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
+        '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
+      '</div>'+
+      (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
+      (ext>0 ? '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
       '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
-      '</div>';
+      (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '')+
+    '</div>';
   }).join(''));
 }
 
