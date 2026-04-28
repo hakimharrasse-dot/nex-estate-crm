@@ -287,11 +287,55 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .dec-ok{border-color:var(--gr)!important;}
 /* Delta inline sous les KPI */
 .kd{font-size:10px;margin-top:3px;min-height:14px;}
+/* ── Cartes réservations (mobile) ── */
+.r-cards{display:none;flex-direction:column;gap:10px;}
+.r-card{background:var(--s);border:1px solid var(--br);border-radius:14px;padding:14px 15px;display:flex;flex-direction:column;gap:9px;}
+.r-card-paye{border-left:3px solid var(--gr);background:rgba(76,175,125,.04);}
+.r-card-att{border-left:3px solid var(--or);background:rgba(200,119,58,.04);}
+.r-card-ann{border-left:3px solid var(--re);background:rgba(224,82,82,.04);opacity:.85;}
+.r-card-row1{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.r-card-ref{font-family:'DM Mono',monospace;font-size:12px;color:var(--tm);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.r-card-row2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.r-card-voyageur{font-size:14px;font-weight:500;color:var(--tx);}
+.r-card-row3{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--tm);}
+.r-card-net{font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--gr);margin-left:auto;}
+.r-card-acts{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding-top:2px;border-top:1px solid var(--br);}
+.r-card-chk{display:flex;align-items:center;padding:4px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
   .mobnav{display:flex;}.hm{display:none;}
   .circ-card{min-width:0;}
+  /* Filtres — stack vertical */
+  .fb .fr{flex-direction:column;gap:6px;}
+  .fsel{width:100%;}
+  .tabs{width:100%;justify-content:space-between;}
+  .tab{flex:1;text-align:center;font-size:11px;padding:6px 4px;}
+  .nc{flex:1;}
+  .nv{min-width:0;flex:1;}
+  /* Boutons touch-friendly */
+  .ba{min-height:42px;padding:10px 16px;}
+  .r-pgbtn{min-height:38px;padding:7px 14px;font-size:13px;}
+  .r-persel{min-height:34px;padding:5px 9px;font-size:13px;}
+  /* Pagination stack */
+  .r-pgbar{flex-direction:column;align-items:flex-start;gap:6px;}
+  .r-pgbtns{width:100%;justify-content:space-between;}
+  /* Sel-bar stack */
+  .sel-bar{flex-direction:column;align-items:flex-start;gap:8px;}
+  /* En-tête vue */
+  .vh{flex-direction:column;gap:10px;}
+  .vh>div:last-child{flex-wrap:wrap;}
+  /* Dashboard — 1 colonne */
+  .circ-row{flex-direction:column;}
+  .spark-row{flex-direction:column;}
+  .dec-row{flex-direction:column;}
+  .ap-perf-row{grid-template-columns:1fr;}
+  .cg{grid-template-columns:1fr;}
+  /* Table masquée, cartes affichées */
+  #vw-resa .tw{display:none!important;}
+  .r-cards{display:flex;}
+  /* Bedit/bdel plus grand sur mobile */
+  .bedit,.bdel{padding:8px 10px;font-size:17px;}
 }
 </style>
 </head>
@@ -547,6 +591,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="r-chk-all" onchange="toggleResaAll(this.checked)" title="Sélectionner la page visible"></th><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
     <tbody id="r-tb"></tbody>
   </table><div class="empty hidden" id="r-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div></div>
+  <div id="r-cards" class="r-cards"></div>
   <div id="csv-prev" class="hidden" style="margin-top:16px">
     <div class="sl">Aperçu import — vérifier avant de confirmer</div>
     <div id="csv-prev-content"></div>
@@ -1114,6 +1159,7 @@ function setResaPreset(p) {
   renderResa();
 }
 function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
+function isMobile()    { return window.innerWidth < 700; }
 function resaFilter()  { R_PAGE=1; renderResa(); }
 function resaPage(p)   { R_PAGE=p; renderResa(); }
 function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
@@ -1616,43 +1662,81 @@ function renderResa() {
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
   }).join(''));
   var tb=document.getElementById('r-tb'),em=document.getElementById('r-em');
-  if(!rows.length){tb.innerHTML='';em.classList.remove('hidden');set('r-pgbar','<div class="r-pgbar"><span style="font-size:12px;color:var(--td)">0 réservation trouvée</span></div>');updateResaSelBar();return;}
-  em.classList.add('hidden');
-  // ids de la page visible uniquement (select-all = page seulement)
-  window._R_VISIBLE_IDS = pageRows.map(function(r){return r.id;});
-  tb.innerHTML=pageRows.map(function(r){
-    var rowCls=r.statut==='Payé'?'tr-paye':r.statut==='En attente'?'tr-att':r.statut==='Annulé'?'tr-ann':'';
-    var checked=RESA_SEL[r.id]?' checked':'';
-    return '<tr class="'+rowCls+'">'+
-      '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleResaSel(\''+r.id+'\',this.checked)"></td>'+
-      '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.override_manual?'<span title="Protégé — Smoobu ne peut pas écraser" style="color:var(--or);margin-right:3px">🔒</span>':'')+(r.ref||'')+'</td>'+
-      '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
-      '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
-      '<td style="font-size:12px;color:var(--tm)">'+(isInfoManquante(r)?chip('Infos client en attente Smoobu','smoobu-wait'):(r.voyageur||'—'))+'</td>'+
-      '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
-      '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
-      '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
-      '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
-      (function(){
-        var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
-        if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
-        var estMAD=e2m(r.taxe_sejour||0);
-        return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--td)">'+estMAD.toLocaleString('fr-MA')+' MAD <span title="Estimation réservation" style="font-size:10px;opacity:.5">~</span></td>';
-      })()+
-      '<td>'+chip(r.type_norm||'',typeClass(r.type_norm||''))+'</td>'+
-      '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
-      '<td>'+actBtns('resa',r.id)+'</td>'+
-      '</tr>';
-  }).join('');
-  // Sync select-all checkbox (page visible seulement)
-  var allChk=document.getElementById('r-chk-all');
-  if(allChk) {
-    var visIds=window._R_VISIBLE_IDS||[];
-    var allSel=visIds.length>0&&visIds.every(function(id){return RESA_SEL[id];});
-    allChk.checked=allSel;
-    allChk.indeterminate=!allSel&&visIds.some(function(id){return RESA_SEL[id];});
+  var cardsCont=document.getElementById('r-cards');
+  var mobile=isMobile();
+  if(!rows.length){
+    if(tb) tb.innerHTML='';
+    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div>';
+    em.classList.remove('hidden');
+    set('r-pgbar','<div class="r-pgbar"><span style="font-size:12px;color:var(--td)">0 réservation trouvée</span></div>');
+    updateResaSelBar();
+    return;
   }
-  // Barre pagination + compteur
+  em.classList.add('hidden');
+  window._R_VISIBLE_IDS = pageRows.map(function(r){return r.id;});
+  if(mobile) {
+    // ── Vue cartes (mobile) ──
+    if(cardsCont) cardsCont.innerHTML=pageRows.map(function(r){
+      var statusCls=r.statut==='Payé'?'r-card-paye':r.statut==='En attente'?'r-card-att':'r-card-ann';
+      var checked=RESA_SEL[r.id]?' checked':'';
+      var lock=r.override_manual?'🔒 ':'';
+      return '<div class="r-card '+statusCls+'">'+
+        '<div class="r-card-row1">'+
+          '<label class="r-card-chk"><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleResaSel(\''+r.id+'\',this.checked)"></label>'+
+          '<span class="r-card-ref">'+lock+(r.ref||'—')+'</span>'+
+          chip(r.statut||'',stClass(r.statut||''))+
+        '</div>'+
+        '<div class="r-card-row2">'+
+          '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
+          chip(r.source||'',srcClass(r.source||''))+
+          chip(r.type_norm||'',typeClass(r.type_norm||''))+
+        '</div>'+
+        '<div class="r-card-voyageur">'+(isInfoManquante(r)?chip('Infos client en attente Smoobu','smoobu-wait'):(r.voyageur||'—'))+'</div>'+
+        '<div class="r-card-row3">'+
+          '<span>📅 '+(r.checkin||'—')+'</span>'+
+          '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
+          '<span class="r-card-net">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</span>'+
+        '</div>'+
+        '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
+      '</div>';
+    }).join('');
+  } else {
+    // ── Vue tableau (desktop) ──
+    if(cardsCont) cardsCont.innerHTML='';
+    tb.innerHTML=pageRows.map(function(r){
+      var rowCls=r.statut==='Payé'?'tr-paye':r.statut==='En attente'?'tr-att':r.statut==='Annulé'?'tr-ann':'';
+      var checked=RESA_SEL[r.id]?' checked':'';
+      return '<tr class="'+rowCls+'">'+
+        '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleResaSel(\''+r.id+'\',this.checked)"></td>'+
+        '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.override_manual?'<span title="Protégé — Smoobu ne peut pas écraser" style="color:var(--or);margin-right:3px">🔒</span>':'')+(r.ref||'')+'</td>'+
+        '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+        '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
+        '<td style="font-size:12px;color:var(--tm)">'+(isInfoManquante(r)?chip('Infos client en attente Smoobu','smoobu-wait'):(r.voyageur||'—'))+'</td>'+
+        '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
+        '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
+        '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
+        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
+        (function(){
+          var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
+          if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
+          var estMAD=e2m(r.taxe_sejour||0);
+          return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--td)">'+estMAD.toLocaleString('fr-MA')+' MAD <span title="Estimation réservation" style="font-size:10px;opacity:.5">~</span></td>';
+        })()+
+        '<td>'+chip(r.type_norm||'',typeClass(r.type_norm||''))+'</td>'+
+        '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+        '<td>'+actBtns('resa',r.id)+'</td>'+
+        '</tr>';
+    }).join('');
+    // Sync select-all checkbox (desktop seulement)
+    var allChk=document.getElementById('r-chk-all');
+    if(allChk) {
+      var visIds=window._R_VISIBLE_IDS||[];
+      var allSel=visIds.length>0&&visIds.every(function(id){return RESA_SEL[id];});
+      allChk.checked=allSel;
+      allChk.indeterminate=!allSel&&visIds.some(function(id){return RESA_SEL[id];});
+    }
+  }
+  // Barre pagination + compteur (même pour mobile et desktop)
   var selN=Object.keys(RESA_SEL).length;
   var selHtml=selN>0?' · <strong style="color:var(--or)">'+selN+' sélectionnée'+(selN>1?'s':'')+'</strong>':'';
   var ctrHtml='<span style="font-size:12px;color:var(--tm)">'+
@@ -1694,8 +1778,7 @@ function toggleResaSel(id, checked) {
 function toggleResaAll(checked) {
   var visIds=window._R_VISIBLE_IDS||[];
   visIds.forEach(function(id){ if(checked) RESA_SEL[id]=true; else delete RESA_SEL[id]; });
-  // Update all visible checkboxes
-  document.querySelectorAll('#r-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  document.querySelectorAll('#r-tb input[type=checkbox], #r-cards input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
   updateResaSelBar();
 }
 
@@ -1703,7 +1786,7 @@ function clearResaSel() {
   RESA_SEL={};
   var allChk=document.getElementById('r-chk-all');
   if(allChk){allChk.checked=false;allChk.indeterminate=false;}
-  document.querySelectorAll('#r-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  document.querySelectorAll('#r-tb input[type=checkbox], #r-cards input[type=checkbox]').forEach(function(cb){cb.checked=false;});
   updateResaSelBar();
 }
 
@@ -3143,6 +3226,13 @@ async function normalizeData() {
   });
   if(bizChanged) await saveAll('business');
 }
+
+// Re-render réservations au redimensionnement (bascule table ↔ cartes)
+var _resaResizeTimer;
+window.addEventListener('resize', function(){
+  clearTimeout(_resaResizeTimer);
+  _resaResizeTimer = setTimeout(function(){ if(CUR==='resa') renderResa(); }, 150);
+});
 
 // Lancer
 initApp();
