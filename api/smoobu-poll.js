@@ -4,11 +4,13 @@
 //
 // Comportement :
 //   - Fetch les réservations modifiées depuis POLL_WINDOW_HOURS
+//   - Supporte ?from=YYYY-MM-DD pour backfill manuel (override fenêtre auto)
 //   - Pour chaque réservation Smoobu :
 //     A. Si smoobu_id inexistant en base → INSERT
 //     B. Si smoobu_id existe + override_manual=true → UPDATE partiel
 //        (voyageur, dates, nuits uniquement — finances protégées)
 //     C. Si smoobu_id existe + override_manual=false → UPDATE complet
+//   - Si voyageur vide après mapping → appel individuel GET /reservations/{id}
 //
 // Variables d'environnement requises :
 //   SMOOBU_API_KEY     — clé API Smoobu
@@ -230,6 +232,40 @@ function mapSmoobuBooking(b) {
   };
 }
 
+// ── Enrichissement individuel Smoobu ──────────────────────────
+
+async function enrichFromSmoobu(mapped, apiKey, stats) {
+  try {
+    const detailRes = await fetch(`${SMOOBU_API}/reservations/${mapped.smoobu_id}`, {
+      headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' }
+    });
+    if (!detailRes.ok) {
+      console.log(`[poll] WARNING enrichissement ${mapped.smoobu_id}: HTTP ${detailRes.status}`);
+      stats.warnings++;
+      return;
+    }
+    const detail = await detailRes.json();
+    const fn = detail.guest?.firstName || detail.firstName || detail.guestName || '';
+    const ln = detail.guest?.lastName  || detail.lastName  || '';
+    const fullName = [fn, ln].filter(Boolean).join(' ').trim();
+    if (fullName) {
+      mapped.voyageur = fullName;
+      console.log(`[poll] ENRICHI voyageur ${mapped.smoobu_id}: "${fullName}"`);
+    } else {
+      console.log(`[poll] WARNING voyageur toujours vide pour ${mapped.smoobu_id} (absent chez Smoobu)`);
+      stats.warnings++;
+    }
+    // Enrichir ref seulement si encore = smoobu_id (pas de ref plateforme extraite)
+    if (mapped.ref === mapped.smoobu_id && detail.reference) {
+      mapped.ref = detail.reference;
+      console.log(`[poll] ENRICHI ref ${mapped.smoobu_id}: "${detail.reference}"`);
+    }
+  } catch (err) {
+    console.log(`[poll] WARNING enrichissement ${mapped.smoobu_id}: ${err.message}`);
+    stats.warnings++;
+  }
+}
+
 // ── Handler principal ─────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -249,10 +285,17 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'SMOOBU_API_KEY manquant' });
   }
 
-  // Fenêtre temporelle
-  const from = new Date(Date.now() - POLL_WINDOW_HOURS * 3600_000);
-  const modifiedFrom = from.toISOString().slice(0, 19).replace('T', ' ');
-  console.log('[poll] démarrage — fenêtre:', modifiedFrom);
+  // Fenêtre temporelle — ?from=YYYY-MM-DD override la fenêtre automatique (backfill)
+  const fromParam = req.query?.from;
+  let modifiedFrom;
+  if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) {
+    modifiedFrom = `${fromParam} 00:00:00`;
+    console.log('[poll] démarrage — backfill depuis:', modifiedFrom);
+  } else {
+    const fromDate = new Date(Date.now() - POLL_WINDOW_HOURS * 3600_000);
+    modifiedFrom = fromDate.toISOString().slice(0, 19).replace('T', ' ');
+    console.log('[poll] démarrage — fenêtre auto:', modifiedFrom);
+  }
 
   // 1. Fetch Smoobu
   const smoobuUrl = `${SMOOBU_API}/reservations?modifiedFrom=${encodeURIComponent(modifiedFrom)}&pageSize=100&showCancellation=true`;
@@ -281,13 +324,21 @@ export default async function handler(req, res) {
   const existingMap = {};
   (existing || []).forEach(r => { existingMap[r.smoobu_id] = r; });
 
-  const stats = { fetched: bookings.length, skipped: 0, warnings: 0, errors: 0, upserted: 0 };
+  const stats = { fetched: bookings.length, skipped: 0, warnings: 0, errors: 0, upserted: 0, enriched: 0 };
 
   // 3. Traiter chaque réservation
   for (const b of bookings) {
     try {
       const mapped = mapSmoobuBooking(b);
       const smoobuId = mapped.smoobu_id;
+
+      // Enrichissement individuel si voyageur vide après mapping
+      if (!mapped.voyageur) {
+        const warnsBefore = stats.warnings;
+        await enrichFromSmoobu(mapped, process.env.SMOOBU_API_KEY, stats);
+        if (mapped.voyageur) stats.enriched++;
+      }
+
       const rec = existingMap[smoobuId];
 
       if (!rec) {
