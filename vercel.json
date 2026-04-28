@@ -6,6 +6,9 @@
     },
     "api/smoobu-poll.js": {
       "maxDuration": 30
+    },
+    "api/admin-users.js": {
+      "maxDuration": 10
     }
   },
   "crons": [
