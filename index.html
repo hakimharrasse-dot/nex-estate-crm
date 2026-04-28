@@ -695,6 +695,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
+  <!-- Gains par femme de ménage -->
+  <div class="wb">
+    <div class="wbt" id="gains-wbt">💰 Gains ménage — mois en cours</div>
+    <div id="gains-body"></div>
+  </div>
   <!-- Récap paiement femme de ménage -->
   <div class="wb">
     <div class="wbt">🧮 Récap paiement par femme de ménage</div>
@@ -2567,6 +2572,7 @@ function showToast(msg) {
 // ============================================================
 function renderBiz() {
   renderNav('b');
+  renderGainsCards();
   renderWkCards();
   var rows=filterPer(DB.business,'b');
   var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst');
@@ -2655,6 +2661,59 @@ function renderBiz() {
 // ============================================================
 // RENDER: TAXE
 // ============================================================
+function renderGainsCards() {
+  var mk    = MO.b.toISOString().slice(0,7);
+  var mLbl  = MONTHS_FR[MO.b.getMonth()] + ' ' + MO.b.getFullYear();
+  var title = document.getElementById('gains-wbt');
+  if (title) title.textContent = '💰 Gains ménage — ' + mLbl;
+
+  var body = document.getElementById('gains-body');
+  if (!body) return;
+
+  var cleaners = getCleaners(true);
+  if (!cleaners.length) {
+    body.innerHTML = '<div style="color:var(--td);font-size:13px;padding:6px 0">Aucune femme de ménage active</div>';
+    return;
+  }
+
+  // Toutes les lignes Ménage du mois (Payé + En attente = travail effectué)
+  var allMen = DB.business.filter(function(r){
+    return r.date && r.date.startsWith(mk) && r.cat === 'Ménage';
+  });
+
+  var cards = cleaners.map(function(m) {
+    var rows  = allMen.filter(function(r){ return r.fmen === m.name; });
+    if (!rows.length) return '';        // pas d'intervention ce mois → carte masquée
+    var total = sum(rows, 'montant');
+    var nb    = rows.length;
+    var avg   = Math.round(total / nb);
+    return '<div class="cc">' +
+      '<div class="ccn ' + colClass(m.name) + '">' + m.name + '</div>' +
+      '<div class="ccr"><div class="ccl">Total ménage</div>' +
+        '<div class="ccv" style="color:var(--gr)">' + fmt(total) + '</div></div>' +
+      '<div class="ccr"><div class="ccl">Interventions</div>' +
+        '<div class="ccv">' + nb + ' passage' + (nb > 1 ? 's' : '') + '</div></div>' +
+      '<div class="ccr"><div class="ccl">Moy. / intervention</div>' +
+        '<div class="ccv" style="color:var(--or)">' + fmt(avg) + '</div></div>' +
+    '</div>';
+  }).filter(Boolean).join('');
+
+  if (!cards) {
+    body.innerHTML = '<div style="color:var(--td);font-size:13px;padding:6px 0">Aucune intervention ménage ce mois-ci</div>';
+    return;
+  }
+
+  var totAll = sum(allMen, 'montant');
+  var nbAll  = allMen.length;
+  var footer = '<div style="margin-top:10px;padding:8px 12px;background:var(--s2);border-radius:8px;' +
+    'display:flex;justify-content:space-between;align-items:center;font-size:13px">' +
+    '<span style="color:var(--td)">Total équipe · ' + nbAll + ' intervention' + (nbAll > 1 ? 's' : '') + '</span>' +
+    '<span style="font-weight:600;font-family:\'DM Mono\',monospace">' + fmt(totAll) + '</span>' +
+    '</div>';
+
+  body.innerHTML = '<div class="cg">' + cards + '</div>' + footer;
+}
+
 function renderWkCards() {
   // Mise à jour des onglets mode
   ['semaine','mois','perso','cumul'].forEach(function(m){
