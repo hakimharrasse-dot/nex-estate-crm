@@ -216,13 +216,14 @@ input[type=checkbox].rcb{width:15px;height:15px;accent-color:var(--re);cursor:po
 .toast-ok{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gr);color:#fff;border-radius:10px;padding:11px 22px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:opacity .4s;}
 .toast-ok.hide{opacity:0;}
 /* ── Visibilité par rôle ─────────────────────────────────────── */
+/* admin-only : caché par défaut, visible UNIQUEMENT pour role-admin */
+body:not(.role-admin) .admin-only { display:none!important; }
+/* manager-plus : visible pour admin et manager, caché pour user */
 body.role-user #ng-pilotage,
 body.role-user .manager-plus,
-body.role-user #ng-perso,
-body.role-user #ng-admin { display:none!important; }
-body.role-manager .admin-only,
-body.role-manager #ng-perso,
-body.role-manager #ng-admin { display:none!important; }
+body.role-user #ng-perso { display:none!important; }
+/* perso + admin : cachés pour manager */
+body.role-manager #ng-perso { display:none!important; }
 /* Dashboard — masquer résultat net / dépenses / marge / cash pour manager */
 body.role-manager #kc-res,
 body.role-manager #kc-dep,
@@ -1091,9 +1092,11 @@ function canDo(action) {
 // Applique les restrictions visuelles et JS selon le rôle courant
 function applyRoleUI() {
   var r = ROLE || 'user';
+  console.log('[RBAC] applyRoleUI → ROLE=', ROLE, '| r=', r, '| user=', CURRENT_USER?.email);
   // Classe sur body pour les règles CSS
   document.body.classList.remove('role-admin','role-manager','role-user');
   document.body.classList.add('role-' + r);
+  console.log('[RBAC] body classes:', document.body.className);
 
   // Badge et email dans la sidebar
   var badge  = document.getElementById('user-role-badge');
