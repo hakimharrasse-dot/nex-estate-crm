@@ -4445,7 +4445,7 @@ function parseSmoobuRow(row, idx) {
     date_creation:  dateCreation,
     date_paiement:  dp,
     mois_kpi:       (dp || ci).slice(0, 7),
-    notes:          '',
+    notes:          notes || '',
     override_manual: false,
     _warns:         warns,
     _hasWarn:       warns.length > 0
@@ -4585,6 +4585,8 @@ async function confirmCSV() {
         // 🔄 Mise à jour complète — réutilise l'id existant pour éviter les doublons
         r.id = existing.id;
         r.override_manual = false;
+        // Préserver les notes CRM si le CSV n'en fournit pas
+        if (!r.notes && existing.notes) r.notes = existing.notes;
         DB.resa[existingIdx] = r;
         nUpdated++;
       }
@@ -4693,8 +4695,50 @@ async function normalizeData() {
   });
   if(bizChanged) await saveAll('business');
 
+  // Auto-tag RESERVATION → RELOCATION si overlap ANNULATION_PAYEE même appart
+  var relocChanged = detectRelocations();
+  if (relocChanged > 0) {
+    console.log('[reloc] ' + relocChanged + ' réservation(s) taguées RELOCATION automatiquement');
+    await saveAll('resa');
+    showToast(relocChanged + ' relocation(s) détectée(s) automatiquement', 'ok');
+  }
+
   // Recalcul date_paiement / mois_kpi pour toutes les réservations
   await recomputeAllPaymentDates();
+}
+
+// ── Détection automatique des relocations ──
+// RESERVATION sur même appart + overlap dates avec une ANNULATION_PAYEE → type_norm = 'RELOCATION'
+// Conservatif : n'untag jamais un RELOCATION existant (pas de downgrade automatique)
+// Respecte override_manual : les lignes protégées sont ignorées
+function detectRelocations() {
+  // Index ANNULATION_PAYEE par appart
+  var annulByAppart = {};
+  DB.resa.forEach(function(r) {
+    if (r.type_norm === 'ANNULATION_PAYEE' && r.appart && r.checkin && r.checkout) {
+      if (!annulByAppart[r.appart]) annulByAppart[r.appart] = [];
+      annulByAppart[r.appart].push({ ci: r.checkin, co: r.checkout });
+    }
+  });
+
+  var changed = 0;
+  DB.resa.forEach(function(r) {
+    if (r.override_manual) return;          // protégé manuellement
+    if (r.type_norm !== 'RESERVATION') return; // seules les RESERVATION peuvent être upgradées
+    if (!r.appart || !r.checkin || !r.checkout) return;
+    var annuls = annulByAppart[r.appart] || [];
+    // Overlap standard : [ci1,co1) ∩ [ci2,co2) ≠ ∅  ⟺  ci1 < co2 && ci2 < co1
+    var overlaps = annuls.some(function(a) {
+      return r.checkin < a.co && r.checkout > a.ci;
+    });
+    if (overlaps) {
+      console.log('[reloc] auto-tag RELOCATION:', r.ref || r.id,
+        '| appart:', r.appart, '| dates:', r.checkin + '–' + r.checkout);
+      r.type_norm = 'RELOCATION';
+      changed++;
+    }
+  });
+  return changed;
 }
 
 // ── Recalcul massif date_paiement + mois_kpi pour toutes les lignes ──
