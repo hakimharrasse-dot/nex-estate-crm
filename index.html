@@ -1932,29 +1932,61 @@ async function launchApp() {
     return;
   }
 
-  // Normaliser les données AVANT d'afficher l'interface
-  // (recomputeAllPaymentDates peut prendre plusieurs secondes sur 500+ lignes)
+  // Normalisation en mémoire (synchrone — doit être < 100ms)
+  // Timeout de sécurité : si ça dépasse 5s, afficher l'app quand même
   loadMsg.textContent = 'Normalisation des données...';
-  await normalizeData();
+  console.log('[launch] normalizeData start');
+  var normDone = false;
+  var normTimeout = setTimeout(function() {
+    if (!normDone) {
+      console.warn('[launch] normalizeData timeout — affichage forcé après 5s');
+      showApp();
+    }
+  }, 5000);
+  try {
+    normalizeData();
+    normDone = true;
+    clearTimeout(normTimeout);
+    console.log('[launch] normalizeData OK');
+  } catch(e) {
+    normDone = true;
+    clearTimeout(normTimeout);
+    console.error('[launch] normalizeData ERROR:', e);
+  }
 
-  // Tout est prêt — masquer overlay et rendre l'UI complète d'un seul coup
-  setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
-  if (overlay) overlay.style.display = 'none';
+  // Afficher l'app — appelé soit normalement, soit par le timeout de sécurité
+  function showApp() {
+    if (showApp._done) return;
+    showApp._done = true;
+    console.log('[launch] showApp');
 
-  // Taux EUR/MAD : fallback immédiat, puis API en arrière-plan
-  updateRateDisplay();
-  fetchEurMad();
+    // Masquer overlay — UI visible pour la première fois
+    setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
+    if (overlay) overlay.style.display = 'none';
 
-  // Init UI — tout en une passe pour éviter les états intermédiaires
-  ['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
-  setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
+    // Taux EUR/MAD : fallback immédiat, API en arrière-plan
+    console.log('[launch] updateRateDisplay');
+    updateRateDisplay();
+    console.log('[launch] fetchEurMad');
+    fetchEurMad();
 
-  // Appliquer le rôle (CSS body + badge + navigation initiale)
-  applyRoleUI();
-  populateTeamSelects();
+    // Init UI — tout en une passe
+    console.log('[launch] renderNav + setPer');
+    ['r','b','t','s','p','d'].forEach(function(k){ renderNav(k); });
+    setPer('r','mois'); setPer('b','mois'); setPer('t','mois');
+    setPer('s','mois'); setPer('p','mois'); setPer('d','mois');
 
-  // goTo('resa') n'est appelé que si l'utilisateur n'est pas user (applyRoleUI le fait déjà)
-  if (ROLE !== 'user') goTo('resa');
+    // Rôle + navigation initiale
+    console.log('[launch] applyRoleUI');
+    applyRoleUI();
+    populateTeamSelects();
+
+    console.log('[launch] goTo resa');
+    if (ROLE !== 'user') goTo('resa');
+    console.log('[launch] done');
+  }
+
+  if (normDone) showApp();
 }
 
 // Enter key sur les formulaires auth
@@ -4684,38 +4716,43 @@ function importData(input) {
 // ============================================================
 // NORMALISATION DONNÉES
 // ============================================================
-async function normalizeData() {
-  var changed = false;
+// SYNCHRONE — zéro await, zéro Supabase write au démarrage
+// Toutes les corrections sont en mémoire uniquement.
+// Pour persister : bouton admin "🔄 Recalculer"
+function normalizeData() {
+  console.log('[norm] start');
+
+  // Corriger les nuits AIRCOVER/AJUSTEMENT en mémoire
+  var t0 = Date.now();
   DB.resa.forEach(function(r) {
-    // Corriger UNIQUEMENT les nuits sur AIRCOVER/AJUSTEMENT — ne jamais toucher aux commissions
-    if((r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT') && (r.nuits_sejour > 0 || r.nuits_fact > 0)) {
+    if ((r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT') && (r.nuits_sejour > 0 || r.nuits_fact > 0)) {
       r.nuits_sejour = 0;
-      r.nuits_fact = 0;
-      changed = true;
+      r.nuits_fact   = 0;
     }
   });
-  if(changed) await saveAll('resa');
+  console.log('[norm] AIRCOVER fix:', Date.now() - t0, 'ms');
 
-  // Migration scope business : anciennes entrées sans scope → 'property'
-  var bizChanged = false;
+  // Migration scope business en mémoire
+  t0 = Date.now();
   DB.business.forEach(function(r) {
-    if(!r.scope) {
+    if (!r.scope) {
       r.scope = (r.appart && r.appart !== 'Global') ? 'property' : 'global';
-      if(r.appart === 'Global') r.appart = null; // correction legacy
-      bizChanged = true;
+      if (r.appart === 'Global') r.appart = null;
     }
   });
-  if(bizChanged) await saveAll('business');
+  console.log('[norm] biz scope fix:', Date.now() - t0, 'ms');
 
-  // Auto-tag RESERVATION → RELOCATION si overlap ANNULATION_PAYEE même appart
-  // En mémoire uniquement au démarrage — pas de saveAll (trop lent sur 500+ lignes)
+  // Relocations en mémoire
+  t0 = Date.now();
   var relocChanged = detectRelocations();
-  if (relocChanged > 0) {
-    console.log('[reloc] ' + relocChanged + ' réservation(s) taguées RELOCATION (mémoire — utiliser Recalculer pour persister)');
-  }
+  console.log('[norm] detectRelocations:', Date.now() - t0, 'ms —', relocChanged, 'tagged');
 
-  // Recalcul date_paiement / mois_kpi en mémoire uniquement
-  recomputeAllPaymentDates();
+  // Recalcul dates en mémoire
+  t0 = Date.now();
+  var dpChanged = recomputeAllPaymentDates();
+  console.log('[norm] recomputeAllPaymentDates:', Date.now() - t0, 'ms —', dpChanged, 'changed');
+
+  console.log('[norm] done (memory only — use Recalculer button to persist)');
 }
 
 // ── Détection automatique des relocations ──
