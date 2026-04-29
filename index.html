@@ -2024,6 +2024,14 @@ function diffNuits(ci,co) {
   return Math.max(0,Math.round((new Date(co)-new Date(ci))/86400000));
 }
 
+// UTC-safe date arithmetic — évite le bug timezone UTC+1 (Maroc)
+function addDays(dateStr, days) {
+  if (!dateStr) return '';
+  var p = dateStr.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+days));
+  return d.toISOString().slice(0, 10);
+}
+
 function tauxTaxe(appart) {
   return RABAT.indexOf(appart)>=0 ? TAUX.rabat : TAUX.sale;
 }
@@ -2452,9 +2460,16 @@ function drawSparkline(svgId, values, color) {
 // ============================================================
 // RENDER: DASHBOARD
 // ============================================================
+
+// CA = RESERVATION + ANNULATION_PAYEE + DIRECT + AIRCOVER + RELOCATION
+// NE PAS dépendre du statut (ANNULATION_PAYEE peut avoir statut='Annulé')
+function isRevRow(r) {
+  return ['RESERVATION','ANNULATION_PAYEE','DIRECT','AIRCOVER','RELOCATION'].indexOf(r.type_norm) >= 0;
+}
+
 function computePeriodKPIs(resaRows, bizRows, joursDispo) {
   var rev=resaRows.filter(function(r){
-    return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';
+    return isRevRow(r);
   });
   var netEur=sum(rev,'net');
   var nuitsFact=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
@@ -2482,8 +2497,8 @@ function renderDash() {
   });
   var joursDispo=periodDays('d')*nAp;
   var cur=computePeriodKPIs(allRes,bizRows,joursDispo);
-  var brutEur=sum(allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';}),'brut');
-  var comEur=sum(allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';}),'commission');
+  var brutEur=sum(allRes.filter(function(r){return isRevRow(r);}),'brut');
+  var comEur=sum(allRes.filter(function(r){return isRevRow(r);}),'commission');
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
@@ -2576,7 +2591,7 @@ function renderDash() {
     var smMk=smDate.toISOString().slice(0,7);
     var smRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(smMk);});
     if(fa) smRes=smRes.filter(function(r){return r.appart===fa;});
-    var smRev=smRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+    var smRev=smRes.filter(function(r){return isRevRow(r);});
     var smNet=sum(smRev,'net')*EUR_MAD;
     var smNSej=smRev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
     var smDays=new Date(smDate.getFullYear(),smDate.getMonth()+1,0).getDate()*nAp;
@@ -2636,7 +2651,7 @@ function renderDash() {
   }
 
   // ── Décisions rapides ──
-  var revRes=allRes.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+  var revRes=allRes.filter(function(r){return isRevRow(r);});
   // Meilleur appart
   var apNet=APPARTS.map(function(ap){
     var n=sum(revRes.filter(function(r){return r.appart===ap;}),'net')*EUR_MAD;
@@ -2728,7 +2743,7 @@ function renderResa() {
   DB.taxe.forEach(function(t){
     if(t.reservation_ref){realTaxeMap[t.reservation_ref]=(realTaxeMap[t.reservation_ref]||0)+t.montant;}
   });
-  var rev=rows.filter(function(r){return TYPES_R.indexOf(r.type_norm)>=0&&r.type_norm!=='ANNULATION_NON_PAYEE'&&r.statut!=='Annulé';});
+  var rev=rows.filter(function(r){return isRevRow(r);});
   var brut=sum(rev,'brut'),com=sum(rev,'commission'),net=sum(rev,'net');
   var nuits=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
   var adrMAD=nuits>0?Math.round(e2m(net)/nuits):0;
@@ -4268,13 +4283,14 @@ var csvPending = [];
 // checkout jeu/ven/sam/dim → jeudi semaine suivante
 function nextThursday(dateStr) {
   if (!dateStr) return '';
-  var d = new Date(dateStr);
-  var day = d.getDay(); // 0=dim, 1=lun, 2=mar, 3=mer, 4=jeu, 5=ven, 6=sam
+  var p = dateStr.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+  var day = d.getUTCDay(); // 0=dim, 1=lun, 2=mar, 3=mer, 4=jeu, 5=ven, 6=sam
   var daysToAdd;
-  if (day === 0) daysToAdd = 4;       // dim → +4
+  if (day === 0) daysToAdd = 4;           // dim → +4
   else if (day <= 3) daysToAdd = 4 - day; // lun(1)→+3 mar(2)→+2 mer(3)→+1
-  else daysToAdd = 4 + (7 - day);    // jeu(4)→+7 ven(5)→+6 sam(6)→+5
-  d.setDate(d.getDate() + daysToAdd);
+  else daysToAdd = 4 + (7 - day);         // jeu(4)→+7 ven(5)→+6 sam(6)→+5
+  d.setUTCDate(d.getUTCDate() + daysToAdd);
   return d.toISOString().slice(0, 10);
 }
 
@@ -4286,21 +4302,19 @@ function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
   // Airbnb : checkin + 1j (RESERVATION et ANNULATION_PAYEE)
   if (src === 'Airbnb') {
     if (!ci) return dateCreation || t;
-    var d = new Date(ci); d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return addDays(ci, 1);
   }
   // Booking.com : jeudi suivant après checkout (RESERVATION et ANNULATION_PAYEE)
   if (src === 'Booking.com') {
-    return nextThursday(co) || dateCreation || t;
+    return nextThursday(co) || dateCreation || ci || t;
   }
   // VRBO : checkin + 7j (RESERVATION et ANNULATION_PAYEE)
   if (src === 'VRBO') {
     if (!ci) return dateCreation || t;
-    var d2 = new Date(ci); d2.setDate(d2.getDate() + 7);
-    return d2.toISOString().slice(0, 10);
+    return addDays(ci, 7);
   }
-  // Direct → date_creation
-  return dateCreation || t;
+  // Direct → date_creation, puis checkin, puis today
+  return dateCreation || ci || t;
 }
 
 function parseSmoobuRow(row, idx) {
@@ -4678,6 +4692,63 @@ async function normalizeData() {
     }
   });
   if(bizChanged) await saveAll('business');
+
+  // Recalcul date_paiement / mois_kpi pour toutes les réservations
+  await recomputeAllPaymentDates();
+}
+
+// ── Recalcul massif date_paiement + mois_kpi pour toutes les lignes ──
+// Saute les lignes avec override_manual=true
+async function recomputeAllPaymentDates() {
+  var changed = 0;
+  var t = today();
+  DB.resa.forEach(function(r) {
+    if (r.override_manual) return; // protection manuelle
+    var newDp = calcDatePaiement(r.source, r.type_norm, r.checkin, r.checkout, r.date_creation);
+    var newMk = (newDp || r.checkin || t).slice(0, 7);
+
+    // ANNULATION_NON_PAYEE → nuits forcées à 0
+    var nuitsFact = r.nuits_fact;
+    var nuitsSej  = r.nuits_sejour;
+    if (r.type_norm === 'ANNULATION_NON_PAYEE') {
+      nuitsFact = 0;
+      nuitsSej  = 0;
+    }
+
+    // Recalcul statut selon date_paiement
+    var newStatut = r.statut;
+    if (r.type_norm === 'ANNULATION_NON_PAYEE') {
+      newStatut = 'Annulé';
+    } else if (r.type_norm !== 'AJUSTEMENT') {
+      newStatut = (newDp && t >= newDp) ? 'Payé' : 'En attente';
+    }
+
+    var dirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
+             || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
+             || (r.statut !== newStatut);
+    if (dirty) {
+      console.log('[recompute]', r.ref || r.id,
+        'src='+r.source, 'type='+r.type_norm,
+        'ci='+r.checkin, 'co='+r.checkout,
+        'dp:'+r.date_paiement+'→'+newDp,
+        'mk:'+r.mois_kpi+'→'+newMk,
+        'statut:'+r.statut+'→'+newStatut
+      );
+      r.date_paiement = newDp;
+      r.mois_kpi      = newMk;
+      r.nuits_fact    = nuitsFact;
+      r.nuits_sejour  = nuitsSej;
+      r.statut        = newStatut;
+      changed++;
+    }
+  });
+  if (changed > 0) {
+    console.log('[recompute] ' + changed + ' lignes corrigées — sauvegarde Supabase…');
+    await saveAll('resa');
+    showToast(changed + ' réservation(s) recalculées (date_paiement / mois_kpi)', 'ok');
+  } else {
+    console.log('[recompute] Aucune correction nécessaire.');
+  }
 }
 
 // Re-render toutes les vues au redimensionnement (bascule table ↔ cartes)
