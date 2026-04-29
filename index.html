@@ -620,7 +620,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
-      <button class="ba ba-ghost admin-only" onclick="showImportLog()" id="btn-import-log" title="Log du dernier import CSV Smoobu">📋 Sync</button>
+      <button class="ba ba-ghost admin-only" onclick="showImportLog()" id="btn-import-log" title="Log du dernier import CSV Smoobu">📋 Log CSV</button>
+      <button class="ba ba-ghost admin-only" id="btn-api-sync" onclick="syncSmoobuAPI()" title="Synchroniser depuis l'API Smoobu (7 derniers jours)">⚡ Sync API</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
       <button class="ba ba-ghost admin-only" onclick="auditAirbnbAvrilUI('2026-04')" title="Rapport Airbnb avril 2026">📊 Audit avril</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
@@ -1102,6 +1103,18 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
     </div>
     <div id="audit-body" style="font-size:13px;color:var(--tx)"></div>
+  </div>
+</div>
+
+<!-- ═══ API SYNC OVERLAY ═════════════════════════════════════════ -->
+<div id="api-sync-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:903;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:640px;margin:0 auto;background:var(--s1);border-radius:14px;border:1px solid var(--br);padding:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:17px;font-weight:700;color:var(--tx)">⚡ Synchronisation API Smoobu</div>
+      <button onclick="document.getElementById('api-sync-ov').style.display='none'"
+        style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
+    </div>
+    <div id="api-sync-body" style="font-size:13px;color:var(--tx)"></div>
   </div>
 </div>
 
@@ -4787,6 +4800,110 @@ async function confirmCSV() {
 function cancelCSV() {
   csvPending = [];
   document.getElementById('csv-prev').classList.add('hidden');
+}
+
+// ────────────────────────────────────────────────────────────
+// SYNC API SMOOBU — appelle /api/smoobu-poll et affiche le log
+// ────────────────────────────────────────────────────────────
+async function syncSmoobuAPI() {
+  var btn = document.getElementById('btn-api-sync');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sync…'; }
+
+  // Fenêtre : 7 derniers jours (pour rattraper les réservations manquées)
+  var fromDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  var url = '/api/smoobu-poll?from=' + fromDate;
+
+  var startTs = Date.now();
+  var respData = null;
+  var httpStatus = null;
+
+  try {
+    var resp = await fetch(url);
+    httpStatus = resp.status;
+    try { respData = await resp.json(); } catch(e) { respData = { error: 'Réponse non-JSON' }; }
+  } catch(err) {
+    respData = { error: 'Erreur réseau : ' + err.message };
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Sync API'; }
+  }
+
+  var elapsed = ((Date.now() - startTs) / 1000).toFixed(1);
+
+  // Afficher dans un overlay simple
+  var ov = document.getElementById('api-sync-ov');
+  var body = document.getElementById('api-sync-body');
+  if (!ov || !body) return;
+
+  var html = '';
+
+  if (!respData || respData.error || httpStatus !== 200) {
+    var errMsg = (respData && respData.error) || ('HTTP ' + httpStatus);
+    // Cas spécifique : SMOOBU_API_KEY manquant
+    var isKeyMissing = errMsg && errMsg.includes('SMOOBU_API_KEY');
+    html += '<div style="background:rgba(220,53,69,.1);border:1px solid var(--er);border-radius:10px;padding:18px;margin-bottom:16px">' +
+      '<div style="font-size:15px;font-weight:700;color:var(--er);margin-bottom:8px">❌ Sync échouée — HTTP ' + (httpStatus||'?') + '</div>' +
+      '<div style="font-size:13px;color:var(--tx);margin-bottom:8px">' + escHtml(errMsg) + '</div>';
+    if (isKeyMissing) {
+      html += '<div style="background:rgba(255,193,7,.1);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:10px 12px;font-size:12px;margin-top:8px">' +
+        '⚙️ <strong>Variable manquante</strong> : <code>SMOOBU_API_KEY</code> n\'est pas configurée dans les variables d\'environnement Vercel.<br>' +
+        'Ajoutez-la dans <strong>Vercel → Settings → Environment Variables</strong>.' +
+        '</div>';
+    } else if (httpStatus === 401) {
+      html += '<div style="font-size:12px;color:var(--td);margin-top:8px">' +
+        '🔒 L\'endpoint est protégé par <code>CRON_SECRET</code>. La sync manuelle n\'est pas disponible avec cette configuration. ' +
+        'Supprimez <code>CRON_SECRET</code> ou ouvrez <code>/api/smoobu-poll</code> directement pour déclencher manuellement.' +
+        '</div>';
+    }
+    html += '</div>';
+  } else {
+    var s = respData.stats || {};
+    var hasWarn = (s.warnings || 0) > 0 || (s.errors || 0) > 0;
+    // Bannière OK
+    html += '<div style="background:rgba(76,175,80,.1);border:1px solid #4caf50;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">' +
+      '<div style="font-size:24px">' + (hasWarn ? '⚠️' : '✅') + '</div>' +
+      '<div><div style="font-weight:700;font-size:14px">Sync terminée en ' + elapsed + 's</div>' +
+      '<div style="color:var(--tm);font-size:12px;margin-top:2px">Fenêtre : depuis ' + fromDate + ' (7 jours)</div>' +
+      '</div></div>';
+    // Stats
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px">';
+    var statCols = [
+      { l: 'Récupérées Smoobu', v: s.fetched || 0,    c: 'var(--tx)' },
+      { l: 'Insérées',          v: s.upserted || 0,   c: (s.upserted > 0 ? '#4caf50' : 'var(--tm)') },
+      { l: 'Ignorées / mises à jour partielles', v: s.skipped || 0, c: 'var(--tm)' },
+      { l: 'Enrichies voyageur', v: s.enriched || 0,  c: 'var(--ac)' },
+      { l: 'Remédiatées',        v: s.remediated || 0, c: 'var(--ac)' },
+      { l: 'Avertissements',     v: s.warnings || 0,  c: (s.warnings > 0 ? 'var(--or)' : 'var(--tm)') },
+      { l: 'Erreurs',            v: s.errors || 0,    c: (s.errors > 0 ? 'var(--er)' : 'var(--tm)') },
+    ];
+    statCols.forEach(function(sc){
+      html += '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center">' +
+        '<div style="font-size:22px;font-weight:700;color:'+sc.c+'">'+sc.v+'</div>' +
+        '<div style="font-size:10px;color:var(--td);margin-top:2px;line-height:1.3">'+sc.l+'</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    // Rechargement suggéré si des reservations ont été insérées
+    if ((s.upserted || 0) > 0) {
+      html += '<div style="background:rgba(76,175,80,.07);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--gr);font-weight:600;margin-bottom:10px">' +
+        '🆕 ' + s.upserted + ' réservation(s) insérée(s) ou mise(s) à jour. ' +
+        '<a href="#" onclick="document.getElementById(\'api-sync-ov\').style.display=\'none\';loadAllDB().then(function(){renderResa();renderDash();});return false;" ' +
+        'style="color:var(--ac);text-decoration:underline">Recharger l\'affichage</a>' +
+        '</div>';
+    } else {
+      html += '<div style="background:var(--s2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--td)">' +
+        'Aucune nouvelle réservation — le CRM est à jour.' +
+        '</div>';
+    }
+  }
+
+  // Note cron
+  html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--br);font-size:11px;color:var(--td)">' +
+    '🕐 <strong>Sync automatique</strong> : active toutes les heures via cron Vercel (<code>0 * * * *</code>). ' +
+    'Ce bouton permet une synchronisation immédiate.' +
+    '</div>';
+
+  body.innerHTML = html;
+  ov.style.display = 'block';
 }
 
 // ────────────────────────────────────────────────────────────
