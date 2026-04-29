@@ -4807,13 +4807,18 @@ function detectRelocations() {
 // ── Recalcul massif date_paiement + mois_kpi pour toutes les lignes ──
 // MÉMOIRE UNIQUEMENT au boot — retourne les records modifiés pour saveAll ciblé
 // Pour persister : utiliser recomputeAndSave() via le bouton admin
+var OTA_SOURCES = ['Airbnb', 'Booking.com', 'VRBO'];
 function recomputeAllPaymentDates() {
   var dirty = [];
   var t = today();
   DB.resa.forEach(function(r) {
-    if (r.override_manual) return; // protection manuelle
+    var src = r.source || '';
+    var isOTA = OTA_SOURCES.indexOf(src) !== -1;
+    // date_paiement avant check-in pour une OTA = impossible → forcer correction même si override_manual
+    var dpImpossible = isOTA && r.checkin && r.date_paiement && r.date_paiement < r.checkin;
+    if (r.override_manual && !dpImpossible) return; // protection manuelle (sauf date impossible)
     // Règle CRM stricte — ignore toujours la valeur Smoobu, recalcule depuis source/ci/co
-    var newDp = calcDatePaiement(r.source, r.type_norm, r.checkin, r.checkout, r.date_creation);
+    var newDp = calcDatePaiement(src, r.type_norm, r.checkin, r.checkout, r.date_creation);
     var newMk = (newDp || r.checkin || t).slice(0, 7);
 
     // ANNULATION_NON_PAYEE → nuits forcées à 0
@@ -4879,7 +4884,7 @@ async function recomputeAndSave() {
 
     // Re-render toutes les vues avec les données corrigées en mémoire
     renderResa();
-    if (CUR === 'dash') renderDash();
+    renderDash(); // toujours rafraîchir les KPIs même si l'utilisateur est sur la page resa
 
     // Afficher résultat dans un overlay dans le CRM
     showRecomputeResult(total, nChanged, saved, errMsg);
