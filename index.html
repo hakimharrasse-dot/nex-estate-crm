@@ -620,6 +620,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
+      <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
@@ -4707,15 +4708,14 @@ async function normalizeData() {
   if(bizChanged) await saveAll('business');
 
   // Auto-tag RESERVATION → RELOCATION si overlap ANNULATION_PAYEE même appart
+  // En mémoire uniquement au démarrage — pas de saveAll (trop lent sur 500+ lignes)
   var relocChanged = detectRelocations();
   if (relocChanged > 0) {
-    console.log('[reloc] ' + relocChanged + ' réservation(s) taguées RELOCATION automatiquement');
-    await saveAll('resa');
-    showToast(relocChanged + ' relocation(s) détectée(s) automatiquement', 'ok');
+    console.log('[reloc] ' + relocChanged + ' réservation(s) taguées RELOCATION (mémoire — utiliser Recalculer pour persister)');
   }
 
-  // Recalcul date_paiement / mois_kpi pour toutes les réservations
-  await recomputeAllPaymentDates();
+  // Recalcul date_paiement / mois_kpi en mémoire uniquement
+  recomputeAllPaymentDates();
 }
 
 // ── Détection automatique des relocations ──
@@ -4753,8 +4753,9 @@ function detectRelocations() {
 }
 
 // ── Recalcul massif date_paiement + mois_kpi pour toutes les lignes ──
-// Saute les lignes avec override_manual=true
-async function recomputeAllPaymentDates() {
+// MÉMOIRE UNIQUEMENT — ne sauvegarde pas en Supabase (trop lent au démarrage)
+// Pour persister : utiliser recomputeAndSave() via le bouton admin
+function recomputeAllPaymentDates() {
   var changed = 0;
   var t = today();
   DB.resa.forEach(function(r) {
@@ -4782,13 +4783,6 @@ async function recomputeAllPaymentDates() {
              || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
              || (r.statut !== newStatut);
     if (dirty) {
-      console.log('[recompute]', r.ref || r.id,
-        'src='+r.source, 'type='+r.type_norm,
-        'ci='+r.checkin, 'co='+r.checkout,
-        'dp:'+r.date_paiement+'→'+newDp,
-        'mk:'+r.mois_kpi+'→'+newMk,
-        'statut:'+r.statut+'→'+newStatut
-      );
       r.date_paiement = newDp;
       r.mois_kpi      = newMk;
       r.nuits_fact    = nuitsFact;
@@ -4797,12 +4791,27 @@ async function recomputeAllPaymentDates() {
       changed++;
     }
   });
-  if (changed > 0) {
-    console.log('[recompute] ' + changed + ' lignes corrigées — sauvegarde Supabase…');
-    await saveAll('resa');
-    showToast(changed + ' réservation(s) recalculées (date_paiement / mois_kpi)', 'ok');
-  } else {
-    console.log('[recompute] Aucune correction nécessaire.');
+  if (changed > 0) console.log('[recompute] ' + changed + ' lignes recalculées en mémoire.');
+  return changed;
+}
+
+// ── Recalcul + sauvegarde Supabase (bouton admin uniquement) ──
+async function recomputeAndSave() {
+  if (ROLE !== 'admin') { showToast('⛔ Admin uniquement'); return; }
+  var btn = document.getElementById('btn-recompute');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Recalcul…'; }
+  try {
+    detectRelocations();
+    var changed = recomputeAllPaymentDates();
+    if (changed > 0) {
+      await saveAll('resa');
+      showToast('✅ ' + changed + ' réservation(s) recalculées et sauvegardées');
+    } else {
+      showToast('✅ Aucune correction nécessaire');
+    }
+    renderResa();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalculer'; }
   }
 }
 
