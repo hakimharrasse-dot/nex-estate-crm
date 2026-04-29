@@ -621,6 +621,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
+      <button class="ba ba-ghost admin-only" onclick="auditAirbnbAvril('2026-04');showToast('Audit Airbnb avril — voir Console DevTools')" title="Diagnostic Airbnb avril 2026 dans la console">📊 Audit avril</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
@@ -1984,6 +1985,9 @@ async function launchApp() {
     console.log('[launch] goTo resa');
     if (ROLE !== 'user') goTo('resa');
     console.log('[launch] done');
+
+    // Audit automatique Airbnb avril au boot (visible dans DevTools > Console)
+    setTimeout(function() { auditAirbnbAvril('2026-04'); }, 200);
   }
 
   if (normDone) showApp();
@@ -4838,11 +4842,15 @@ async function recomputeAndSave() {
   var btn = document.getElementById('btn-recompute');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Recalcul…'; }
   try {
+    console.log('=== AVANT RECALCUL ===');
+    auditAirbnbAvril('2026-04');
     detectRelocations();
     var changed = recomputeAllPaymentDates();
     if (changed > 0) {
       await saveAll('resa');
       showToast('✅ ' + changed + ' réservation(s) recalculées et sauvegardées');
+      console.log('=== APRÈS RECALCUL + SAVE ===');
+      auditAirbnbAvril('2026-04');
     } else {
       showToast('✅ Aucune correction nécessaire');
     }
@@ -4850,6 +4858,104 @@ async function recomputeAndSave() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalculer'; }
   }
+}
+
+// ── Diagnostic Airbnb pour un mois donné (ex: '2026-04') ──
+// Appeler en console : auditAirbnbAvril('2026-04')
+// Affiche : toutes les réservations Airbnb avec checkin dans le mois,
+// comparaison mois_kpi, total net, lignes en écart.
+function auditAirbnbAvril(mk) {
+  mk = mk || '2026-04';
+  var rate = EUR_MAD || 10.5;
+  var airbnbAll = DB.resa.filter(function(r) { return r.source === 'Airbnb'; });
+
+  // Lignes avec checkin dans le mois mk
+  var ciRows = airbnbAll.filter(function(r) {
+    return r.checkin && r.checkin.startsWith(mk);
+  });
+
+  // Lignes avec mois_kpi = mk
+  var mkRows = airbnbAll.filter(function(r) {
+    return (r.mois_kpi || '') === mk;
+  });
+
+  // Lignes avec checkin dans mk mais mois_kpi ≠ mk (problème potentiel)
+  var mismatch = ciRows.filter(function(r) {
+    return (r.mois_kpi || '') !== mk;
+  });
+
+  // Lignes avec mois_kpi = mk mais checkin ≠ mk (paiement d'une resa précédente)
+  var prevMonth = mkRows.filter(function(r) {
+    return !(r.checkin && r.checkin.startsWith(mk));
+  });
+
+  var netCi = ciRows.reduce(function(s,r){ return s + (r.net||0); }, 0);
+  var netMk = mkRows.reduce(function(s,r){ return s + (r.net||0); }, 0);
+  var netMismatch = mismatch.reduce(function(s,r){ return s + (r.net||0); }, 0);
+
+  console.group('=== AUDIT AIRBNB ' + mk + ' ===');
+  console.log('EUR/MAD utilisé :', rate.toFixed(4));
+
+  console.group('📋 Toutes Airbnb checkin=' + mk + ' (' + ciRows.length + ' lignes)');
+  ciRows.forEach(function(r) {
+    var flag = (r.mois_kpi !== mk) ? ' ⚠️ mois_kpi=' + r.mois_kpi : '';
+    console.log(
+      (r.ref || r.id || '?').padEnd(20),
+      (r.voyageur || '—').slice(0,18).padEnd(18),
+      'ci='+r.checkin, 'co='+r.checkout,
+      'dp='+r.date_paiement, 'mk='+r.mois_kpi,
+      'net='+Math.round((r.net||0)*rate)+'MAD',
+      r.type_norm, r.statut,
+      flag
+    );
+  });
+  console.log('→ Total net checkin ' + mk + ' :', Math.round(netCi * rate), 'MAD (', netCi.toFixed(2), 'EUR )');
+  console.groupEnd();
+
+  console.group('💰 Airbnb mois_kpi=' + mk + ' (' + mkRows.length + ' lignes)');
+  mkRows.forEach(function(r) {
+    var note = !(r.checkin && r.checkin.startsWith(mk)) ? ' [checkin='+r.checkin+']' : '';
+    console.log(
+      (r.ref || r.id || '?').padEnd(20),
+      'ci='+r.checkin, 'dp='+r.date_paiement,
+      'net='+Math.round((r.net||0)*rate)+'MAD',
+      r.type_norm, r.statut, note
+    );
+  });
+  console.log('→ Total net mois_kpi ' + mk + ' :', Math.round(netMk * rate), 'MAD (', netMk.toFixed(2), 'EUR )');
+  console.groupEnd();
+
+  if (mismatch.length > 0) {
+    console.group('⚠️ Checkin ' + mk + ' mais mois_kpi ≠ ' + mk + ' (' + mismatch.length + ' lignes — manquantes dans KPI)');
+    mismatch.forEach(function(r) {
+      console.warn(
+        (r.ref || r.id || '?').padEnd(20),
+        'ci='+r.checkin, 'dp='+r.date_paiement, 'mk='+r.mois_kpi,
+        'net='+Math.round((r.net||0)*rate)+'MAD', r.type_norm, r.statut
+      );
+    });
+    console.warn('→ Total manquant :', Math.round(netMismatch * rate), 'MAD');
+    console.groupEnd();
+  } else {
+    console.log('✅ Aucun écart : tous les checkin ' + mk + ' ont mois_kpi=' + mk);
+  }
+
+  if (prevMonth.length > 0) {
+    console.group('ℹ️ mois_kpi=' + mk + ' mais checkin hors ' + mk + ' (' + prevMonth.length + ' lignes — resa précédentes payées ce mois)');
+    prevMonth.forEach(function(r) {
+      console.log((r.ref||r.id||'?').padEnd(20), 'ci='+r.checkin, 'net='+Math.round((r.net||0)*rate)+'MAD', r.type_norm);
+    });
+    console.groupEnd();
+  }
+
+  console.log('━━ RÉSUMÉ ━━');
+  console.log('Checkin ' + mk + ' :', ciRows.length, 'lignes,', Math.round(netCi*rate), 'MAD');
+  console.log('mois_kpi ' + mk + ' :', mkRows.length, 'lignes,', Math.round(netMk*rate), 'MAD');
+  console.log('Écart CRM vs Airbnb : à comparer manuellement avec relevé Airbnb');
+  console.groupEnd();
+
+  return { ciRows: ciRows, mkRows: mkRows, mismatch: mismatch,
+           netCiMAD: Math.round(netCi*rate), netMkMAD: Math.round(netMk*rate) };
 }
 
 // Re-render toutes les vues au redimensionnement (bascule table ↔ cartes)
