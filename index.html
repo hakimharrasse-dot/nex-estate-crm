@@ -621,7 +621,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
-      <button class="ba ba-ghost admin-only" onclick="auditAirbnbAvril('2026-04');showToast('Audit Airbnb avril — voir Console DevTools')" title="Diagnostic Airbnb avril 2026 dans la console">📊 Audit avril</button>
+      <button class="ba ba-ghost admin-only" onclick="auditAirbnbAvrilUI('2026-04')" title="Rapport Airbnb avril 2026">📊 Audit avril</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
@@ -1089,6 +1089,18 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="bcan" onclick="closeModal()">Annuler</button>
       <button class="bsave" id="modal-save">Enregistrer</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Audit overlay ── -->
+<div id="audit-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:900;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:860px;margin:0 auto;background:var(--s1);border-radius:14px;border:1px solid var(--br);padding:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:17px;font-weight:700;color:var(--tx)" id="audit-title">Audit Airbnb</div>
+      <button onclick="document.getElementById('audit-ov').style.display='none'"
+        style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
+    </div>
+    <div id="audit-body" style="font-size:13px;color:var(--tx)"></div>
   </div>
 </div>
 
@@ -1986,8 +1998,7 @@ async function launchApp() {
     if (ROLE !== 'user') goTo('resa');
     console.log('[launch] done');
 
-    // Audit automatique Airbnb avril au boot (visible dans DevTools > Console)
-    setTimeout(function() { auditAirbnbAvril('2026-04'); }, 200);
+    // Audit disponible via bouton "📊 Audit avril" (admin uniquement)
   }
 
   if (normDone) showApp();
@@ -4753,8 +4764,8 @@ function normalizeData() {
 
   // Recalcul dates en mémoire
   t0 = Date.now();
-  var dpChanged = recomputeAllPaymentDates();
-  console.log('[norm] recomputeAllPaymentDates:', Date.now() - t0, 'ms —', dpChanged, 'changed');
+  var dpDirty = recomputeAllPaymentDates();
+  console.log('[norm] recomputeAllPaymentDates:', Date.now() - t0, 'ms —', dpDirty.length, 'changed');
 
   console.log('[norm] done (memory only — use Recalculer button to persist)');
 }
@@ -4794,23 +4805,21 @@ function detectRelocations() {
 }
 
 // ── Recalcul massif date_paiement + mois_kpi pour toutes les lignes ──
-// MÉMOIRE UNIQUEMENT — ne sauvegarde pas en Supabase (trop lent au démarrage)
+// MÉMOIRE UNIQUEMENT au boot — retourne les records modifiés pour saveAll ciblé
 // Pour persister : utiliser recomputeAndSave() via le bouton admin
 function recomputeAllPaymentDates() {
-  var changed = 0;
+  var dirty = [];
   var t = today();
   DB.resa.forEach(function(r) {
     if (r.override_manual) return; // protection manuelle
+    // Règle CRM stricte — ignore toujours la valeur Smoobu, recalcule depuis source/ci/co
     var newDp = calcDatePaiement(r.source, r.type_norm, r.checkin, r.checkout, r.date_creation);
     var newMk = (newDp || r.checkin || t).slice(0, 7);
 
     // ANNULATION_NON_PAYEE → nuits forcées à 0
     var nuitsFact = r.nuits_fact;
     var nuitsSej  = r.nuits_sejour;
-    if (r.type_norm === 'ANNULATION_NON_PAYEE') {
-      nuitsFact = 0;
-      nuitsSej  = 0;
-    }
+    if (r.type_norm === 'ANNULATION_NON_PAYEE') { nuitsFact = 0; nuitsSej = 0; }
 
     // Recalcul statut selon date_paiement
     var newStatut = r.statut;
@@ -4820,142 +4829,192 @@ function recomputeAllPaymentDates() {
       newStatut = (newDp && t >= newDp) ? 'Payé' : 'En attente';
     }
 
-    var dirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
-             || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
-             || (r.statut !== newStatut);
-    if (dirty) {
+    var isDirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
+               || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
+               || (r.statut !== newStatut);
+    if (isDirty) {
       r.date_paiement = newDp;
       r.mois_kpi      = newMk;
       r.nuits_fact    = nuitsFact;
       r.nuits_sejour  = nuitsSej;
       r.statut        = newStatut;
-      changed++;
+      dirty.push(r);
     }
   });
-  if (changed > 0) console.log('[recompute] ' + changed + ' lignes recalculées en mémoire.');
-  return changed;
+  if (dirty.length > 0) console.log('[recompute] ' + dirty.length + ' lignes recalculées en mémoire.');
+  return dirty; // retourne les records modifiés (pas juste le count)
 }
 
 // ── Recalcul + sauvegarde Supabase (bouton admin uniquement) ──
+// Sauvegarde UNIQUEMENT les records modifiés — pas les 500+ en bloc
 async function recomputeAndSave() {
   if (ROLE !== 'admin') { showToast('⛔ Admin uniquement'); return; }
   var btn = document.getElementById('btn-recompute');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Recalcul…'; }
+
+  var total = DB.resa.length;
+  var saved = 0;
+  var errMsg = '';
+
   try {
-    console.log('=== AVANT RECALCUL ===');
-    auditAirbnbAvril('2026-04');
     detectRelocations();
-    var changed = recomputeAllPaymentDates();
-    if (changed > 0) {
-      await saveAll('resa');
-      showToast('✅ ' + changed + ' réservation(s) recalculées et sauvegardées');
-      console.log('=== APRÈS RECALCUL + SAVE ===');
-      auditAirbnbAvril('2026-04');
-    } else {
-      showToast('✅ Aucune correction nécessaire');
+    var dirty = recomputeAllPaymentDates(); // retourne les records modifiés
+    var nChanged = dirty.length;
+
+    if (nChanged > 0) {
+      // Sauvegarder uniquement les records dirty, par lots de 50
+      var BATCH = 50;
+      for (var i = 0; i < dirty.length; i += BATCH) {
+        var chunk = dirty.slice(i, i + BATCH);
+        try {
+          var res = await SUPA.from(TABLE['resa']).upsert(chunk, { onConflict: 'id' });
+          if (res.error) throw res.error;
+          saved += chunk.length;
+        } catch(e) {
+          errMsg = String(e.message || e);
+          console.error('[recompute] Erreur Supabase lot', i/BATCH+1, ':', e);
+        }
+      }
     }
+
+    // Re-render toutes les vues avec les données corrigées en mémoire
     renderResa();
+    if (CUR === 'dash') renderDash();
+
+    // Afficher résultat dans un overlay dans le CRM
+    showRecomputeResult(total, nChanged, saved, errMsg);
+
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalculer'; }
   }
 }
 
-// ── Diagnostic Airbnb pour un mois donné (ex: '2026-04') ──
-// Appeler en console : auditAirbnbAvril('2026-04')
-// Affiche : toutes les réservations Airbnb avec checkin dans le mois,
-// comparaison mois_kpi, total net, lignes en écart.
+function showRecomputeResult(total, changed, saved, errMsg) {
+  var ok = saved === changed;
+  var html =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">' +
+      '<div style="background:var(--s2);border-radius:10px;padding:14px;text-align:center">' +
+        '<div style="font-size:24px;font-weight:700;color:var(--tx)">' + total + '</div>' +
+        '<div style="font-size:11px;color:var(--tm);margin-top:4px">Analysées</div></div>' +
+      '<div style="background:var(--s2);border-radius:10px;padding:14px;text-align:center">' +
+        '<div style="font-size:24px;font-weight:700;color:var(--or)">' + changed + '</div>' +
+        '<div style="font-size:11px;color:var(--tm);margin-top:4px">À corriger</div></div>' +
+      '<div style="background:var(--s2);border-radius:10px;padding:14px;text-align:center">' +
+        '<div style="font-size:24px;font-weight:700;color:' + (ok && changed > 0 ? 'var(--gr)' : changed === 0 ? 'var(--tm)' : 'var(--re)') + '">' + saved + '</div>' +
+        '<div style="font-size:11px;color:var(--tm);margin-top:4px">Sauvegardées</div></div>' +
+    '</div>';
+
+  if (errMsg) {
+    html += '<div style="background:rgba(200,60,60,.12);border:1px solid rgba(200,60,60,.3);border-radius:8px;padding:12px;color:var(--re);font-size:12px;margin-bottom:16px">' +
+      '⚠️ Erreur Supabase : ' + escHtml(errMsg) + '</div>';
+  } else if (changed === 0) {
+    html += '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Aucune correction nécessaire — toutes les dates sont déjà correctes.</div>';
+  } else if (ok) {
+    html += '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Toutes les corrections persistées en Supabase. Les KPIs sont maintenant à jour.</div>';
+  }
+
+  html += '<div style="margin-top:16px"><button onclick="document.getElementById(\'audit-ov\').style.display=\'none\';auditAirbnbAvrilUI(\'2026-04\')" ' +
+    'style="background:var(--or);color:#fff;border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">📊 Voir audit Airbnb avril</button></div>';
+
+  document.getElementById('audit-title').textContent = '🔄 Résultat recalcul — ' + new Date().toLocaleTimeString('fr-FR');
+  document.getElementById('audit-body').innerHTML = html;
+  document.getElementById('audit-ov').style.display = 'block';
+}
+
+// ── Calcul des données d'audit Airbnb pour un mois ──
 function auditAirbnbAvril(mk) {
   mk = mk || '2026-04';
   var rate = EUR_MAD || 10.5;
   var airbnbAll = DB.resa.filter(function(r) { return r.source === 'Airbnb'; });
-
-  // Lignes avec checkin dans le mois mk
-  var ciRows = airbnbAll.filter(function(r) {
-    return r.checkin && r.checkin.startsWith(mk);
-  });
-
-  // Lignes avec mois_kpi = mk
-  var mkRows = airbnbAll.filter(function(r) {
-    return (r.mois_kpi || '') === mk;
-  });
-
-  // Lignes avec checkin dans mk mais mois_kpi ≠ mk (problème potentiel)
-  var mismatch = ciRows.filter(function(r) {
-    return (r.mois_kpi || '') !== mk;
-  });
-
-  // Lignes avec mois_kpi = mk mais checkin ≠ mk (paiement d'une resa précédente)
-  var prevMonth = mkRows.filter(function(r) {
-    return !(r.checkin && r.checkin.startsWith(mk));
-  });
-
-  var netCi = ciRows.reduce(function(s,r){ return s + (r.net||0); }, 0);
-  var netMk = mkRows.reduce(function(s,r){ return s + (r.net||0); }, 0);
-  var netMismatch = mismatch.reduce(function(s,r){ return s + (r.net||0); }, 0);
-
-  console.group('=== AUDIT AIRBNB ' + mk + ' ===');
-  console.log('EUR/MAD utilisé :', rate.toFixed(4));
-
-  console.group('📋 Toutes Airbnb checkin=' + mk + ' (' + ciRows.length + ' lignes)');
-  ciRows.forEach(function(r) {
-    var flag = (r.mois_kpi !== mk) ? ' ⚠️ mois_kpi=' + r.mois_kpi : '';
-    console.log(
-      (r.ref || r.id || '?').padEnd(20),
-      (r.voyageur || '—').slice(0,18).padEnd(18),
-      'ci='+r.checkin, 'co='+r.checkout,
-      'dp='+r.date_paiement, 'mk='+r.mois_kpi,
-      'net='+Math.round((r.net||0)*rate)+'MAD',
-      r.type_norm, r.statut,
-      flag
-    );
-  });
-  console.log('→ Total net checkin ' + mk + ' :', Math.round(netCi * rate), 'MAD (', netCi.toFixed(2), 'EUR )');
-  console.groupEnd();
-
-  console.group('💰 Airbnb mois_kpi=' + mk + ' (' + mkRows.length + ' lignes)');
-  mkRows.forEach(function(r) {
-    var note = !(r.checkin && r.checkin.startsWith(mk)) ? ' [checkin='+r.checkin+']' : '';
-    console.log(
-      (r.ref || r.id || '?').padEnd(20),
-      'ci='+r.checkin, 'dp='+r.date_paiement,
-      'net='+Math.round((r.net||0)*rate)+'MAD',
-      r.type_norm, r.statut, note
-    );
-  });
-  console.log('→ Total net mois_kpi ' + mk + ' :', Math.round(netMk * rate), 'MAD (', netMk.toFixed(2), 'EUR )');
-  console.groupEnd();
-
-  if (mismatch.length > 0) {
-    console.group('⚠️ Checkin ' + mk + ' mais mois_kpi ≠ ' + mk + ' (' + mismatch.length + ' lignes — manquantes dans KPI)');
-    mismatch.forEach(function(r) {
-      console.warn(
-        (r.ref || r.id || '?').padEnd(20),
-        'ci='+r.checkin, 'dp='+r.date_paiement, 'mk='+r.mois_kpi,
-        'net='+Math.round((r.net||0)*rate)+'MAD', r.type_norm, r.statut
-      );
-    });
-    console.warn('→ Total manquant :', Math.round(netMismatch * rate), 'MAD');
-    console.groupEnd();
-  } else {
-    console.log('✅ Aucun écart : tous les checkin ' + mk + ' ont mois_kpi=' + mk);
-  }
-
-  if (prevMonth.length > 0) {
-    console.group('ℹ️ mois_kpi=' + mk + ' mais checkin hors ' + mk + ' (' + prevMonth.length + ' lignes — resa précédentes payées ce mois)');
-    prevMonth.forEach(function(r) {
-      console.log((r.ref||r.id||'?').padEnd(20), 'ci='+r.checkin, 'net='+Math.round((r.net||0)*rate)+'MAD', r.type_norm);
-    });
-    console.groupEnd();
-  }
-
-  console.log('━━ RÉSUMÉ ━━');
+  var ciRows    = airbnbAll.filter(function(r) { return r.checkin && r.checkin.startsWith(mk); });
+  var mkRows    = airbnbAll.filter(function(r) { return (r.mois_kpi||'') === mk; });
+  var mismatch  = ciRows.filter(function(r) { return (r.mois_kpi||'') !== mk; });
+  var prevMonth = mkRows.filter(function(r) { return !(r.checkin && r.checkin.startsWith(mk)); });
+  var netCi     = ciRows.reduce(function(s,r){ return s+(r.net||0); }, 0);
+  var netMk     = mkRows.reduce(function(s,r){ return s+(r.net||0); }, 0);
+  var netMismatch = mismatch.reduce(function(s,r){ return s+(r.net||0); }, 0);
+  // Log console synthétique
+  console.group('AUDIT AIRBNB ' + mk);
   console.log('Checkin ' + mk + ' :', ciRows.length, 'lignes,', Math.round(netCi*rate), 'MAD');
   console.log('mois_kpi ' + mk + ' :', mkRows.length, 'lignes,', Math.round(netMk*rate), 'MAD');
-  console.log('Écart CRM vs Airbnb : à comparer manuellement avec relevé Airbnb');
+  if (mismatch.length) { console.warn('Écart (' + mismatch.length + ' lignes, ' + Math.round(netMismatch*rate) + ' MAD manquants) :'); mismatch.forEach(function(r){ console.warn(r.ref, 'ci='+r.checkin, 'dp='+r.date_paiement, 'mk='+r.mois_kpi, Math.round((r.net||0)*rate)+'MAD'); }); }
+  else console.log('✅ Aucun écart');
   console.groupEnd();
+  return { mk:mk, rate:rate, ciRows:ciRows, mkRows:mkRows, mismatch:mismatch, prevMonth:prevMonth,
+           netCiMAD:Math.round(netCi*rate), netMkMAD:Math.round(netMk*rate),
+           netMismatchMAD:Math.round(netMismatch*rate) };
+}
 
-  return { ciRows: ciRows, mkRows: mkRows, mismatch: mismatch,
-           netCiMAD: Math.round(netCi*rate), netMkMAD: Math.round(netMk*rate) };
+// ── Affichage de l'audit dans l'UI du CRM ──
+function auditAirbnbAvrilUI(mk) {
+  mk = mk || '2026-04';
+  var d = auditAirbnbAvril(mk);
+  var rate = d.rate;
+
+  function rowHtml(r, warn) {
+    var flag = warn ? ' style="color:var(--or)"' : '';
+    return '<tr' + flag + '>' +
+      '<td style="font-family:monospace;font-size:11px">' + escHtml(r.ref||r.id||'?') + '</td>' +
+      '<td>' + escHtml((r.voyageur||'—').slice(0,20)) + '</td>' +
+      '<td>' + (r.checkin||'—') + '</td>' +
+      '<td>' + (r.checkout||'—') + '</td>' +
+      '<td>' + (r.date_paiement||'—') + '</td>' +
+      '<td' + (warn ? ' style="color:var(--or);font-weight:600"' : '') + '>' + (r.mois_kpi||'—') + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + Math.round((r.net||0)*rate).toLocaleString('fr-MA') + '</td>' +
+      '<td><span style="font-size:10px;color:var(--tm)">' + (r.type_norm||'') + '</span></td>' +
+    '</tr>';
+  }
+
+  function table(rows, warn) {
+    if (!rows.length) return '<div style="color:var(--td);font-size:12px;padding:6px 0">Aucune ligne</div>';
+    return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
+      '<th style="text-align:left;padding:6px 8px">Réf.</th><th>Voyageur</th><th>Check-in</th><th>Check-out</th>' +
+      '<th>date_paiement</th><th>mois_kpi</th><th style="text-align:right">Net MAD</th><th>Type</th></tr></thead>' +
+      '<tbody>' + rows.map(function(r){ return rowHtml(r, warn); }).join('') + '</tbody>' +
+      '<tfoot><tr style="border-top:1px solid var(--br);font-weight:700">' +
+      '<td colspan="6" style="padding:6px 8px;color:var(--tm)">Total</td>' +
+      '<td style="text-align:right">' + Math.round(rows.reduce(function(s,r){return s+(r.net||0);},0)*rate).toLocaleString('fr-MA') + ' MAD</td><td></td></tr></tfoot>' +
+      '</table></div>';
+  }
+
+  var html = '';
+
+  // Résumé KPIs
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">';
+  html += '<div style="background:var(--s2);border-radius:10px;padding:14px;text-align:center"><div style="font-size:20px;font-weight:700">' + d.netCiMAD.toLocaleString('fr-MA') + ' MAD</div><div style="font-size:11px;color:var(--tm);margin-top:4px">Net Airbnb check-in ' + mk + '</div></div>';
+  html += '<div style="background:var(--s2);border-radius:10px;padding:14px;text-align:center"><div style="font-size:20px;font-weight:700">' + d.netMkMAD.toLocaleString('fr-MA') + ' MAD</div><div style="font-size:11px;color:var(--tm);margin-top:4px">Net Airbnb mois_kpi ' + mk + '</div></div>';
+  html += '<div style="background:' + (d.mismatch.length ? 'rgba(200,119,58,.12)' : 'rgba(76,175,80,.08)') + ';border-radius:10px;padding:14px;text-align:center"><div style="font-size:20px;font-weight:700;color:' + (d.mismatch.length ? 'var(--or)' : 'var(--gr)') + '">' + (d.mismatch.length ? '-' + d.netMismatchMAD.toLocaleString('fr-MA') + ' MAD' : '✅ 0') + '</div><div style="font-size:11px;color:var(--tm);margin-top:4px">Manquant (' + d.mismatch.length + ' lignes hors mois_kpi)</div></div>';
+  html += '</div>';
+
+  // Section : incluses
+  html += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px;font-size:13px">✅ Airbnb check-in ' + mk + ' incluses dans mois_kpi (' + (d.ciRows.length - d.mismatch.length) + ')</div>';
+  html += table(d.ciRows.filter(function(r){ return (r.mois_kpi||'')===mk; }), false);
+  html += '</div>';
+
+  // Section : exclues / mismatch
+  if (d.mismatch.length) {
+    html += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px;font-size:13px;color:var(--or)">⚠️ Check-in ' + mk + ' mais mois_kpi ≠ ' + mk + ' (' + d.mismatch.length + ' lignes — exclues du CA)</div>';
+    html += '<div style="font-size:12px;color:var(--tm);margin-bottom:8px">Ces réservations ont check-in en avril mais leur date_paiement (et donc mois_kpi) tombe hors avril. Cliquer "🔄 Recalculer" pour corriger.</div>';
+    html += table(d.mismatch, true);
+    html += '</div>';
+  } else {
+    html += '<div style="color:var(--gr);font-size:13px;padding:8px 0;margin-bottom:16px">✅ Aucun mismatch — toutes les réservations avec check-in ' + mk + ' ont mois_kpi=' + mk + '</div>';
+  }
+
+  // Section : resa d'autres mois payées en avril
+  if (d.prevMonth.length) {
+    html += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px;font-size:13px;color:var(--tm)">ℹ️ mois_kpi=' + mk + ' mais check-in hors avril (' + d.prevMonth.length + ' lignes)</div>';
+    html += '<div style="font-size:12px;color:var(--tm);margin-bottom:8px">Réservations de mois précédents dont le paiement tombe en avril (ex : check-out fin mars → paiement jeudi suivant = 1er avril).</div>';
+    html += table(d.prevMonth, false);
+    html += '</div>';
+  }
+
+  html += '<div style="margin-top:16px;font-size:11px;color:var(--td)">Taux EUR/MAD utilisé : ' + rate.toFixed(4) + ' · Généré le ' + new Date().toLocaleString('fr-FR') + '</div>';
+
+  document.getElementById('audit-title').textContent = '📊 Audit Airbnb ' + mk;
+  document.getElementById('audit-body').innerHTML = html;
+  document.getElementById('audit-ov').style.display = 'block';
 }
 
 // Re-render toutes les vues au redimensionnement (bascule table ↔ cartes)
