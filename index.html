@@ -1931,15 +1931,22 @@ async function launchApp() {
     return;
   }
 
+  // Normaliser les données AVANT d'afficher l'interface
+  // (recomputeAllPaymentDates peut prendre plusieurs secondes sur 500+ lignes)
+  loadMsg.textContent = 'Normalisation des données...';
+  await normalizeData();
+
+  // Tout est prêt — masquer overlay et rendre l'UI complète d'un seul coup
   setDBStatus(true, 'Supabase · ' + DB.resa.length + ' rés.');
   if (overlay) overlay.style.display = 'none';
 
-  // Init UI
-  ['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
-  await normalizeData();
-  setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
+  // Taux EUR/MAD : fallback immédiat, puis API en arrière-plan
   updateRateDisplay();
   fetchEurMad();
+
+  // Init UI — tout en une passe pour éviter les états intermédiaires
+  ['r','b','t','s','p','d'].forEach(function(k){renderNav(k);});
+  setPer('r','mois');setPer('b','mois');setPer('t','mois');setPer('s','mois');setPer('p','mois');setPer('d','mois');
 
   // Appliquer le rôle (CSS body + badge + navigation initiale)
   applyRoleUI();
@@ -2006,6 +2013,8 @@ function fetchEurMad() {
       if (k) renderView(k);
     }
   }).catch(function(err){
+    // API indisponible — fallback 10.5 déjà appliqué, afficher "(fallback)"
+    EUR_MAD_DATE = 'fallback';
     console.warn('Taux EUR/MAD non rafraichi, fallback:', EUR_MAD, err);
     updateRateDisplay();
   });
@@ -2014,8 +2023,10 @@ function fetchEurMad() {
 function updateRateDisplay() {
   var el = document.getElementById('rate-disp');
   if (!el) return;
-  var txt = '1 EUR = ' + EUR_MAD.toFixed(3) + ' MAD';
-  if (EUR_MAD_DATE) txt += ' · ' + EUR_MAD_DATE;
+  // Ne jamais laisser "— MAD" — toujours afficher le taux réel ou le fallback
+  var txt = '1 EUR = ' + EUR_MAD.toFixed(2) + ' MAD';
+  if (EUR_MAD_DATE && EUR_MAD_DATE !== 'fallback') txt += ' · ' + EUR_MAD_DATE;
+  else if (EUR_MAD_DATE === 'fallback') txt += ' (fallback)';
   el.textContent = txt;
 }
 
@@ -3943,8 +3954,8 @@ function buildForm(type, editId) {
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
-      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-fmen" style="display:'+(v('cat')==='Ménage'?'block':'none')+'"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
