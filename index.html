@@ -4040,6 +4040,16 @@ function buildForm(type, editId) {
       field2('Check-in','fi-ci','date',ci)+
       field2('Check-out','fi-co','date',co)+
       field2('Nuits facturées','fi-nf','number',nf)+
+      '<div class="ff" style="background:rgba(76,175,125,.07);border:1.5px solid rgba(76,175,125,.3);border-radius:8px;padding:10px 13px">'+
+        '<label class="fl" style="color:#3a9e6a;margin-bottom:6px">🏠 Nuits business corrigées'+
+          '<span style="font-weight:400;font-size:10px;color:var(--td);margin-left:6px">optionnel — vide = calcul auto</span></label>'+
+        '<input type="number" class="fi" id="fi-nuits-biz" value="'+(rec&&rec.nuits_business!=null?rec.nuits_business:'')+'" min="0" style="font-size:14px" placeholder="Laisser vide pour calcul automatique">'+
+        '<div style="font-size:11px;color:var(--tm);margin-top:5px;line-height:1.5">'+
+          'Si renseigné, l\'occupation business utilise ce nombre au lieu du calcul par chevauchement.'+
+          ' Utile pour les <strong>annulations partielles</strong> (ex : 1 nuit encaissée sur 7) ou les'+
+          ' <strong>longs séjours Airbnb</strong> payés par tranche. Jamais écrasé par l\'import CSV.'+
+        '</div>'+
+      '</div>'+
       field2('Nb personnes','fi-np','number',np)+
       field2('Montant brut (MAD)','fi-brut','number',brutMad)+
       '<div><label class="fl">Commission (%) <span style="font-size:10px;color:var(--td);font-weight:400">auto · modifiable</span></label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" step="0.1" min="0" max="100"></div>'+
@@ -4051,11 +4061,6 @@ function buildForm(type, editId) {
       fieldFull('Date de paiement','fi-dp','date',v('date_paiement',''))+
       fieldFull('Date de création (réservation)','fi-dc','date',v('date_creation',''))+
       fieldFull('Notes','fi-notes','text',v('notes',''),'Annulation, relocation, cas spécial...')+
-      '<div class="ff" style="background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.25);border-radius:8px;padding:10px 13px;margin-top:2px">'+
-        '<label class="fl" style="color:var(--te)">Nuits business (correction occupation) <span style="font-size:10px;color:var(--td);font-weight:400">optionnel — laissez vide pour calcul auto</span></label>'+
-        '<input type="number" class="fi" id="fi-nuits-biz" value="'+(rec&&rec.nuits_business!=null?rec.nuits_business:'')+'" min="0" placeholder="Vide = calcul auto par chevauchement">'+
-        '<div style="font-size:11px;color:var(--tm);margin-top:5px">Remplace le calcul automatique. Utile pour les annulations partielles (ex : 1 nuit encaissée sur 7) ou les longs séjours Airbnb payés par tranche. Distribué proportionnellement si le séjour s\'étend sur plusieurs mois.</div>'+
-      '</div>'+
       '<div class="ff" style="background:rgba(200,119,58,.08);border:1.5px solid rgba(200,119,58,.3);border-radius:8px;padding:10px 13px;margin-top:2px">'+
       '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'+
       '<input type="checkbox" id="fi-override" style="width:16px;height:16px;accent-color:var(--or);flex-shrink:0" '+(v('override_manual',M_ID?false:true)?'checked':'')+'>'+
