@@ -407,6 +407,36 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   /* Bedit/bdel plus grand sur mobile */
   .bedit,.bdel{padding:8px 10px;font-size:17px;}
 }
+/* ── Logements ── */
+.log-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+.log-card.archived{opacity:.55;}
+.log-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.log-dot.actif{background:var(--gr);}
+.log-dot.archive{background:var(--td);}
+.log-info{flex:1;min-width:0;}
+.log-nom{font-size:14px;font-weight:600;}
+.log-meta{font-size:11px;color:var(--tm);margin-top:3px;}
+.log-acts{display:flex;gap:6px;flex-shrink:0;}
+/* ── Réconciliation anomalies ── */
+.reconcil-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:10px;}
+.reconcil-card.anomaly{border-left:3px solid var(--or);}
+.reconcil-card.crit{border-left:3px solid var(--re);}
+.reconcil-card.ok{border-left:3px solid var(--gr);opacity:.65;}
+.reconcil-ref{font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--or);}
+.reconcil-guest{font-size:13px;font-weight:600;margin:3px 0;}
+.reconcil-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--br);font-size:12px;}
+.reconcil-row:last-of-type{border-bottom:none;}
+.reconcil-lbl{color:var(--tm);min-width:110px;}
+.reconcil-val{font-family:'DM Mono',monospace;font-weight:500;}
+.reconcil-delta{font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;}
+.reconcil-delta.pos{background:var(--res);color:var(--re);}
+.reconcil-delta.neg{background:var(--res);color:var(--re);}
+.reconcil-delta.zero{background:var(--grs);color:var(--gr);}
+.reconcil-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--br);}
+/* ── Contrôle qualité ── */
+.qa-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;margin-bottom:10px;transition:opacity .2s;}
+.qa-meta{display:flex;flex-wrap:wrap;gap:10px 20px;font-size:12px;color:var(--tm);margin-bottom:8px;padding:8px 0;border-top:1px solid var(--br);}
+.qa-meta span{white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -479,6 +509,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ni manager-plus" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
     <div class="ni manager-plus" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
     <div class="ni manager-plus" id="ni-doublons" onclick="goTo('doublons')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Doublons <span id="dup-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
+    <div class="ni manager-plus" id="ni-logements" onclick="goTo('logements')"><span class="dot" style="background:var(--bl)"></span>Logements</div>
+    <div class="ni admin-only" id="ni-reconcil" onclick="goTo('reconcil')" style="position:relative"><span class="dot" style="background:var(--te)"></span>Réconciliation <span id="reconcil-badge" class="hidden" style="background:var(--or);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
+    <div class="ni manager-plus" id="ni-qualite" onclick="goTo('qualite')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Contrôle qualité <span id="qualite-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-recur" onclick="goTo('recur')"><span class="dot" style="background:var(--or)"></span>Charges récurrentes</div>
   </div>
   <div class="ng" id="ng-perso">
@@ -557,7 +590,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 
   <div class="kg">
-    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="kd" id="d-delta-net"></div></div>
+    <div class="kc"><div class="kl">CA encaissé</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="ks" id="d-net-att" style="color:var(--or)"></div><div class="kd" id="d-delta-net"></div></div>
     <div class="kc" id="kc-res"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
     <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div><div class="kd" id="d-delta-occ2"></div></div>
     <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
@@ -592,7 +625,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <!-- Sparklines -->
   <div class="spark-row">
     <div class="spark-card">
-      <div class="spark-lbl">Revenus nets — 6 derniers mois</div>
+      <div class="spark-lbl">CA encaissé — 6 derniers mois</div>
       <svg class="spark-svg" id="d-spark-net" viewBox="0 0 260 48" preserveAspectRatio="none"></svg>
       <div class="spark-axis" id="d-spark-net-ax"></div>
     </div>
@@ -623,7 +656,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="ba ba-ghost admin-only" onclick="showImportLog()" id="btn-import-log" title="Log du dernier import CSV Smoobu">📋 Log CSV</button>
       <button class="ba ba-ghost admin-only" id="btn-api-sync" onclick="syncSmoobuAPI()" title="Synchroniser depuis l'API Smoobu (7 derniers jours)">⚡ Sync API</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
-      <button class="ba ba-ghost admin-only" onclick="auditAirbnbAvrilUI('2026-04')" title="Rapport Airbnb avril 2026">📊 Audit avril</button>
+      <button class="ba ba-ghost admin-only" id="btn-audit-airbnb" onclick="auditAirbnbAvrilUI(getActiveMoisKpi())" title="Audit Airbnb du mois actif (filtre Réservations)">📊 Audit mois</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
@@ -853,6 +886,72 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <tbody id="dup-tb"></tbody>
   </table><div class="empty hidden" id="dup-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté</div></div>
   <div id="dup-cards" class="dup-cards"></div>
+</div>
+
+<!-- ═══ VIEW: LOGEMENTS ═══ -->
+<div class="vw" id="vw-logements">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--bl)">Logements</div><div class="vsub">Gestion du parc locatif · actifs &amp; archivés</div></div>
+    <button class="ba ba-ghost admin-only" onclick="openLogementModal(null)">+ Ajouter</button>
+  </div>
+  <div id="logements-list"></div>
+</div>
+
+<!-- ═══ VIEW: RÉCONCILIATION ═══ -->
+<div class="vw" id="vw-reconcil">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--te)">Réconciliation</div><div class="vsub">Comparaison CRM ↔ CSV financier · Airbnb · Booking</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ba bat" onclick="document.getElementById('reconcil-csv-input').click()">📥 Importer CSV Airbnb</button>
+      <input type="file" id="reconcil-csv-input" accept=".csv" style="display:none" onchange="handleReconCSV(this)">
+    </div>
+  </div>
+  <!-- Taux configurable -->
+  <div class="fb" style="margin-bottom:14px">
+    <div class="fr" style="align-items:center;gap:12px">
+      <span style="font-size:12px;color:var(--tm)">Taux MAD → EUR :</span>
+      <input type="number" id="reconcil-taux" value="10.50" step="0.01" min="1" max="20"
+        style="width:80px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:6px 9px;font-size:13px;font-family:'DM Sans',sans-serif">
+      <span style="font-size:11px;color:var(--td)">1 EUR = X MAD</span>
+      <span id="reconcil-status" style="font-size:12px;color:var(--tm);margin-left:auto"></span>
+    </div>
+    <div style="font-size:11px;color:var(--td);font-style:italic;margin-top:4px">⚠️ Si vous changez le taux, réimportez le CSV pour recalculer les écarts.</div>
+  </div>
+  <!-- File d'attente anomalies -->
+  <div id="reconcil-queue" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:10px">
+      File d'attente anomalies <span id="reconcil-queue-count" style="color:var(--or)"></span>
+    </div>
+    <div id="reconcil-anomalies"></div>
+    <div style="margin-top:12px;border-top:1px solid var(--br);padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ba ba-ghost" style="font-size:12px" onclick="exportAnomaliesJSON()">⬇ Exporter JSON</button>
+      <button class="ba ba-ghost" style="font-size:12px;color:var(--td)" onclick="clearIgnoredAnomalies()">🗑 Vider les ignorées</button>
+    </div>
+  </div>
+  <div id="reconcil-empty" style="color:var(--td);font-size:13px;padding:32px;text-align:center">
+    Aucun CSV importé — cliquez sur <strong style="color:var(--tx)">Importer CSV Airbnb</strong> pour démarrer la réconciliation.
+  </div>
+</div>
+
+<!-- ═══ VIEW: CONTRÔLE QUALITÉ ═══ -->
+<div class="vw" id="vw-qualite">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--re)">Contrôle qualité</div><div class="vsub">Détection d'anomalies · aucune correction automatique</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ba ba-ghost" onclick="qualiteResetStatuses()" title="Réinitialiser statuts ignorées/corrigées">↺ Réinitialiser</button>
+      <button class="ba" style="background:var(--re);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:600" onclick="runQualiteCheck()">🔍 Analyser</button>
+    </div>
+  </div>
+  <div id="qualite-summary" style="margin-bottom:14px"></div>
+  <div id="qualite-filters" class="fr" style="flex-wrap:wrap;gap:8px;margin-bottom:14px;display:none">
+    <select class="fsel" id="qf-niveau" onchange="qualiteFilter()"><option value="">Tous niveaux</option><option value="critique">🔴 Critique</option><option value="attention">🟠 Attention</option><option value="info">🔵 Info</option></select>
+    <select class="fsel" id="qf-type" onchange="qualiteFilter()"><option value="">Tous types</option><option value="commission">Commission</option><option value="montant">Montant</option><option value="date">Date</option><option value="taxe">Taxe séjour</option><option value="voyageur">Voyageur/Logement</option><option value="sync">Synchronisation</option><option value="type_metier">Type métier</option></select>
+    <select class="fsel" id="qf-src" onchange="qualiteFilter()"><option value="">Toutes sources</option><option>Airbnb</option><option>Booking.com</option><option>Direct</option><option>VRBO</option></select>
+    <select class="fsel" id="qf-appart" onchange="qualiteFilter()"><option value="">Tous apparts</option></select>
+    <select class="fsel" id="qf-statut" onchange="qualiteFilter()"><option value="pending">À vérifier</option><option value="">Tous statuts</option><option value="ignored">Ignorée</option><option value="corrected">Corrigée</option><option value="locked">Verrouillée</option></select>
+    <button id="btn-qualite-real" class="ba ba-ghost" style="font-size:12px;padding:6px 12px;border-color:var(--re);color:var(--re)" onclick="toggleQualiteRealOnly()" title="Masque les anomalies info, verrouillées, AIRCOVER/AJUSTEMENT/RESOL et faux positifs probables">🎯 Critiques réelles</button>
+  </div>
+  <div id="qualite-list"><div style="text-align:center;padding:48px;color:var(--td);font-size:14px">Cliquez sur <strong style="color:var(--tx)">🔍 Analyser</strong> pour lancer la détection d'anomalies sur toutes les réservations.</div></div>
 </div>
 
 <!-- ═══ VIEW: DÉPENSES PERSO ═══ -->
@@ -1141,6 +1240,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 </div>
 
+<!-- Modal logements (séparé du modal principal) -->
+<div class="ov hidden" id="log-modal-ov" onclick="if(event.target===this)closeLogementModal()"></div>
+
 </div><!-- /app -->
 
 <script>
@@ -1150,7 +1252,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 var SUPA_URL = 'https://zjultuaqkzjupiiewxhy.supabase.co';
 var SUPA_KEY = 'sb_publishable_r106TzPRWMQ9xfDavbiDIA_FQF1Nz2E';
 var SUPA = null;
-var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso', team:'team_members', recur:'recurring_charges'};
+var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso', team:'team_members', recur:'recurring_charges', logements:'logements'};
 
 function initSupabase() {
   if (typeof supabase === 'undefined') { setDBStatus(false, 'SDK non chargé'); return false; }
@@ -1212,7 +1314,7 @@ async function deleteOne(k, id) {
 }
 
 // DB in-memory
-var DB = { resa:[], business:[], taxe:[], serv:[], perso:[], team:[], recur:[] };
+var DB = { resa:[], business:[], taxe:[], serv:[], perso:[], team:[], recur:[], logements:[], logements_par_mois:{} };
 var ROLE = null;          // 'admin' | 'manager' | 'user'
 var CURRENT_USER = null;  // { id, email, full_name, role, active }
 
@@ -1967,6 +2069,8 @@ async function launchApp() {
   // Charger les données — RLS s'applique automatiquement via le JWT
   loadMsg.textContent = 'Chargement des données...';
   var ok = await loadAllDB();
+  // Charger la vue logements_par_mois (ne bloque pas si erreur)
+  await loadLogementsPM();
 
   if (!ok) {
     setDBStatus(false, 'Erreur Supabase');
@@ -2467,7 +2571,7 @@ function goTo(name) {
   if (ROLE) {
     var allowed = {
       admin:   null,  // accès total
-      manager: ['dash','resa','business','taxe','serv','doublons','team','recur'],
+      manager: ['dash','resa','business','taxe','serv','doublons','team','recur','logements','qualite'],
       user:    ['resa'],
     };
     var list = allowed[ROLE];
@@ -2483,7 +2587,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
@@ -2496,9 +2600,12 @@ function goTo(name) {
   }
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
   if(navKey) renderNav(navKey);
-  if (name === 'admin') { renderAdminUsers(); return; }
-  if (name === 'team')  { renderTeamAdmin();  return; }
-  if (name === 'recur') { renderRecurAdmin(); return; }
+  if (name === 'admin')     { renderAdminUsers(); return; }
+  if (name === 'team')      { renderTeamAdmin();  return; }
+  if (name === 'recur')     { renderRecurAdmin(); return; }
+  if (name === 'logements') { renderLogements();  return; }
+  if (name === 'reconcil')  { renderReconcil();   return; }
+  if (name === 'qualite')   { renderQualite();    return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
@@ -2557,10 +2664,10 @@ function drawSparkline(svgId, values, color) {
 // RENDER: DASHBOARD
 // ============================================================
 
-// CA = RESERVATION + ANNULATION_PAYEE + DIRECT + AIRCOVER + RELOCATION
-// NE PAS dépendre du statut (ANNULATION_PAYEE peut avoir statut='Annulé')
+// CA = RESERVATION + ANNULATION_PAYEE + DIRECT + AIRCOVER + AJUSTEMENT + RELOCATION
+// Le split Payé / En attente se fait dans computePeriodKPIs — pas ici
 function isRevRow(r) {
-  return ['RESERVATION','ANNULATION_PAYEE','DIRECT','AIRCOVER','RELOCATION'].indexOf(r.type_norm) >= 0;
+  return ['RESERVATION','ANNULATION_PAYEE','DIRECT','AIRCOVER','AJUSTEMENT','RELOCATION'].indexOf(r.type_norm) >= 0;
 }
 
 // ── Occupation business : nuit par nuit dans la période ─────────────────────
@@ -2606,29 +2713,32 @@ function occupNightsBiz(appart, pStart, pEnd) {
 
 // pBounds={start,end} optionnel pour occupation nuit/nuit ; appart optionnel pour filtre
 function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
-  var rev=resaRows.filter(function(r){
-    return isRevRow(r);
-  });
-  var netEur=sum(rev,'net');
-  var nuitsFact=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
-  // Occupation: nuit par nuit si pBounds fourni, sinon fallback sur nuits_sejour stocké
+  var rev     = resaRows.filter(function(r){ return isRevRow(r); });
+  var revPaye = rev.filter(function(r){ return r.statut==='Payé'; });
+  var revAtt  = rev.filter(function(r){ return r.statut==='En attente'; });
+  var NUITS_T = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'];
+  var netEur    = sum(revPaye,'net');
+  var netEurAtt = sum(revAtt,'net');
+  var nuitsFact = revPaye.filter(function(r){return NUITS_T.indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
+  // Occupation physique : nuit par nuit, non filtrée par statut
   var nuitsSej=(pBounds&&pBounds.start)
     ? occupNightsBiz(appart||null, pBounds.start, pBounds.end)
     : rev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
-  var netMad=netEur*EUR_MAD;
-  var dep=sum(bizRows,'montant');
-  var adr=nuitsFact>0?netMad/nuitsFact:0;
-  var occ=joursDispo>0?(nuitsSej/joursDispo*100):0;
-  var revpan=joursDispo>0?netMad/joursDispo:0;
-  var resultat=netMad-dep;
-  var marge=netMad>0?(resultat/netMad*100):0;
-  return {netMad:netMad,adr:adr,occ:occ,revpan:revpan,resultat:resultat,marge:marge,nuitsSej:nuitsSej,nuitsFact:nuitsFact,dep:dep};
+  var netMad    = netEur*EUR_MAD;
+  var netMadAtt = netEurAtt*EUR_MAD;
+  var dep    = sum(bizRows,'montant');
+  var adr    = nuitsFact>0?netMad/nuitsFact:0;
+  var occ    = joursDispo>0?(nuitsSej/joursDispo*100):0;
+  var revpan = joursDispo>0?netMad/joursDispo:0;
+  var resultat = netMad-dep;
+  var marge  = netMad>0?(resultat/netMad*100):0;
+  return {netMad:netMad,netMadAtt:netMadAtt,adr:adr,occ:occ,revpan:revpan,resultat:resultat,marge:marge,nuitsSej:nuitsSej,nuitsFact:nuitsFact,dep:dep};
 }
 
 function renderDash() {
   renderNav('d');
   var p=P['d'], fa=val('d-fap');
-  var nAp=fa?1:APPARTS.length;
+  var nAp=fa?1:getNbLogementsForPeriod('d');
 
   // ── Données courantes ──
   var allRes=filterResa(DB.resa,'d');
@@ -2639,8 +2749,8 @@ function renderDash() {
   var joursDispo=periodDays('d')*nAp;
   var pb=periodBounds('d'); // bornes de la période pour calcul occupation nuit/nuit
   var cur=computePeriodKPIs(allRes,bizRows,joursDispo,pb,fa||null);
-  var brutEur=sum(allRes.filter(function(r){return isRevRow(r);}),'brut');
-  var comEur=sum(allRes.filter(function(r){return isRevRow(r);}),'commission');
+  var brutEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';}),'brut');
+  var comEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';}),'commission');
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
@@ -2669,6 +2779,7 @@ function renderDash() {
   // ── Affichage KPI ──
   set('d-net',fmt(cur.netMad));
   set('d-brut','Brut : '+fmt(brutEur*EUR_MAD));
+  set('d-net-att',cur.netMadAtt>0?'En attente : '+fmt(cur.netMadAtt):'');
   set('d-res',fmt(cur.resultat));
   set('d-com',fmt(comEur*EUR_MAD));
   set('d-dep',fmt(cur.dep));
@@ -2738,7 +2849,7 @@ function renderDash() {
     var smMk=smDate.toISOString().slice(0,7);
     var smRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(smMk);});
     if(fa) smRes=smRes.filter(function(r){return r.appart===fa;});
-    var smRev=smRes.filter(function(r){return isRevRow(r);});
+    var smRev=smRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';});
     var smNet=sum(smRev,'net')*EUR_MAD;
     var smY=smDate.getFullYear(),smM=smDate.getMonth();
     var smStart=smY+'-'+String(smM+1).padStart(2,'0')+'-01';
@@ -2765,7 +2876,7 @@ function renderDash() {
   // Alerte occupation par appart (mode mois uniquement, si pas de filtre appart)
   if(!fa && P['d']==='mois') {
     var daysM=periodDays('d');
-    APPARTS.forEach(function(ap){
+    getAppartsForPeriod('d').forEach(function(ap){
       var apNuits=occupNightsBiz(ap, pb.start, pb.end); // nuit par nuit sur la période
       var apOcc=daysM>0?apNuits/daysM*100:0;
       if(apOcc>0&&apOcc<50)
@@ -2796,9 +2907,9 @@ function renderDash() {
   }
 
   // ── Décisions rapides ──
-  var revRes=allRes.filter(function(r){return isRevRow(r);});
+  var revRes=allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';});
   // Meilleur appart
-  var apNet=APPARTS.map(function(ap){
+  var apNet=getAppartsForPeriod('d').map(function(ap){
     var n=sum(revRes.filter(function(r){return r.appart===ap;}),'net')*EUR_MAD;
     return {ap:ap,n:n};
   }).sort(function(a,b){return b.n-a.n;});
@@ -2817,7 +2928,7 @@ function renderDash() {
   // ── Performance par appartement (enhanced) ──
   var perf_mk=P['d']==='mois'?MO['d'].toISOString().slice(0,7):null;
   var perf_days=periodDays('d');
-  set('d-recap-ap',APPARTS.map(function(ap){
+  set('d-recap-ap',getAppartsForPeriod('d').map(function(ap){
     var apR=revRes.filter(function(r){return r.appart===ap;});
     var apNet2=sum(apR,'net')*EUR_MAD;
     // occupation physique nuit par nuit sur la période
@@ -2863,6 +2974,23 @@ function periodDays(k) {
 // ============================================================
 function renderResa() {
   renderNav('r');
+  // Reconstruire le dropdown appartements : actifs + archivés ayant des résas sur la période
+  (function() {
+    var sel = document.getElementById('r-fap');
+    if (!sel) return;
+    var savedFap = sel.value;
+    var periodRows = R_QUICK
+      ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
+      : filterResa(DB.resa,'r');
+    var extras = [];
+    periodRows.forEach(function(r){
+      if (r.appart && APPARTS.indexOf(r.appart)<0 && extras.indexOf(r.appart)<0) extras.push(r.appart);
+    });
+    var opts = '<option value="">Tous apparts</option>';
+    APPARTS.forEach(function(ap){ opts += '<option'+(savedFap===ap?' selected':'')+'>'+escHtml(ap)+'</option>'; });
+    extras.sort().forEach(function(ap){ opts += '<option'+(savedFap===ap?' selected':'')+'>'+escHtml(ap)+'</option>'; });
+    sel.innerHTML = opts;
+  })();
   var rows = R_QUICK
     ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
     : filterResa(DB.resa,'r');
@@ -2905,7 +3033,10 @@ function renderResa() {
   set('r-nbatt',nbAtt);
   set('r-nbann',nbAnn);
   var allR=filterResa(DB.resa,'r').filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0&&r.statut!=='Annulé';});
-  set('r-recap',APPARTS.map(function(ap){
+  // Appartements à afficher : actifs sur la période + tout appart présent dans les résas filtrées (ex : archivés historiques)
+  var apartsR=getAppartsForPeriod('r');
+  allR.forEach(function(r){if(r.appart&&apartsR.indexOf(r.appart)<0)apartsR.push(r.appart);});
+  set('r-recap',apartsR.map(function(ap){
     var x=allR.filter(function(r){return r.appart===ap;}),n=x.reduce(function(s,r){return s+r.net;},0);
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
   }).join(''));
@@ -5277,8 +5408,8 @@ function showRecomputeResult(total, changed, saved, errMsg) {
     html += '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Toutes les corrections persistées en Supabase. Les KPIs sont maintenant à jour.</div>';
   }
 
-  html += '<div style="margin-top:16px"><button onclick="document.getElementById(\'audit-ov\').style.display=\'none\';auditAirbnbAvrilUI(\'2026-04\')" ' +
-    'style="background:var(--or);color:#fff;border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">📊 Voir audit Airbnb avril</button></div>';
+  html += '<div style="margin-top:16px"><button onclick="document.getElementById(\'audit-ov\').style.display=\'none\';auditAirbnbAvrilUI(getActiveMoisKpi())" ' +
+    'style="background:var(--or);color:#fff;border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">📊 Voir audit Airbnb ' + getActiveMoisKpi() + '</button></div>';
 
   document.getElementById('audit-title').textContent = '🔄 Résultat recalcul — ' + new Date().toLocaleTimeString('fr-FR');
   document.getElementById('audit-body').innerHTML = html;
@@ -5287,7 +5418,6 @@ function showRecomputeResult(total, changed, saved, errMsg) {
 
 // ── Calcul des données d'audit Airbnb pour un mois ──
 function auditAirbnbAvril(mk) {
-  mk = mk || '2026-04';
   var rate = EUR_MAD || 10.5;
   var airbnbAll = DB.resa.filter(function(r) { return r.source === 'Airbnb'; });
   var ciRows    = airbnbAll.filter(function(r) { return r.checkin && r.checkin.startsWith(mk); });
@@ -5484,6 +5614,861 @@ window.addEventListener('resize', function(){
     else if(CUR==='doublons')  renderDoublons();
   }, 150);
 });
+
+// ============================================================
+// HELPERS COMMUNS NOUVEAUX
+// ============================================================
+
+// Retourne le mois actif du filtre Réservations (YYYY-MM) — pour bouton Audit
+function getActiveMoisKpi() {
+  var mo = MO['r'] || new Date();
+  return mo.getFullYear() + '-' + String(mo.getMonth() + 1).padStart(2, '0');
+}
+
+// Retourne la liste des logements actifs pour la période k (mode mois).
+// Utilise DB.logements (actifs + archivés) filtré par date_debut/date_fin.
+// Inclut les logements archivés si leur date_fin est dans la période (ex : Studio Océan en janvier 2026).
+// Fallback sur APPARTS si DB.logements n'est pas encore chargé.
+function getAppartsForPeriod(k) {
+  if (P[k] === 'mois' && DB.logements.length > 0) {
+    var mo = MO[k], y = mo.getFullYear(), m = mo.getMonth();
+    var pStart = y + '-' + String(m + 1).padStart(2, '0') + '-01';
+    var pEnd   = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(new Date(y, m + 1, 0).getDate()).padStart(2, '0');
+    var res = DB.logements.filter(function(l) {
+      if (!l.date_debut) return false;
+      var fin = l.actif ? '9999-12-31' : (l.date_fin || null);
+      if (fin === null) return false; // archivé sans date_fin : on l'exclut
+      return l.date_debut <= pEnd && fin >= pStart;
+    }).map(function(l) { return l.nom; });
+    if (res.length > 0) return res;
+  }
+  return APPARTS.slice();
+}
+
+// Retourne le nombre de logements actifs pour la période k (KPI occupation/RevPAN).
+// En mode "mois" : dérivé de getAppartsForPeriod (source : DB.logements).
+// Autres modes   : fallback sur APPARTS.length (V2).
+function getNbLogementsForPeriod(k) {
+  if (P[k] === 'mois') {
+    if (DB.logements.length > 0) return getAppartsForPeriod(k).length;
+    // fallback : vue pré-calculée Supabase
+    var mo = MO[k];
+    var mk = mo.getFullYear() + '-' + String(mo.getMonth() + 1).padStart(2, '0');
+    if (DB.logements_par_mois[mk] != null) return DB.logements_par_mois[mk];
+  }
+  return APPARTS.length;
+}
+
+// Charge la vue v_logements_actifs_par_mois → DB.logements_par_mois dict
+async function loadLogementsPM() {
+  if (!SUPA) return;
+  try {
+    var res = await SUPA.from('v_logements_actifs_par_mois').select('mois_kpi,nb_logements_actifs');
+    if (res.error) { console.warn('[logements] vue error:', res.error); return; }
+    DB.logements_par_mois = {};
+    (res.data || []).forEach(function(row) {
+      DB.logements_par_mois[row.mois_kpi] = row.nb_logements_actifs;
+    });
+  } catch(e) { console.warn('[logements] loadLogementsPM error:', e); }
+}
+
+// ============================================================
+// MODULE LOGEMENTS
+// ============================================================
+
+function renderLogements() {
+  var el = document.getElementById('logements-list');
+  if (!el) return;
+  var rows = DB.logements.slice().sort(function(a, b) {
+    if (a.actif !== b.actif) return a.actif ? -1 : 1;
+    return (a.nom || '').localeCompare(b.nom || '');
+  });
+  if (!rows.length) { el.innerHTML = '<div class="empty">Aucun logement enregistré.</div>'; return; }
+  var isAdmin = (ROLE === 'admin');
+  var html = '';
+  rows.forEach(function(log) {
+    var arc = !log.actif;
+    html += '<div class="log-card' + (arc ? ' archived' : '') + '">' +
+      '<div class="log-dot ' + (arc ? 'archive' : 'actif') + '"></div>' +
+      '<div class="log-info">' +
+        '<div class="log-nom">' + escHtml(log.nom) +
+          (arc ? ' <span style="font-size:10px;color:var(--td);font-weight:400">[archivé]</span>' : '') +
+        '</div>' +
+        '<div class="log-meta">' +
+          escHtml(log.ville || '—') +
+          (log.nom_smoobu ? ' · <span style="font-family:monospace;font-size:10px">' + escHtml(log.nom_smoobu) + '</span>' : '') +
+          ' · actif depuis ' + escHtml(log.date_debut || '—') +
+          (log.date_fin ? ' <span style="color:var(--re)">→ ' + escHtml(log.date_fin) + '</span>' : '') +
+          (log.notes ? ' · <em style="color:var(--td)">' + escHtml(log.notes.slice(0,60)) + '</em>' : '') +
+        '</div>' +
+      '</div>' +
+      (isAdmin ?
+        '<div class="log-acts">' +
+          '<button class="bedit" onclick="openLogementModal(\'' + log.id + '\')" title="Modifier">✏️</button>' +
+          '<button class="bedit" onclick="toggleLogementArchive(\'' + log.id + '\')" title="' + (arc ? 'Réactiver' : 'Archiver') + '" style="font-size:13px">' + (arc ? '♻️' : '📦') + '</button>' +
+        '</div>' : '') +
+      '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function openLogementModal(id) {
+  if (ROLE !== 'admin') { showToast('⛔ Admin uniquement'); return; }
+  var log = id ? DB.logements.find(function(l) { return l.id === id; }) : null;
+  var v = function(f, d) { return (log && log[f] != null) ? log[f] : d; };
+  var html =
+    '<div class="mt">' + (id ? 'Modifier logement' : 'Nouveau logement') + '</div>' +
+    '<div class="fg">' +
+      '<div class="ff"><label class="fl">Nom *</label>' +
+        '<input class="fi" id="lf-nom" value="' + escHtml(v('nom','')) + '" placeholder="Résidence Al Boustane"></div>' +
+      '<div><label class="fl">Ville</label>' +
+        '<input class="fi" id="lf-ville" value="' + escHtml(v('ville','')) + '" placeholder="Rabat"></div>' +
+      '<div><label class="fl">Statut</label>' +
+        '<select class="fi" id="lf-actif">' +
+          '<option value="true"'  + (v('actif',true)  ? ' selected' : '') + '>Actif</option>' +
+          '<option value="false"' + (!v('actif',true) ? ' selected' : '') + '>Archivé</option>' +
+        '</select></div>' +
+      '<div><label class="fl">Date début *</label>' +
+        '<input class="fi" id="lf-debut" type="date" value="' + escHtml(v('date_debut','')) + '"></div>' +
+      '<div><label class="fl">Date fin (archivage)</label>' +
+        '<input class="fi" id="lf-fin" type="date" value="' + escHtml(v('date_fin','') || '') + '"></div>' +
+      '<div class="ff"><label class="fl">Nom Smoobu</label>' +
+        '<input class="fi" id="lf-smoobu" value="' + escHtml(v('nom_smoobu','')) + '" placeholder="Nahda AL Boustane B2 APT 11"></div>' +
+      '<div class="ff"><label class="fl">Notes</label>' +
+        '<input class="fi" id="lf-notes" value="' + escHtml(v('notes','')) + '"></div>' +
+    '</div>' +
+    '<div class="fac">' +
+      '<button class="bcan" onclick="closeLogementModal()">Annuler</button>' +
+      '<button class="bsave bat" onclick="saveLogement(\'' + (id||'') + '\')">Enregistrer</button>' +
+    '</div>';
+  var ov = document.getElementById('log-modal-ov');
+  ov.innerHTML = '<div class="mbox" style="max-width:480px">' + html + '</div>';
+  ov.classList.remove('hidden');
+}
+
+function closeLogementModal() {
+  var ov = document.getElementById('log-modal-ov');
+  if (ov) ov.classList.add('hidden');
+}
+
+async function saveLogement(editId) {
+  if (!SUPA) { showToast('⛔ Non connecté'); return; }
+  var nom   = (document.getElementById('lf-nom').value   || '').trim();
+  var ville = (document.getElementById('lf-ville').value || '').trim();
+  var actif = document.getElementById('lf-actif').value === 'true';
+  var debut = document.getElementById('lf-debut').value  || '';
+  var fin   = document.getElementById('lf-fin').value    || null;
+  var smoobu = (document.getElementById('lf-smoobu').value || '').trim();
+  var notes  = (document.getElementById('lf-notes').value  || '').trim();
+  if (!nom)   { alert('Le nom est obligatoire.');          return; }
+  if (!debut) { alert('La date de début est obligatoire.'); return; }
+  var genId = editId || nom.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  var entry = {
+    id: genId, nom: nom, ville: ville||null, actif: actif,
+    date_debut: debut, date_fin: fin||null,
+    nom_smoobu: smoobu||null, notes: notes||null,
+  };
+  try {
+    var res = await SUPA.from('logements').upsert(entry, { onConflict: 'id' });
+    if (res.error) throw res.error;
+    var idx = DB.logements.findIndex(function(l) { return l.id === genId; });
+    if (idx >= 0) DB.logements[idx] = entry; else DB.logements.push(entry);
+    await loadLogementsPM();
+    closeLogementModal();
+    renderLogements();
+    showToast('✅ Logement enregistré');
+  } catch(e) { alert('Erreur : ' + (e.message || e)); }
+}
+
+async function toggleLogementArchive(id) {
+  var log = DB.logements.find(function(l) { return l.id === id; });
+  if (!log) return;
+  var newActif = !log.actif;
+  if (!confirm((newActif ? 'Réactiver' : 'Archiver') + ' "' + log.nom + '" ?')) return;
+  var patch = { actif: newActif };
+  if (!newActif && !log.date_fin) patch.date_fin = new Date().toISOString().slice(0,10);
+  try {
+    var res = await SUPA.from('logements').update(patch).eq('id', id);
+    if (res.error) throw res.error;
+    Object.assign(log, patch);
+    await loadLogementsPM();
+    renderLogements();
+    showToast(newActif ? '♻️ Réactivé' : '📦 Archivé');
+  } catch(e) { alert('Erreur : ' + (e.message || e)); }
+}
+
+// ============================================================
+// MODULE RÉCONCILIATION
+// ============================================================
+
+var RECONCIL_ANOMALIES = [];
+
+function renderReconcil() {
+  updateReconcilBadge();
+  var has = RECONCIL_ANOMALIES.length > 0;
+  document.getElementById('reconcil-queue').style.display = has ? 'block' : 'none';
+  document.getElementById('reconcil-empty').style.display = has ? 'none'  : 'block';
+  if (has) renderAnomaliesList();
+}
+
+function renderAnomaliesList() {
+  var el = document.getElementById('reconcil-anomalies');
+  if (!el) return;
+  var pending  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
+  var ignored  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
+  var cnt = document.getElementById('reconcil-queue-count');
+  if (cnt) cnt.textContent = '(' + pending + ' en attente' + (ignored ? ', ' + ignored + ' ignorée(s)' : '') + ')';
+  if (!pending && !ignored) {
+    el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Toutes les anomalies ont été traitées.</div>';
+    return;
+  }
+  var html = '';
+  RECONCIL_ANOMALIES.forEach(function(a, i) {
+    if (a.status === 'validated') return;
+    var bigEcart = Math.abs(a.ecart) > 5;
+    var cardCls = a.status === 'ignored' ? 'reconcil-card' : (bigEcart ? 'reconcil-card crit' : 'reconcil-card anomaly');
+    var ecartCls = Math.abs(a.ecart) < 0.01 ? 'zero' : 'neg';
+    html +=
+      '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
+        '<div>' +
+          '<div class="reconcil-ref">' + escHtml(a.csv.code) + '</div>' +
+          '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
+          '<div style="font-size:11px;color:var(--tm)">' + escHtml(a.csv.checkin||'—') + ' → ' + escHtml(a.csv.checkout||'—') + ' · ' + (a.csv.nuits||0) + ' nuits</div>' +
+        '</div>' +
+        '<span class="reconcil-delta ' + ecartCls + '">Δ ' + (a.ecart>=0?'+':'') + a.ecart.toFixed(2) + ' EUR</span>' +
+      '</div>' +
+      '<div style="margin-top:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
+          '<th style="text-align:left;padding:5px 8px">Source</th>' +
+          '<th style="text-align:right;padding:5px 8px">Brut EUR</th><th style="text-align:right;padding:5px 8px">Net EUR</th>' +
+          '<th style="text-align:right;padding:5px 8px">Commission</th><th style="text-align:left;padding:5px 8px">Check-in</th><th style="text-align:left;padding:5px 8px">Check-out</th>' +
+        '</tr></thead>' +
+        '<tbody>' +
+          '<tr style="background:var(--s2)">' +
+            '<td style="padding:5px 8px;font-weight:600">CSV Airbnb' + (a.csv.devise!=='EUR'?' <span style="color:var(--or);font-size:10px">('+escHtml(a.csv.devise)+'→EUR)</span>':'') + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + a.csv.brut.toFixed(2) + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + a.csv.net.toFixed(2)  + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + a.csv.commission.toFixed(2) + '</td>' +
+            '<td style="padding:5px 8px">' + escHtml(a.csv.checkin||'—') + '</td>' +
+            '<td style="padding:5px 8px">' + escHtml(a.csv.checkout||'—') + '</td>' +
+          '</tr>' +
+          (a.crm ?
+            '<tr>' +
+              '<td style="padding:5px 8px;font-weight:600">CRM <span style="color:var(--tm);font-size:10px">' + escHtml(a.crm.ref||'?') + '</span></td>' +
+              '<td style="text-align:right;font-family:monospace">' + (a.crm.brut||0).toFixed(2) + '</td>' +
+              '<td style="text-align:right;font-family:monospace">' + (a.crm.net||0).toFixed(2)  + '</td>' +
+              '<td style="text-align:right;font-family:monospace">' + (a.crm.commission||0).toFixed(2) + '</td>' +
+              '<td style="padding:5px 8px">' + escHtml(a.crm.checkin||'—') + '</td>' +
+              '<td style="padding:5px 8px">' + escHtml(a.crm.checkout||'—') + '</td>' +
+            '</tr>' :
+            '<tr><td colspan="6" style="padding:5px 8px;color:var(--re)">⚠️ Réservation absente du CRM</td></tr>'
+          ) +
+        '</tbody></table></div>' +
+      '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
+      (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
+      (a.crm && a.crm.override_manual ? '<div style="font-size:11px;color:var(--td);margin-top:3px">🔒 Verrouillé (override_manual=true)</div>' : '') +
+      '<div class="reconcil-acts">' +
+        (a.crm && a.status!=='ignored' && !a.crm.override_manual ?
+          '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Valider CSV</button>' : '') +
+        (a.crm ?
+          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
+        (a.status!=='ignored' ?
+          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>' :
+          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>') +
+      '</div>' +
+      '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function updateReconcilBadge() {
+  var badge = document.getElementById('reconcil-badge');
+  if (!badge) return;
+  var n = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending'; }).length;
+  if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
+  else        { badge.classList.add('hidden'); }
+}
+
+function handleReconCSV(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  input.value = '';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    var taux = parseFloat(document.getElementById('reconcil-taux').value) || 10.5;
+    var status = document.getElementById('reconcil-status');
+    try {
+      var csvRows = parseAirbnbCSV(text, taux);
+      if (!csvRows.length) { alert('Aucune réservation trouvée dans le CSV.'); return; }
+      if (status) status.textContent = 'CSV chargé : ' + csvRows.length + ' réservations · ' + new Date().toLocaleTimeString('fr-FR');
+      RECONCIL_ANOMALIES = runReconciliation(csvRows);
+      renderReconcil();
+    } catch(err) {
+      alert('Erreur lecture CSV : ' + err.message);
+      console.error('[reconcil] CSV parse error:', err);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// Parse le CSV Airbnb — retourne tableau de rows normalisées (Type=Réservation seulement)
+function parseAirbnbCSV(text, taux) {
+  taux = taux || 10.5;
+  var lines = text.split(/\r?\n/);
+  if (!lines.length) return [];
+  var cols = csvSplitLine(lines[0]);
+  function ci(needle) {
+    var n = needle.toLowerCase().replace(/\s/g,'');
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i].toLowerCase().replace(/\s/g,'').indexOf(n) >= 0) return i;
+    }
+    return -1;
+  }
+  var iType=ci('type'), iCode=ci('confirmation'), iDebut=ci('début'), iFin=ci('fin'),
+      iNuits=ci('nuits'), iVoyag=ci('voyageur'), iLogem=ci('logement'),
+      iDevise=ci('devise'), iMontant=ci('montant'), iBrut=ci('bruts'), iFrais=ci('service');
+  var grouped = {};
+  for (var i = 1; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var c = csvSplitLine(line);
+    if ((c[iType]||'').trim() !== 'Réservation') continue;
+    var code = (c[iCode]||'').trim();
+    if (!code) continue;
+    var devise  = (c[iDevise]||'EUR').trim();
+    var montant = parseFloat((c[iMontant]||'0').replace(',','.')) || 0;
+    var brut    = parseFloat((iBrut>=0 ? c[iBrut]  : '0').replace(',','.')) || 0;
+    var frais   = parseFloat((iFrais>=0? c[iFrais] : '0').replace(',','.')) || 0;
+    if (devise === 'MAD') { montant /= taux; brut /= taux; frais /= taux; }
+    if (grouped[code]) {
+      grouped[code].net        += montant;
+      grouped[code].brut       += brut;
+      grouped[code].commission += frais;
+    } else {
+      grouped[code] = {
+        code: code,
+        checkin:    normDateCSV(c[iDebut]||''),
+        checkout:   normDateCSV(c[iFin]||''),
+        nuits:      parseInt(c[iNuits]||'0')||0,
+        voyageur:   (c[iVoyag]||'').trim(),
+        logement:   (c[iLogem]||'').trim(),
+        devise:     devise,
+        net:        Math.round(montant*100)/100,
+        brut:       Math.round(brut*100)/100,
+        commission: Math.round(frais*100)/100,
+      };
+    }
+  }
+  return Object.values(grouped);
+}
+
+function csvSplitLine(line) {
+  var result=[], cur='', inQ=false;
+  for (var i=0; i<line.length; i++) {
+    var ch=line[i];
+    if (ch==='"') { inQ=!inQ; continue; }
+    if (ch===',' && !inQ) { result.push(cur.trim()); cur=''; continue; }
+    cur+=ch;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function normDateCSV(raw) {
+  if (!raw) return '';
+  var s=raw.trim(), p=s.split('/');
+  if (p.length===3 && p[0].length<=2 && p[2].length===4)
+    return p[2]+'-'+p[0].padStart(2,'0')+'-'+p[1].padStart(2,'0');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return s;
+}
+
+function runReconciliation(csvRows) {
+  var results = [];
+  csvRows.forEach(function(csv) {
+    var crm = DB.resa.find(function(r) {
+      if (r.source !== 'Airbnb' || !r.ref) return false;
+      var ref=r.ref.toUpperCase(), code=csv.code.toUpperCase();
+      return ref===code || ref==='AIR-'+code || ref.indexOf(code)>=0;
+    });
+    var ecart = crm ? Math.round((csv.net-(crm.net||0))*100)/100 : csv.net;
+    var cause='';
+    if (!crm) {
+      cause = 'Réservation absente du CRM — à créer ou rattacher manuellement';
+    } else if (Math.abs(ecart)<0.01 && csv.checkin===crm.checkin && csv.checkout===crm.checkout) {
+      cause = 'Aucune anomalie';
+    } else if (Math.abs(ecart)>0.01 && (csv.checkin!==crm.checkin || csv.checkout!==crm.checkout)) {
+      cause = 'Montant ET dates différents — vérifier CSV vs Smoobu';
+    } else if (Math.abs(ecart)>0.01) {
+      if (csv.devise==='MAD') cause = 'Montant converti MAD→EUR — vérifier le taux';
+      else if (Math.abs(csv.brut-(crm.brut||0))<0.1) cause = 'Net différent (commission recalculée) — résolution / AirCover possible';
+      else cause = 'Montant différent CSV vs CRM';
+    } else {
+      cause = 'Dates incohérentes — Smoobu vs Airbnb';
+    }
+    if (cause === 'Aucune anomalie') return;
+    results.push({ csv:csv, crm:crm||null, ecart:ecart, cause:cause, status:'pending' });
+  });
+  return results;
+}
+
+async function validateAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (!a || !a.crm) return;
+  if (a.crm.override_manual) { alert('⛔ Réservation verrouillée — déverrouillez-la d\'abord via le formulaire.'); return; }
+  var msg = 'Confirmer la correction ?\n\n' +
+    'Réservation : ' + (a.crm.ref||a.crm.id) + ' — ' + (a.crm.voyageur||'') + '\n\n' +
+    'CRM brut=' + (a.crm.brut||0).toFixed(2) + '€  net=' + (a.crm.net||0).toFixed(2) + '€\n' +
+    'CSV brut=' + a.csv.brut.toFixed(2) + '€  net=' + a.csv.net.toFixed(2) + '€\n\n' +
+    'Les valeurs CSV remplaceront le CRM.\noverride_manual sera mis à true.\nUn log sera ajouté dans Notes.';
+  if (!confirm(msg)) return;
+  var patch = {
+    brut:            Math.round(a.csv.brut*100)/100,
+    net:             Math.round(a.csv.net*100)/100,
+    commission:      Math.round(a.csv.commission*100)/100,
+    override_manual: true,
+    notes: ((a.crm.notes||'') + ' | [Réconcil ' + new Date().toISOString().slice(0,10) + ' CSV=' + a.csv.code + ' net=' + a.csv.net.toFixed(2) + '€]').replace(/^\s*\|\s*/,''),
+  };
+  try {
+    var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+    if (res.error) throw res.error;
+    Object.assign(a.crm, patch);
+    var dbRow = DB.resa.find(function(r) { return r.id===a.crm.id; });
+    if (dbRow) Object.assign(dbRow, patch);
+    a.status = 'validated';
+    updateReconcilBadge();
+    renderAnomaliesList();
+    showToast('✅ Correction validée');
+  } catch(e) { alert('Erreur Supabase : ' + (e.message||e)); }
+}
+
+function ignoreAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (a) { a.status='ignored'; updateReconcilBadge(); renderAnomaliesList(); }
+}
+
+function unignoreAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (a) { a.status='pending'; updateReconcilBadge(); renderAnomaliesList(); }
+}
+
+function exportAnomaliesJSON() {
+  var data = JSON.stringify(RECONCIL_ANOMALIES, null, 2);
+  var blob = new Blob([data], {type:'application/json'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href=url; a.download='anomalies_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function clearIgnoredAnomalies() {
+  RECONCIL_ANOMALIES = RECONCIL_ANOMALIES.filter(function(a) { return a.status!=='ignored'; });
+  updateReconcilBadge();
+  renderAnomaliesList();
+  showToast('🗑 Ignorées supprimées');
+}
+
+// ============================================================
+// MODULE CONTRÔLE QUALITÉ / ANOMALIES
+// ============================================================
+var QUALITE_ANOMALIES = [];
+var QUALITE_STATUSES  = {};
+var QUALITE_REAL_ONLY = false; // filtre rapide "Critiques réelles uniquement"
+
+function loadQualiteStatuses() {
+  try { QUALITE_STATUSES = JSON.parse(localStorage.getItem('qualite_statuses')||'{}'); }
+  catch(e) { QUALITE_STATUSES = {}; }
+}
+function saveQualiteStatuses() {
+  try { localStorage.setItem('qualite_statuses', JSON.stringify(QUALITE_STATUSES)); } catch(e) {}
+}
+
+function runQualiteCheck() {
+  loadQualiteStatuses();
+  var allAppartNoms = DB.logements.length > 0 ? DB.logements.map(function(l){return l.nom;}) : APPARTS;
+  QUALITE_ANOMALIES = [];
+  DB.resa.forEach(function(r) {
+    detectForResa(r, allAppartNoms).forEach(function(issue) {
+      var aId = (r.id||r.smoobu_id||'x') + '_' + issue.code;
+      QUALITE_ANOMALIES.push({ id:aId, level:issue.level, type:issue.type, code:issue.code, msg:issue.msg, action:issue.action, resa:r, status:QUALITE_STATUSES[aId]||'pending' });
+    });
+  });
+  qualiteUpdateBadge();
+  renderQualite();
+}
+
+function detectForResa(r, allAppartNoms) {
+  var issues = [];
+  var src  = r.source||'', tn = r.type_norm||'';
+  var comPct     = r.com_pct != null ? parseFloat(r.com_pct) : null;
+  var brut       = parseFloat(r.brut)||0;
+  var net        = parseFloat(r.net)||0;
+  var commission = parseFloat(r.commission)||0;
+  var nuitsFact  = parseInt(r.nuits_fact)||0;
+  var nuitsSej   = parseInt(r.nuits_sejour)||0;
+  var adults     = parseInt(r.adults)||0;
+  var children   = parseInt(r.children)||0;
+  var nbP        = parseInt(r.nb_personnes)||0;
+  var taxeSej    = parseFloat(r.taxe_sejour)||0;
+  var ci = r.checkin||'', co = r.checkout||'';
+  var isLocked = r.override_manual === true;
+  function add(level, type, code, msg, action) { issues.push({level:level,type:type,code:code,msg:msg,action:action||''}); }
+
+  // ── Classificateurs ──
+  var isOTA         = (src==='Airbnb'||src==='Booking.com'||src==='VRBO');
+  var isDirect      = (src==='Direct');
+  var isTrueResa    = (tn==='RESERVATION'||tn==='RELOCATION');
+  var isAnnulPaye   = (tn==='ANNULATION_PAYEE');
+  var isAnnulNP     = (tn==='ANNULATION_NON_PAYEE');
+  var isSpecial     = (tn==='AIRCOVER'||tn==='AJUSTEMENT');
+  var isFinancialTn = (isTrueResa||isAnnulPaye); // lignes qui comptent dans le CA
+  // Lignes secondaires Smoobu : résolutions, versionnées, ajustements techniques
+  var refU = (r.ref||'').toUpperCase(), smoobuU = (r.smoobu_id||'').toUpperCase();
+  var isSecondaryLine = (tn.indexOf('RESOL')>=0 || /(-RESOL$|RESOL$|-RES$|-V[12]$)/.test(refU) || /(-RESOL$|RESOL$|-RES$|-V[12]$)/.test(smoobuU));
+  // Recency / activité
+  var isActive = (r.statut==='Payé'||r.statut==='En attente');
+  var cutoff1y = new Date(); cutoff1y.setFullYear(cutoff1y.getFullYear()-1);
+  var isRecent = ci >= cutoff1y.toISOString().slice(0,10);
+  var hasAmount = (brut > 50 || net > 50);
+
+  if (isSecondaryLine) return issues; // Lignes techniques : on ne signale rien
+
+  // ── 1. Commissions ──
+  if (comPct !== null) {
+    if (src==='Airbnb') {
+      if (comPct > 0.35)      add('critique','commission','COM_AIRBNB_HIGH','Commission Airbnb : '+Math.round(comPct*100)+'% (critique > 35%)','Vérifier le montant brut/net dans Smoobu');
+      else if (comPct > 0.20) add('attention','commission','COM_AIRBNB_HIGH','Commission Airbnb : '+Math.round(comPct*100)+'% (attention > 20%)','Vérifier le montant brut/net dans Smoobu');
+    }
+    if (src==='Booking.com') {
+      if (comPct > 0.45)      add('critique','commission','COM_BOOKING_HIGH','Commission Booking.com : '+Math.round(comPct*100)+'% (critique > 45%)','Vérifier la facture Booking.com');
+      else if (comPct > 0.30) add('attention','commission','COM_BOOKING_HIGH','Commission Booking.com : '+Math.round(comPct*100)+'% (attention > 30%)','Vérifier la facture Booking.com');
+    }
+    if (src==='VRBO') {
+      if (comPct > 0.40)      add('critique','commission','COM_VRBO_HIGH','Commission VRBO : '+Math.round(comPct*100)+'% (critique > 40%)','Vérifier dans Smoobu');
+      else if (comPct > 0.25) add('attention','commission','COM_VRBO_HIGH','Commission VRBO : '+Math.round(comPct*100)+'% (attention > 25%)','Vérifier dans Smoobu');
+    }
+    if (isDirect && commission > 0)
+      add('attention','commission','COM_DIRECT_NONZERO','Commission non nulle sur Direct : '+fmtE(commission),'Les réservations directes ne doivent pas avoir de commission');
+  }
+  // AIRCOVER/AJUSTEMENT avec commission → Critique (fausse le CA)
+  if (isSpecial && commission > 0)
+    add('critique','commission','COM_SPECIAL_NONZERO','Commission sur '+tn+' : '+fmtE(commission),'AIRCOVER/AJUSTEMENT ne doivent avoir aucune commission');
+
+  // ── 2. Montants ──
+  if (nuitsFact > 0) {
+    var adr = net / nuitsFact;
+    if (adr > 300)      add('critique','montant','ADR_HIGH','ADR très élevé : '+Math.round(adr)+' EUR/nuit (critique > 300)','Vérifier si le montant est en MAD au lieu d\'EUR');
+    else if (adr > 180) add('attention','montant','ADR_HIGH','ADR élevé : '+Math.round(adr)+' EUR/nuit (attention > 180)','Vérifier si le montant est en MAD au lieu d\'EUR');
+  }
+  if (net > brut && brut > 0)
+    add('critique','montant','NET_GT_BRUT','Net ('+fmtE(net)+') > brut ('+fmtE(brut)+')','Incohérence critique — corriger manuellement');
+  if (commission > brut && brut > 0)
+    add('critique','montant','COM_GT_BRUT','Commission ('+fmtE(commission)+') > brut ('+fmtE(brut)+')','Incohérence critique — vérifier Smoobu');
+  // Montant élevé pour peu de nuits : OTA vraie réservation seulement
+  if (isOTA && isTrueResa && brut > 900 && nuitsFact <= 2 && nuitsFact > 0)
+    add('attention','montant','HIGH_AMOUNT_FEW_NIGHTS','Montant élevé ('+fmtE(brut)+') pour '+nuitsFact+' nuit(s)','Vérifier si le séjour est bien si court');
+  // Montant suspicieusement bas : OTA seulement (pas Direct)
+  if (isOTA && isTrueResa && brut > 5 && brut < 40 && nuitsFact >= 2)
+    add('attention','montant','AMOUNT_MAY_BE_MAD','Montant très faible ('+fmtE(brut)+') pour '+nuitsFact+' nuit(s) OTA — en MAD ?','Vérifier la devise dans Smoobu');
+
+  // ── 3. Dates ──
+  // Checkin vide
+  if (!ci || ci.trim()==='') {
+    if (isFinancialTn) add('critique','date','CHECKIN_EMPTY','Check-in vide sur '+tn,'Renseigner la date de check-in');
+    else if (!isSpecial) add('attention','date','CHECKIN_EMPTY','Check-in vide (type '+tn+')','À compléter si ce n\'est pas une ligne technique');
+    // AIRCOVER/AJUSTEMENT sans checkin : pas signalé
+  }
+  // Checkout vide
+  if (!co || co.trim()==='') {
+    if (isFinancialTn) add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
+    else if (isSpecial) add('info','date','CHECKOUT_EMPTY','Check-out vide sur '+tn+' — ligne technique','Pas d\'action requise');
+    else add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
+  }
+  if (ci && co && ci > co)
+    add('critique','date','CHECKOUT_BEFORE_CHECKIN','Checkout ('+co+') antérieur au checkin ('+ci+')','Corriger les dates — probablement inversées');
+  // Dates avec heure : niveau selon contexte
+  if (ci && (ci.indexOf('T')>=0||ci.indexOf(':')>=0)) {
+    if (isOTA && isFinancialTn && hasAmount) add('critique','date','CHECKIN_HAS_TIME','Check-in contient une heure : "'+ci+'"','Normaliser au format YYYY-MM-DD — peut fausser le calcul des nuits');
+    else if (isSpecial)                      add('info','date','CHECKIN_HAS_TIME','Check-in avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
+    else                                     add('attention','date','CHECKIN_HAS_TIME','Check-in contient une heure : "'+ci+'"','Normaliser au format YYYY-MM-DD');
+  }
+  if (co && (co.indexOf('T')>=0||co.indexOf(':')>=0)) {
+    if (isOTA && isFinancialTn && hasAmount) add('critique','date','CHECKOUT_HAS_TIME','Check-out contient une heure : "'+co+'"','Normaliser au format YYYY-MM-DD — peut fausser le calcul des nuits');
+    else if (isSpecial)                      add('info','date','CHECKOUT_HAS_TIME','Check-out avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
+    else                                     add('attention','date','CHECKOUT_HAS_TIME','Check-out contient une heure : "'+co+'"','Normaliser au format YYYY-MM-DD');
+  }
+  // Cohérence nuits / diff dates (seulement vraies réservations avec dates propres)
+  if (isTrueResa && ci && co && ci <= co && ci.length===10 && co.length===10) {
+    var ciD=new Date(ci), coD=new Date(co);
+    if (!isNaN(ciD)&&!isNaN(coD)) {
+      var diffN=Math.round((coD-ciD)/86400000);
+      if (nuitsSej>0 && Math.abs(diffN-nuitsSej)>1)
+        add('attention','date','NUITS_INCOHERENTES','Nuits séjour ('+nuitsSej+') ≠ diff dates ('+diffN+' nuits)','Vérifier les dates ou nuits_sejour dans Smoobu');
+    }
+  }
+  if (isOTA && isTrueResa && r.date_paiement && ci && r.date_paiement<ci)
+    add('attention','date','PAIEMENT_BEFORE_CHECKIN','Date paiement ('+r.date_paiement+') avant check-in ('+ci+')','Vérifier la règle de date_paiement pour cette source');
+
+  // ── 4. Taxe de séjour ──
+  // Booking.com vraie réservation sans taxe (sauf si verrouillée et déjà corrigée)
+  if (src==='Booking.com' && isTrueResa && (nuitsSej>0||nuitsFact>0) && (nbP||adults)>0 && taxeSej===0 && !isLocked)
+    add('attention','taxe','BOOKING_NO_TAXE','Booking.com sans taxe séjour ('+
+      (nuitsSej||nuitsFact)+' nuit·s, '+(nbP||adults)+' pers.)','Vérifier si la taxe a été collectée séparément');
+  // Taxe sur source non-Booking (pas Direct — parfois intentionnel)
+  if ((src==='Airbnb'||src==='VRBO') && isTrueResa && taxeSej>0)
+    add('attention','taxe','NON_BOOKING_TAXE','Taxe séjour ('+fmtE(taxeSej)+') sur '+src+' — normalement réservé à Booking.com','Vérifier si la taxe est à exclure du CA');
+
+  // ── 5. Voyageur / Logement ──
+  if (!r.appart||r.appart.trim()==='')
+    add('critique','voyageur','APPART_EMPTY','Réservation sans appartement assigné','Assigner un appartement — invisible dans les KPIs');
+  else if (allAppartNoms.length>0 && allAppartNoms.indexOf(r.appart)<0)
+    add('critique','voyageur','APPART_INCONNU','Appartement inconnu : "'+r.appart+'"','Vérifier le nom dans Smoobu — doit correspondre à un logement du CRM');
+  // Voyageur vide : attention seulement pour vraie réservation OTA récente
+  if (isOTA && isTrueResa && isRecent && (!r.voyageur||r.voyageur.trim()===''))
+    add('attention','voyageur','VOYAGEUR_EMPTY','Réservation OTA récente sans voyageur','Enrichir via Smoobu ou resync');
+  // Nb personnes : info si incohérent, attention si manquant sur récente
+  if (isTrueResa && isRecent && nbP===0 && adults===0)
+    add('attention','voyageur','PERSONNES_MANQUANTES','Nombre de personnes non renseigné','Compléter pour le calcul de la taxe de séjour');
+  else if (adults>0 && nbP>0 && (adults+children)!==nbP)
+    add('info','voyageur','PERSONNES_INCOHERENTES','Adults ('+adults+') + enfants ('+children+') ≠ nb_personnes ('+nbP+')','Vérifier la composition — peut affecter la taxe Booking');
+
+  // ── 6. Synchronisation ──
+  // Direct : jamais signalé pour absence de smoobu_id
+  if (isOTA && !r.smoobu_id) {
+    if (isSpecial) {
+      add('info','sync','OTA_NO_SMOOBU_ID',tn+' sans smoobu_id — ligne technique Smoobu','Pas d\'action requise');
+    } else if (isAnnulNP) {
+      if (isLocked) add('info','sync','OTA_NO_SMOOBU_ID','Annulation non payée verrouillée sans smoobu_id','Données protégées — pas d\'action requise');
+      else          add('attention','sync','OTA_NO_SMOOBU_ID','ANNULATION_NON_PAYEE sans smoobu_id','Vérifier si la synchronisation est attendue');
+    } else if (isFinancialTn) {
+      if (isLocked)              add('info','sync','OTA_NO_SMOOBU_ID','Réservation verrouillée sans smoobu_id','Finances protégées — pas d\'action urgente');
+      else if (isActive&&isRecent) add('critique','sync','OTA_NO_SMOOBU_ID','Réservation OTA active récente sans smoobu_id','Resynchroniser via Sync API — données non liées à Smoobu');
+      else                       add('attention','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (ancienne ou inactive)','Peut être ignorée si antérieure à la mise en service du webhook');
+    } else {
+      add('attention','sync','OTA_NO_SMOOBU_ID',tn+' OTA sans smoobu_id','Vérifier si ce type doit être synchronisé');
+    }
+  }
+  if (isLocked)
+    add('info','sync','OVERRIDE_MANUAL','Réservation verrouillée (override_manual=true) — finances protégées','Les mises à jour Smoobu ne remplaceront pas les données financières');
+
+  // ── 7. Types métier ──
+  // ANNULATION_NON_PAYEE avec montant → Info seulement
+  // isRevRow() exclut déjà ANNULATION_NON_PAYEE du CA et des KPIs, donc le montant stocké est sans effet
+  if (isAnnulNP && (brut>0||net>0||commission>0))
+    add('info','type_metier','ANNUL_NON_PAYEE_MONTANT',
+      'Montant présent mais ignoré car annulation non payée (brut='+fmtE(brut)+', net='+fmtE(net)+')',
+      'Pas d\'action requise — ce type est exclu du CA et des KPIs par le CRM');
+  // ANNULATION_PAYEE sans net → Attention (pas critique)
+  if (isAnnulPaye && net===0 && brut===0)
+    add('attention','type_metier','ANNUL_PAYEE_NET_ZERO',
+      'Annulation payée sans net encaissé',
+      'Vérifier si elle doit être reclassée en ANNULATION_NON_PAYEE');
+  // AIRCOVER/AJUSTEMENT avec nuits → Critique (fausse l'occupation)
+  if (isSpecial && (nuitsSej>0||nuitsFact>0))
+    add('critique','type_metier','SPECIAL_TYPE_NUITS',
+      tn+' avec '+(nuitsSej||nuitsFact)+' nuit(s) — fausse l\'occupation physique',
+      'Remettre nuits_sejour et nuits_fact à 0');
+
+  return issues;
+}
+
+function qualiteUpdateBadge() {
+  var el = document.getElementById('qualite-badge');
+  if (!el) return;
+  var n = QUALITE_ANOMALIES.filter(function(a){return a.status==='pending'&&a.level==='critique';}).length;
+  if (n>0){el.textContent=n;el.classList.remove('hidden');}else el.classList.add('hidden');
+}
+
+function renderQualite() {
+  renderNav('qualite');
+  var listEl = document.getElementById('qualite-list');
+  var filtersEl = document.getElementById('qualite-filters');
+  var summaryEl = document.getElementById('qualite-summary');
+  if (!listEl) return;
+  if (!QUALITE_ANOMALIES.length) {
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (filtersEl) filtersEl.style.display = 'none';
+    listEl.innerHTML = '<div style="text-align:center;padding:48px;color:var(--td);font-size:14px">Cliquez sur <strong style="color:var(--tx)">🔍 Analyser</strong> pour lancer la détection d\'anomalies sur toutes les réservations.</div>';
+    return;
+  }
+  var nCrit = QUALITE_ANOMALIES.filter(function(a){return a.level==='critique'&&a.status==='pending';}).length;
+  var nAtt  = QUALITE_ANOMALIES.filter(function(a){return a.level==='attention'&&a.status==='pending';}).length;
+  var nInfo = QUALITE_ANOMALIES.filter(function(a){return a.level==='info'&&a.status==='pending';}).length;
+  var nIgn  = QUALITE_ANOMALIES.filter(function(a){return a.status==='ignored';}).length;
+  var nCorr = QUALITE_ANOMALIES.filter(function(a){return a.status==='corrected';}).length;
+  if (summaryEl) summaryEl.innerHTML =
+    '<div class="fr" style="flex-wrap:wrap;gap:8px">'+
+    kpiChip('🔴 Critique',nCrit,'var(--re)','\'critique\'','\'pending\'') +
+    kpiChip('🟠 Attention',nAtt,'var(--or)','\'attention\'','\'pending\'') +
+    kpiChip('🔵 Info',nInfo,'var(--bl)','\'info\'','\'pending\'') +
+    kpiChip('👁 Ignorées',nIgn,'var(--tm)','\'\'','\'ignored\'') +
+    kpiChip('✅ Corrigées',nCorr,'var(--gr)','\'\'','\'corrected\'') +
+    '</div>';
+  var qfAp = document.getElementById('qf-appart');
+  if (qfAp) {
+    var savedAp = qfAp.value, apparts = [];
+    QUALITE_ANOMALIES.forEach(function(a){if(a.resa.appart&&apparts.indexOf(a.resa.appart)<0)apparts.push(a.resa.appart);});
+    apparts.sort();
+    var ao='<option value="">Tous apparts</option>';
+    apparts.forEach(function(ap){ao+='<option'+(savedAp===ap?' selected':'')+'>'+escHtml(ap)+'</option>';});
+    qfAp.innerHTML = ao;
+  }
+  if (filtersEl) filtersEl.style.display = '';
+  qualiteFilter();
+}
+
+function kpiChip(lbl, val, color, niv, st) {
+  return '<div class="kc" style="flex:0 0 auto;padding:10px 16px;cursor:pointer" onclick="document.getElementById(\'qf-niveau\').value='+niv+';document.getElementById(\'qf-statut\').value='+st+';qualiteFilter()">'+
+    '<div class="kl">'+lbl+'</div><div class="kv" style="color:'+color+'">'+val+'</div></div>';
+}
+
+function qualiteFilter() {
+  var listEl = document.getElementById('qualite-list');
+  if (!listEl || !QUALITE_ANOMALIES.length) return;
+  var fNiv = (document.getElementById('qf-niveau')||{}).value||'';
+  var fTyp = (document.getElementById('qf-type')||{}).value||'';
+  var fSrc = (document.getElementById('qf-src')||{}).value||'';
+  var fAp  = (document.getElementById('qf-appart')||{}).value||'';
+  var qfSt = document.getElementById('qf-statut');
+  var fSt  = qfSt ? qfSt.value : 'pending';
+  var filtered = QUALITE_ANOMALIES.filter(function(a){
+    if (fNiv && a.level!==fNiv) return false;
+    if (fTyp && a.type!==fTyp) return false;
+    if (fSrc && a.resa.source!==fSrc) return false;
+    if (fAp  && a.resa.appart!==fAp) return false;
+    if (fSt  && a.status!==fSt) return false;
+    // Filtre "Critiques réelles uniquement"
+    if (QUALITE_REAL_ONLY) {
+      var refa = (a.resa.ref||a.resa.smoobu_id||'').toLowerCase();
+      if (/(-resol|resol|-res$|-v[12]$)/.test(refa)) return false;
+      if (a.level==='info') return false;
+      if (a.status==='ignored'||a.status==='locked') return false;
+      if (a.code==='OVERRIDE_MANUAL') return false;
+      // Attention : garder seulement BOOKING_NO_TAXE, masquer tout le reste
+      if (a.level==='attention' && a.code!=='BOOKING_NO_TAXE') return false;
+      // Critique : masquer les codes données personnelles mineures
+      var noiseCodes = ['VOYAGEUR_EMPTY','PERSONNES_INCOHERENTES','PERSONNES_MANQUANTES'];
+      if (noiseCodes.indexOf(a.code) >= 0) return false;
+    }
+    return true;
+  });
+  var lvlOrder = {critique:0,attention:1,info:2};
+  filtered.sort(function(a,b){return (lvlOrder[a.level]||2)-(lvlOrder[b.level]||2);});
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:32px;color:var(--td);font-size:13px">Aucune anomalie pour ces filtres.</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(renderQualiteCard).join('');
+}
+
+function toggleQualiteRealOnly() {
+  QUALITE_REAL_ONLY = !QUALITE_REAL_ONLY;
+  var btn = document.getElementById('btn-qualite-real');
+  if (btn) {
+    btn.style.background = QUALITE_REAL_ONLY ? 'var(--re)' : '';
+    btn.style.color = QUALITE_REAL_ONLY ? '#fff' : 'var(--re)';
+  }
+  // En mode réel : forcer statut "À vérifier"
+  if (QUALITE_REAL_ONLY) {
+    var qfSt = document.getElementById('qf-statut');
+    if (qfSt && qfSt.value !== 'pending') { qfSt.value = 'pending'; }
+    var qfNiv = document.getElementById('qf-niveau');
+    if (qfNiv) qfNiv.value = '';
+  }
+  qualiteFilter();
+}
+
+function renderQualiteCard(a) {
+  var r = a.resa;
+  var lvlColor = {critique:'var(--re)',attention:'var(--or)',info:'var(--bl)'}[a.level]||'var(--tm)';
+  var lvlLabel = {critique:'🔴 Critique',attention:'🟠 Attention',info:'🔵 Info'}[a.level]||a.level;
+  var typeLabel = {commission:'Commission',montant:'Montant',date:'Date',taxe:'Taxe séjour',voyageur:'Voyageur/Logement',sync:'Synchronisation',type_metier:'Type métier'}[a.type]||a.type;
+  var stLabel  = {pending:'',ignored:'👁 Ignorée',corrected:'✅ Corrigée',locked:'🔒 Verrouillée'}[a.status]||'';
+  var stColor  = {ignored:'var(--tm)',corrected:'var(--gr)',locked:'var(--bl)'}[a.status]||'';
+  var aId = a.id.replace(/'/g,"\\'");
+  var rId = (r.id||'').replace(/'/g,"\\'");
+  var isLocked = r.override_manual===true;
+  var canEdit = ROLE==='admin'||ROLE==='manager';
+  var btns =
+    '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="qualiteGoToResa(\''+rId+'\')">Voir</button>'+
+    (canEdit?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="buildForm(\'resa\',\''+rId+'\')">Modifier</button>':'')+
+    (a.status!=='ignored'
+      ?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--tm)" onclick="setQualiteStatus(\''+aId+'\',\'ignored\')">Ignorer</button>'
+      :'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--bl)" onclick="setQualiteStatus(\''+aId+'\',\'pending\')">Réactiver</button>')+
+    (a.status!=='corrected'?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--gr)" onclick="setQualiteStatus(\''+aId+'\',\'corrected\')">✅ Corrigée</button>':'')+
+    (!isLocked&&canEdit?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--bl)" onclick="qualiteLockResa(\''+rId+'\',\''+aId+'\')">🔒 Verrouiller</button>':'');
+  return '<div class="qa-card" style="border-left:3px solid '+lvlColor+';opacity:'+(a.status==='ignored'?'.4':'1')+'">'+
+    '<div class="fr" style="align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+      '<span style="background:'+lvlColor+'20;color:'+lvlColor+';font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">'+lvlLabel+'</span>'+
+      '<span style="background:var(--s2);color:var(--tm);font-size:11px;padding:2px 8px;border-radius:10px">'+typeLabel+'</span>'+
+      (stLabel?'<span style="font-size:11px;color:'+stColor+';font-weight:600">'+stLabel+'</span>':'')+
+      (isLocked?'<span style="font-size:11px;color:var(--bl)">🔒 Override</span>':'')+
+      '<span style="margin-left:auto;font-size:11px;color:var(--tm);font-family:\'DM Mono\',monospace">'+escHtml(r.ref||r.id||'')+'</span>'+
+    '</div>'+
+    '<div style="font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px">'+escHtml(a.msg)+'</div>'+
+    (a.action?'<div style="font-size:11px;color:var(--tm);margin-bottom:8px">→ '+escHtml(a.action)+'</div>':'')+
+    '<div class="qa-meta">'+
+      '<span>🏠 '+escHtml(aptShort(r.appart||'—'))+'</span>'+
+      '<span>👤 '+escHtml((r.voyageur||'—').slice(0,28))+'</span>'+
+      '<span>📡 '+escHtml(r.source||'—')+'</span>'+
+      '<span>📅 '+escHtml(r.checkin||'—')+' → '+escHtml(r.checkout||'—')+'</span>'+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:11px">'+escHtml(r.type_norm||'—')+'</span>'+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:11px">B:'+fmtE(parseFloat(r.brut)||0)+' N:'+fmtE(parseFloat(r.net)||0)+' C:'+fmtE(parseFloat(r.commission)||0)+'</span>'+
+    '</div>'+
+    '<div class="reconcil-acts">'+btns+'</div>'+
+  '</div>';
+}
+
+function setQualiteStatus(anomalyId, newStatus) {
+  var a = QUALITE_ANOMALIES.find(function(x){return x.id===anomalyId;});
+  if (!a) return;
+  a.status = newStatus;
+  QUALITE_STATUSES[anomalyId] = newStatus;
+  saveQualiteStatuses();
+  qualiteUpdateBadge();
+  qualiteFilter();
+}
+
+async function qualiteLockResa(resaId, anomalyId) {
+  var r = DB.resa.find(function(x){return x.id===resaId;});
+  if (!r) return;
+  if (!confirm('Verrouiller la réservation '+escHtml(r.ref||resaId)+' ?\n\nActiver override_manual=true : les syncs Smoobu ne remplaceront plus les données financières.\n\nAucune valeur financière ne sera modifiée.')) return;
+  try {
+    var res = await SUPA.from('resa').update({override_manual:true}).eq('id', resaId);
+    if (res.error) throw res.error;
+    r.override_manual = true;
+    showToast('🔒 Réservation verrouillée');
+    if (anomalyId) setQualiteStatus(anomalyId, 'locked');
+    else qualiteFilter();
+  } catch(e) { showToast('❌ Erreur : '+e.message); }
+}
+
+function qualiteGoToResa(resaId) {
+  var r = DB.resa.find(function(x){return x.id===resaId;});
+  if (!r) return;
+  goTo('resa');
+  var ref = r.ref || resaId;
+  setTimeout(function(){
+    R_SEARCH = ref;
+    var inp = document.getElementById('r-search');
+    if (inp) inp.value = ref;
+    renderResa();
+  }, 80);
+}
+
+function qualiteResetStatuses() {
+  if (!confirm('Réinitialiser le statut de toutes les anomalies ?\n\nLes réservations ne seront pas modifiées.')) return;
+  QUALITE_STATUSES = {};
+  saveQualiteStatuses();
+  QUALITE_ANOMALIES.forEach(function(a){a.status='pending';});
+  qualiteUpdateBadge();
+  renderQualite();
+  showToast('↺ Statuts réinitialisés');
+}
 
 // Lancer
 initApp();
