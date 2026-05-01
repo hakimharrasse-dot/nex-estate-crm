@@ -6487,6 +6487,8 @@ function qualiteResetStatuses() {
 
 // ── Phase 1 — Audit financier ──────────────────────────────────────────────────
 
+var FIN_IGNORED = {};
+
 function expectedFinancials(r) {
   var ZERO_TYPES = ['AIRCOVER','AJUSTEMENT','DIRECT','ANNULATION_NON_PAYEE'];
   var comPct = ZERO_TYPES.indexOf(r.type_norm) >= 0 ? 0 : (COM[r.source] || 0);
@@ -6503,6 +6505,17 @@ function isFinanciallyInconsistent(r) {
     || Math.abs(r.net - exp.net) > 0.02;
 }
 
+function classifyFinRow(r, exp) {
+  // 🟢 Sûre : AIRCOVER/AJUSTEMENT avec commission non nulle — règle ZERO_COM absolue
+  if (['AIRCOVER','AJUSTEMENT'].indexOf(r.type_norm) >= 0 && r.commission > 0.02) return 'safe';
+  // 🔴 Risquée : Booking.com, VRBO, ANNULATION_PAYEE, ou gros écart > 100 EUR
+  if (r.source === 'Booking.com' || r.source === 'VRBO') return 'risky';
+  if (r.type_norm === 'ANNULATION_PAYEE') return 'risky';
+  if (Math.abs(r.net - exp.net) > 100) return 'risky';
+  // 🟡 À vérifier : tout le reste (taux Smoobu ≠ standard CRM mais cause incertaine)
+  return 'review';
+}
+
 function raisonFinance(r, exp) {
   var ZERO_TYPES = ['AIRCOVER','AJUSTEMENT','DIRECT'];
   if (ZERO_TYPES.indexOf(r.type_norm) >= 0 && (r.commission > 0.02 || r.com_pct > 0.005))
@@ -6514,140 +6527,278 @@ function raisonFinance(r, exp) {
   return 'Taux Smoobu ≠ taux CRM standard';
 }
 
-function hesc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function finDetailsHtml(item) {
+  var r=item.r, exp=item.exp, level=item.level;
+  var ecartEur = Math.round((exp.net - r.net)*100)/100;
+  var ecartMad = Math.round(ecartEur * EUR_MAD);
+  var ecartSign = ecartEur > 0 ? '+' : '';
+  var confLabel = level==='safe'
+    ? '100 % — correction automatique sûre'
+    : level==='review'
+    ? '~70 % — vérification manuelle recommandée'
+    : '⚠ Risquée — ne pas corriger sans analyse';
+  var confColor = level==='safe' ? 'var(--gr)' : level==='review' ? 'var(--or)' : 'var(--re)';
+  var safetyNote = level==='safe'
+    ? 'AIRCOVER/AJUSTEMENT sont des lignes d\'ajustement Airbnb sans commission réelle. La règle ZERO_COM est absolue : le taux doit toujours être 0 %. Cette correction est certaine à 100 %.'
+    : level==='review'
+    ? 'Le taux Smoobu ('+Math.round(r.com_pct*1000)/10+' %) diffère du taux CRM standard ('+Math.round(exp.comPct*1000)/10+' %). Smoobu peut envoyer un taux réel négocié différent du standard — vérifier dans Smoobu avant de corriger.'
+    : 'Source Booking.com/VRBO, annulation payée, ou gros écart : le taux de commission peut légitimement différer du standard CRM. Correction automatique fortement déconseillée.';
+  return '<div style="background:var(--s2);border-radius:8px;padding:14px 16px;font-size:11px;line-height:1.8">'+
+    '<div style="font-weight:700;font-size:12px;margin-bottom:10px;color:var(--tx)">🔍 Détails du signalement</div>'+
+    '<table style="width:100%;border-collapse:collapse">'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm);white-space:nowrap;vertical-align:top">Signalement</td>'+
+      '<td style="padding:2px 0;font-weight:600">'+escHtml(item.raison)+'</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm);white-space:nowrap">Formule</td>'+
+      '<td style="padding:2px 0;font-family:monospace">net = brut × (1 − com_pct)</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm)">Brut</td>'+
+      '<td style="padding:2px 0">'+fmtE(r.brut)+'</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm);white-space:nowrap">Valeur actuelle</td>'+
+      '<td style="padding:2px 0;color:var(--or)">net = '+fmtE(r.net)+' &nbsp;|&nbsp; commission = '+fmtE(r.commission)+' &nbsp;|&nbsp; taux = '+Math.round(r.com_pct*1000)/10+'%</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm);white-space:nowrap">Valeur proposée</td>'+
+      '<td style="padding:2px 0;color:var(--gr)">net = '+fmtE(exp.net)+' &nbsp;|&nbsp; commission = '+fmtE(exp.commission)+' &nbsp;|&nbsp; taux = '+Math.round(exp.comPct*1000)/10+'%</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm)">Différence</td>'+
+      '<td style="padding:2px 0;font-weight:700;color:'+(ecartEur>=0?'var(--gr)':'var(--re)')+'">'+
+        ecartSign+ecartEur+' EUR ('+ecartSign+ecartMad.toLocaleString('fr-MA')+' MAD)</td></tr>'+
+    '<tr><td style="padding:2px 12px 2px 0;color:var(--tm)">Confiance</td>'+
+      '<td style="padding:2px 0;font-weight:700;color:'+confColor+'">'+confLabel+'</td></tr>'+
+    '</table>'+
+    '<div style="margin-top:10px;padding:8px 10px;background:var(--s1);border-left:3px solid '+confColor+
+      ';border-radius:4px;font-size:10px;color:var(--tx);line-height:1.6">'+escHtml(safetyNote)+'</div>'+
+    '</div>';
+}
+
+function toggleFinDetails(id) {
+  var row = document.getElementById('findet-'+id);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+function ignoreFinRow(id) {
+  FIN_IGNORED[id] = true;
+  var mainRow = document.getElementById('finrow-'+id);
+  var detRow  = document.getElementById('findet-'+id);
+  if (mainRow) mainRow.style.display = 'none';
+  if (detRow)  detRow.style.display  = 'none';
+  finUpdateBtn();
+  showToast('🙈 Ligne ignorée (session uniquement)');
+}
+
+function finGoToResa(id) {
+  document.getElementById('fin-audit-ov').style.display = 'none';
+  var r = DB.resa && DB.resa.find(function(x){ return x.id===id; });
+  goTo('resa');
+  setTimeout(function() {
+    var s = document.getElementById('resa-search');
+    if (s && r) s.value = r.ref || r.voyageur || id;
+    if (typeof renderResa === 'function') renderResa();
+  }, 80);
+}
+
+function finEditResa(id) {
+  document.getElementById('fin-audit-ov').style.display = 'none';
+  goTo('resa');
+  setTimeout(function() {
+    if (typeof buildForm === 'function') buildForm('resa', id);
+  }, 120);
+}
 
 function auditFinances() {
   if (!DB || !DB.resa || !DB.resa.length) { showToast('⚠ Données non chargées'); return; }
   var anomalies = [], verrouilles = [];
   DB.resa.forEach(function(r) {
     if (!isFinanciallyInconsistent(r)) return;
+    if (FIN_IGNORED[r.id]) return;
     var exp = expectedFinancials(r);
-    var ecartMad = Math.round((r.net - exp.net) * EUR_MAD);
-    var item = {r:r, exp:exp, ecartMad:ecartMad, raison:raisonFinance(r, exp)};
+    var level = r.override_manual ? 'locked' : classifyFinRow(r, exp);
+    var ecartMad = Math.round((exp.net - r.net) * EUR_MAD);
+    var item = {r:r, exp:exp, ecartMad:ecartMad, raison:raisonFinance(r,exp), level:level};
     if (r.override_manual) verrouilles.push(item);
     else anomalies.push(item);
   });
   anomalies.sort(function(a,b){ return Math.abs(b.ecartMad)-Math.abs(a.ecartMad); });
   verrouilles.sort(function(a,b){ return Math.abs(b.ecartMad)-Math.abs(a.ecartMad); });
-  var totalImpact = anomalies.reduce(function(s,a){ return s - a.ecartMad; }, 0);
 
-  function TH(s,r) {
-    return '<th style="padding:5px 8px;text-align:'+(r?'right':'left')+';white-space:nowrap;'+
-      'font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">'+s+'</th>';
-  }
-  function mkRow(item, locked) {
-    var r=item.r, exp=item.exp;
-    var ecartStr = item.ecartMad===0?'0':(item.ecartMad<0?item.ecartMad.toLocaleString('fr-MA'):'+'+item.ecartMad.toLocaleString('fr-MA'));
-    var ecartColor = item.ecartMad<0?'color:var(--re)':'color:var(--gr)';
-    var src=chip(r.source,srcClass(r.source));
-    var typ=chip(r.type_norm,typeClass(r.type_norm));
-    if (locked) {
-      return '<tr style="opacity:0.65"><td style="text-align:center;padding:4px">🔒</td>'+
-        '<td style="padding:4px">'+hesc(r.ref||'—')+'</td>'+
-        '<td style="padding:4px">'+hesc(r.voyageur||'—')+'</td>'+
-        '<td style="padding:4px">'+hesc(r.appart||'—')+'</td>'+
-        '<td style="padding:4px">'+src+'</td><td style="padding:4px">'+typ+'</td>'+
-        '<td style="text-align:right;padding:4px">'+hesc(fmtE(r.net))+'</td>'+
-        '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.net))+'</td>'+
-        '<td style="text-align:right;padding:4px">'+Math.round(r.com_pct*1000)/10+'% → '+Math.round(exp.comPct*1000)/10+'%</td>'+
-        '<td style="padding:4px;font-size:10px;color:var(--tm)">'+hesc(item.raison)+'</td></tr>';
-    }
-    return '<tr><td style="text-align:center;padding:4px"><input type="checkbox" class="fin-cb" data-id="'+r.id+'" checked></td>'+
-      '<td style="padding:4px">'+hesc(r.ref||'—')+'</td>'+
-      '<td style="padding:4px">'+hesc(r.voyageur||'—')+'</td>'+
-      '<td style="padding:4px">'+hesc(r.appart||'—')+'</td>'+
-      '<td style="padding:4px">'+src+'</td>'+
-      '<td style="padding:4px">'+typ+'</td>'+
-      '<td style="padding:4px">'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
-      '<td style="text-align:right;padding:4px">'+hesc(fmtE(r.brut))+'</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--or)">'+hesc(fmtE(r.net))+'</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--or)">'+hesc(fmtE(r.commission))+'</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--or)">'+Math.round(r.com_pct*1000)/10+'%</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.net))+'</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.commission))+'</td>'+
-      '<td style="text-align:right;padding:4px;color:var(--gr)">'+Math.round(exp.comPct*1000)/10+'%</td>'+
-      '<td style="text-align:right;padding:4px;'+ecartColor+'">'+ecartStr+' MAD</td>'+
-      '<td style="padding:4px;font-size:10px;color:var(--tm)">'+hesc(item.raison)+'</td></tr>';
-  }
+  var nSafe   = anomalies.filter(function(i){ return i.level==='safe';   }).length;
+  var nReview = anomalies.filter(function(i){ return i.level==='review'; }).length;
+  var nRisky  = anomalies.filter(function(i){ return i.level==='risky';  }).length;
+  var totalImpact = anomalies.reduce(function(s,a){ return s + a.ecartMad; }, 0);
 
-  var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">'+
-    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Lignes corrigibles</div>'+
-      '<div class="kv" style="color:var(--or)">'+anomalies.length+'</div></div>'+
-    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Impact net si corrigé</div>'+
+  // ── KPI summary ──
+  var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'+
+    '<div class="kc" style="flex:1;min-width:110px"><div class="kl">🟢 Sûres</div>'+
+      '<div class="kv" style="color:var(--gr)">'+nSafe+'</div></div>'+
+    '<div class="kc" style="flex:1;min-width:110px"><div class="kl">🟡 À vérifier</div>'+
+      '<div class="kv" style="color:var(--or)">'+nReview+'</div></div>'+
+    '<div class="kc" style="flex:1;min-width:110px"><div class="kl">🔴 Risquées</div>'+
+      '<div class="kv" style="color:var(--re)">'+nRisky+'</div></div>'+
+    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Impact potentiel</div>'+
       '<div class="kv" style="color:'+(totalImpact>=0?'var(--gr)':'var(--re)')+'">'+
-        (totalImpact>=0?'+':'')+Math.abs(totalImpact).toLocaleString('fr-MA')+' MAD</div></div>'+
-    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Verrouillées (info seule)</div>'+
+        (totalImpact>0?'+':'')+totalImpact.toLocaleString('fr-MA')+' MAD</div></div>'+
+    '<div class="kc" style="flex:1;min-width:110px"><div class="kl">🔒 Verrouillées</div>'+
       '<div class="kv">'+verrouilles.length+'</div></div>'+
+    '</div>';
+
+  // ── Légende ──
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;'+
+    'background:var(--s2);border-radius:8px;font-size:11px;color:var(--tm)">'+
+    '<span><b style="color:var(--gr)">🟢 Sûre</b> — cause certaine à 100 %, cochée par défaut</span>'+
+    '<span><b style="color:var(--or)">🟡 À vérifier</b> — taux Smoobu potentiellement légitime</span>'+
+    '<span><b style="color:var(--re)">🔴 Risquée</b> — Booking/VRBO/annulation ou gros écart, pas de correction auto</span>'+
     '</div>';
 
   if (anomalies.length) {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'+
-      '<div style="font-weight:700;font-size:14px">🔧 Corrigibles (non-verrouillées)</div>'+
-      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
-        '<label style="font-size:12px;color:var(--tm);cursor:pointer;display:flex;align-items:center;gap:5px">'+
-          '<input type="checkbox" id="fin-sel-all" checked '+
-          'onchange="(function(v){document.querySelectorAll(\'.fin-cb\').forEach(function(c){c.checked=v;});finUpdateBtn();})(this.checked)">'+
-          'Tout sélectionner</label>'+
-        '<button class="bar" id="fin-apply-btn" onclick="applySelectedFinanceFix()">✅ Appliquer ('+anomalies.length+')</button>'+
-      '</div></div>';
-    html += '<div style="overflow-x:auto;max-height:400px;overflow-y:auto;border:1px solid var(--br);border-radius:8px">'+
+      '<div style="font-weight:700;font-size:13px">Signalements — '+anomalies.length+' lignes (non-verrouillées)</div>'+
+      '<button class="bar" id="fin-apply-btn" onclick="applySelectedFinanceFix()" '+
+        'disabled style="opacity:0.4;cursor:not-allowed;pointer-events:none">✅ Appliquer sélection (0)</button>'+
+      '</div>';
+    html += '<div style="overflow-x:auto;max-height:440px;overflow-y:auto;border:1px solid var(--br);border-radius:8px">'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead><tr style="background:var(--s2);position:sticky;top:0;z-index:1">'+
-        TH('',false)+TH('Réf',false)+TH('Voyageur',false)+TH('Appart',false)+
-        TH('Source',false)+TH('Type',false)+TH('Statut',false)+TH('Brut',true)+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">Net act.</th>'+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">Com. act.</th>'+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">% act.</th>'+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">Net att.</th>'+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">Com. att.</th>'+
-        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">% att.</th>'+
-        TH('Écart MAD',true)+TH('Raison',false)+
-      '</tr></thead>'+
-      '<tbody>'+anomalies.map(function(i){ return mkRow(i,false); }).join('')+'</tbody>'+
-      '</table></div>';
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Niveau</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">☐</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Réf</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Voyageur</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Appart</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Source</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Type</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Net act.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Net att.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Écart MAD</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Actions</th>'+
+      '</tr></thead><tbody>';
+
+    anomalies.forEach(function(item) {
+      var r=item.r, exp=item.exp, lvl=item.level;
+      var lvlBadge = lvl==='safe'
+        ? '<span style="font-size:14px" title="Sûre — correction certaine à 100 %">🟢</span>'
+        : lvl==='review'
+        ? '<span style="font-size:14px" title="À vérifier — taux Smoobu potentiellement légitime">🟡</span>'
+        : '<span style="font-size:14px" title="Risquée — ne pas corriger automatiquement">🔴</span>';
+      var cbCell = lvl==='risky'
+        ? '<td style="text-align:center;padding:4px"><span title="Correction auto non disponible" style="color:var(--re)">⛔</span></td>'
+        : '<td style="text-align:center;padding:4px"><input type="checkbox" class="fin-cb" data-id="'+r.id+'" '+(lvl==='safe'?'checked':'')+' onchange="finUpdateBtn()"></td>';
+      var ecartStr = item.ecartMad===0 ? '0 MAD'
+        : (item.ecartMad>0 ? '+'+item.ecartMad.toLocaleString('fr-MA') : item.ecartMad.toLocaleString('fr-MA'))+' MAD';
+      var ecartColor = item.ecartMad>0?'var(--gr)':item.ecartMad<0?'var(--re)':'var(--tm)';
+      var netActColor = lvl==='safe' ? 'var(--re)' : 'var(--or)';
+      var actns = '<div style="display:flex;gap:4px">'+
+        '<button onclick="toggleFinDetails(\''+r.id+'\')" title="Voir détails calcul" '+
+          'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px">🔍</button>'+
+        '<button onclick="finGoToResa(\''+r.id+'\')" title="Voir réservation" '+
+          'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px">👁</button>'+
+        '<button onclick="finEditResa(\''+r.id+'\')" title="Modifier réservation" '+
+          'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px">✏️</button>'+
+        '<button onclick="ignoreFinRow(\''+r.id+'\')" title="Ignorer (session)" '+
+          'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px;color:var(--tm)">🙈</button>'+
+        '</div>';
+      html +=
+        '<tr id="finrow-'+r.id+'" style="border-bottom:1px solid var(--br)">'+
+          '<td style="text-align:center;padding:4px 6px">'+lvlBadge+'</td>'+
+          cbCell+
+          '<td style="padding:4px 6px;white-space:nowrap">'+escHtml(r.ref||'—')+'</td>'+
+          '<td style="padding:4px 6px;white-space:nowrap">'+escHtml(r.voyageur||'—')+'</td>'+
+          '<td style="padding:4px 6px;white-space:nowrap;font-size:10px">'+escHtml(r.appart||'—')+'</td>'+
+          '<td style="padding:4px 6px">'+chip(r.source,srcClass(r.source))+'</td>'+
+          '<td style="padding:4px 6px">'+chip(r.type_norm,typeClass(r.type_norm))+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;color:'+netActColor+'">'+fmtE(r.net)+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;color:var(--gr)">'+fmtE(exp.net)+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;font-weight:700;color:'+ecartColor+'">'+ecartStr+'</td>'+
+          '<td style="padding:4px 6px">'+actns+'</td>'+
+        '</tr>'+
+        '<tr id="findet-'+r.id+'" style="display:none;background:var(--s2)">'+
+          '<td colspan="11" style="padding:10px 16px">'+finDetailsHtml(item)+'</td>'+
+        '</tr>';
+    });
+    html += '</tbody></table></div>';
   } else {
     html += '<div style="color:var(--gr);padding:24px;text-align:center;font-size:14px">✅ Aucune incohérence financière détectée</div>';
   }
 
   if (verrouilles.length) {
-    html += '<div style="margin-top:24px;font-weight:700;font-size:14px;margin-bottom:10px">'+
-      '🔒 Verrouillées (override_manual=true — correction manuelle requise)</div>'+
+    html += '<div style="margin-top:24px;font-weight:700;font-size:13px;margin-bottom:10px">'+
+      '🔒 Verrouillées (override_manual=true — '+verrouilles.length+' lignes, correction manuelle requise)</div>'+
       '<div style="overflow-x:auto;max-height:220px;overflow-y:auto;border:1px solid var(--br);border-radius:8px">'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
       '<thead><tr style="background:var(--s2)">'+
-        TH('',false)+TH('Réf',false)+TH('Voyageur',false)+TH('Appart',false)+
-        TH('Source',false)+TH('Type',false)+TH('Net actuel',true)+TH('Net attendu',true)+
-        TH('Com_pct',false)+TH('Raison',false)+
-      '</tr></thead>'+
-      '<tbody>'+verrouilles.map(function(i){ return mkRow(i,true); }).join('')+'</tbody>'+
-      '</table></div>';
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Réf</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Voyageur</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Appart</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Source</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Net act.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Net att.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right">Écart MAD</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Raison</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Actions</th>'+
+      '</tr></thead><tbody>';
+    verrouilles.forEach(function(item) {
+      var r=item.r, exp=item.exp;
+      var ecartStr = item.ecartMad===0 ? '0 MAD'
+        : (item.ecartMad>0 ? '+'+item.ecartMad.toLocaleString('fr-MA') : item.ecartMad.toLocaleString('fr-MA'))+' MAD';
+      var ecartColor = item.ecartMad>0?'var(--gr)':item.ecartMad<0?'var(--re)':'var(--tm)';
+      html +=
+        '<tr style="opacity:0.75;border-bottom:1px solid var(--br)">'+
+          '<td style="padding:4px 6px;white-space:nowrap">'+escHtml(r.ref||'—')+'</td>'+
+          '<td style="padding:4px 6px">'+escHtml(r.voyageur||'—')+'</td>'+
+          '<td style="padding:4px 6px;font-size:10px">'+escHtml(r.appart||'—')+'</td>'+
+          '<td style="padding:4px 6px">'+chip(r.source,srcClass(r.source))+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;color:var(--or)">'+fmtE(r.net)+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;color:var(--gr)">'+fmtE(exp.net)+'</td>'+
+          '<td style="text-align:right;padding:4px 6px;font-weight:700;color:'+ecartColor+'">'+ecartStr+'</td>'+
+          '<td style="padding:4px 6px;font-size:10px;color:var(--tm)">'+escHtml(item.raison)+'</td>'+
+          '<td style="padding:4px 6px;white-space:nowrap">'+
+            '<button onclick="finGoToResa(\''+r.id+'\')" title="Voir réservation" '+
+              'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px">👁</button> '+
+            '<button onclick="finEditResa(\''+r.id+'\')" title="Modifier réservation" '+
+              'style="background:var(--s2);border:1px solid var(--br);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:11px">✏️</button>'+
+          '</td>'+
+        '</tr>';
+    });
+    html += '</tbody></table></div>';
   }
 
   document.getElementById('fin-audit-body').innerHTML = html;
   document.getElementById('fin-audit-ov').style.display = 'block';
-  document.querySelectorAll('.fin-cb').forEach(function(cb) {
-    cb.addEventListener('change', finUpdateBtn);
-  });
 }
 
 function finUpdateBtn() {
   var n = document.querySelectorAll('.fin-cb:checked').length;
   var btn = document.getElementById('fin-apply-btn');
-  if (btn) btn.textContent = '✅ Appliquer ('+n+')';
+  if (!btn) return;
+  btn.textContent = '✅ Appliquer sélection ('+n+')';
+  if (n > 0) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.style.pointerEvents = 'auto';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'not-allowed';
+    btn.style.pointerEvents = 'none';
+  }
 }
 
 async function applySelectedFinanceFix() {
-  var ids = [];
-  document.querySelectorAll('.fin-cb:checked').forEach(function(cb) { ids.push(cb.getAttribute('data-id')); });
+  var ids = [], nonSafeCount = 0;
+  document.querySelectorAll('.fin-cb:checked').forEach(function(cb) {
+    var id = cb.getAttribute('data-id');
+    ids.push(id);
+    var r = DB.resa && DB.resa.find(function(x){ return x.id===id; });
+    if (r && classifyFinRow(r, expectedFinancials(r)) !== 'safe') nonSafeCount++;
+  });
   if (!ids.length) { showToast('Aucune ligne sélectionnée'); return; }
-  if (!confirm(
-    'Appliquer les corrections financières sur '+ids.length+' réservation(s) ?\n\n'+
+  var msg = 'Appliquer les corrections financières sur '+ids.length+' réservation(s) ?\n\n'+
     'Champs modifiés : com_pct, commission, net.\n'+
-    'Brut, dates, statut, voyageur et autres champs sont préservés.\n'+
-    'Les réservations verrouillées (override_manual=true) ne sont pas touchées.'
-  )) return;
+    'Brut, dates, statut, voyageur sont préservés.\n'+
+    'Les réservations verrouillées (override_manual=true) ne sont pas touchées.';
+  if (nonSafeCount > 0) {
+    msg += '\n\n⚠ ATTENTION : '+nonSafeCount+' ligne(s) classée(s) 🟡 ou 🔴 sont incluses.\n'+
+      'Ces corrections ne sont pas certaines à 100 %.\nÊtes-vous sûr(e) de vouloir continuer ?';
+  }
+  if (!confirm(msg)) return;
   var btn = document.getElementById('fin-apply-btn');
-  if (btn) { btn.disabled=true; btn.textContent='⏳ En cours (0/'+ids.length+')...'; }
+  if (btn) { btn.disabled=true; btn.style.pointerEvents='none'; btn.textContent='⏳ En cours (0/'+ids.length+')...'; }
   var done=0, errors=0;
   for (var i=0; i<ids.length; i++) {
     var id=ids[i];
@@ -6666,7 +6817,6 @@ async function applySelectedFinanceFix() {
     }
   }
   document.getElementById('fin-audit-ov').style.display='none';
-  if (btn) btn.disabled=false;
   showToast(errors ? '⚠ '+done+' corrigée(s), '+errors+' erreur(s)' : '✅ '+done+' réservation(s) corrigée(s)');
   renderResa(); renderDash();
 }
