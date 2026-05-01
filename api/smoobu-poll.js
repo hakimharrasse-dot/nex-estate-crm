@@ -489,7 +489,10 @@ export default async function handler(req, res) {
 
       } else {
         // ── C. Mise à jour complète → UPDATE (même id) ──
-        await sbUpsert('resa', { ...mapped, id: rec.id, override_manual: false });
+        // override_manual exclu du payload : on ne touche jamais ce champ en sync.
+        // Si l'admin a verrouillé manuellement entre-temps, la valeur en base est préservée.
+        const { override_manual: _om, ...mappedData } = mapped;
+        await sbUpsert('resa', { ...mappedData, id: rec.id });
         stats.upserted++;
         console.log(`[poll] UPDATE ${smoobuId}`);
       }

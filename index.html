@@ -6869,9 +6869,9 @@ async function finDoApply(items) {
     var r=items[i].r, exp=items[i].exp;
     if (!r || r.override_manual) continue;
     try {
-      var res=await SUPA.from('resa').update({com_pct:exp.comPct, commission:exp.commission, net:exp.net}).eq('id',r.id);
+      var res=await SUPA.from('resa').update({com_pct:exp.comPct, commission:exp.commission, net:exp.net, override_manual:true}).eq('id',r.id);
       if (res.error) throw res.error;
-      r.com_pct=exp.comPct; r.commission=exp.commission; r.net=exp.net;
+      r.com_pct=exp.comPct; r.commission=exp.commission; r.net=exp.net; r.override_manual=true;
       done++;
       if (btn) btn.textContent='⏳ En cours ('+done+'/'+items.length+')...';
     } catch(e) {
