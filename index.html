@@ -534,15 +534,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div><div class="vt" style="background:linear-gradient(135deg,var(--or),var(--go));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Dashboard</div><div class="vsub">Pilotage des KPIs — tous les montants en MAD</div></div>
   </div>
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="dtj" onclick="setPer('d','jour')">Jour</button>
-      <button class="tab" id="dts" onclick="setPer('d','semaine')">Semaine</button>
-      <button class="tab on" id="dtm" onclick="setPer('d','mois')">Mois</button>
-      <button class="tab" id="dtbi" onclick="setPer('d','bimestre')">Bimestre</button>
-      <button class="tab" id="dttri" onclick="setPer('d','trimestre')">Trimestre</button>
-      <button class="tab" id="dtsem" onclick="setPer('d','semestre')">Semestre</button>
-      <button class="tab" id="dta" onclick="setPer('d','annee')">Année</button>
-    </div>
+    <select class="fsel" id="d-per" onchange="setPer('d',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="bimestre">Bimestre</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+    </select>
     <div id="d-nav"></div>
     <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
   </div></div>
@@ -695,15 +695,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <button class="rp" id="rp-month" onclick="setResaPreset('month')">Mois en cours</button>
   </div>
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="rtj" onclick="setPer('r','jour')">Jour</button>
-      <button class="tab" id="rts" onclick="setPer('r','semaine')">Semaine</button>
-      <button class="tab onr" id="rtm" onclick="setPer('r','mois')">Mois</button>
-      <button class="tab" id="rtbi" onclick="setPer('r','bimestre')">Bimestre</button>
-      <button class="tab" id="rttri" onclick="setPer('r','trimestre')">Trimestre</button>
-      <button class="tab" id="rtsem" onclick="setPer('r','semestre')">Semestre</button>
-      <button class="tab" id="rta" onclick="setPer('r','annee')">Année</button>
-    </div>
+    <select class="fsel" id="r-per" onchange="setPer('r',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="bimestre">Bimestre</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+    </select>
     <div id="r-nav"></div>
     <select class="fsel" id="r-fap" onchange="resaFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="r-fsrc" onchange="resaFilter()"><option value="">Toutes sources</option><option>Airbnb</option><option>Booking.com</option><option>Direct</option><option>VRBO</option></select>
@@ -2471,17 +2471,31 @@ function filterResa(rows, k) {
 function setPer(k, p) {
   if(k==='r'){R_QUICK=null;document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});}
   P[k]=p;
-  var tabMap={r:'rt',b:'bt',t:'tt',s:'st',p:'pt',d:'dt'};
-  var pre=tabMap[k];
-  var onCls={r:'onr',b:'on',t:'ont',s:'ons',p:'onp',d:'on'};
-  var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem'};
-  Object.values(TAB_SFX).forEach(function(x){
-    var el=document.getElementById(pre+x);
-    if(el) el.className='tab';
-  });
-  var sfx=TAB_SFX[p];
-  var el=sfx?document.getElementById(pre+sfx):null;
-  if(el) el.className='tab '+onCls[k];
+  // Snap MO[k] au début du bloc calendaire fixe (trimestres T1-T4, semestres S1-S2, bimestres B1-B6)
+  if(p==='bimestre'||p==='trimestre'||p==='semestre') {
+    var n=p==='bimestre'?2:p==='trimestre'?3:6;
+    MO[k].setMonth(Math.floor(MO[k].getMonth()/n)*n);
+    YR[k]=MO[k].getFullYear();
+  }
+  // Dashboard et Réservations : select déroulant (pas de boutons tabs)
+  if(k==='d'||k==='r') {
+    var selEl=document.getElementById(k==='d'?'d-per':'r-per');
+    if(selEl && selEl.value!==p) selEl.value=p;
+  } else {
+    // Autres sections : boutons tabs classiques
+    var tabMap={b:'bt',t:'tt',s:'st',p:'pt'};
+    var pre=tabMap[k];
+    if(pre) {
+      var onCls={b:'on',t:'ont',s:'ons',p:'onp'};
+      var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem'};
+      Object.values(TAB_SFX).forEach(function(x){
+        var el=document.getElementById(pre+x); if(el) el.className='tab';
+      });
+      var sfx=TAB_SFX[p];
+      var el=sfx?document.getElementById(pre+sfx):null;
+      if(el) el.className='tab '+onCls[k];
+    }
+  }
   renderNav(k);
   renderView(k);
 }
