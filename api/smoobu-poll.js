@@ -159,12 +159,18 @@ function mapSmoobuBooking(b) {
   const adultes = parseInt(b.adults || 1) || 1;
   const enfants = parseInt(b.children || 0) || 0;
 
-  // Type normalisé
+  // Type normalisé — règle révisée (2026-05-01)
+  // Airbnb : ANNULATION_PAYEE si price-details contient "Cancellation Payout - EUR"
+  // Booking.com / VRBO / Direct : ANNULATION_NON_PAYEE par défaut
+  // (cas payés exceptionnels corrigés manuellement + override_manual)
   const statRaw = (b.type || b.status || '').toLowerCase();
   const isAnnule = statRaw.includes('cancel') || statRaw.includes('annul');
   let typeNorm;
   if (isAnnule) {
-    typeNorm = prixEur > 0 ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
+    const details = (b['price-details'] || '').toLowerCase();
+    typeNorm = (src === 'Airbnb' && details.includes('cancellation payout - eur'))
+      ? 'ANNULATION_PAYEE'
+      : 'ANNULATION_NON_PAYEE';
   } else {
     typeNorm = 'RESERVATION';
   }
