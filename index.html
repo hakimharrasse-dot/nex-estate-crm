@@ -6675,9 +6675,7 @@ function auditFinances() {
         : lvl==='review'
         ? '<span style="font-size:14px" title="À vérifier — taux Smoobu potentiellement légitime">🟡</span>'
         : '<span style="font-size:14px" title="Risquée — ne pas corriger automatiquement">🔴</span>';
-      var cbCell = lvl==='risky'
-        ? '<td style="text-align:center;padding:4px"><span title="Correction auto non disponible" style="color:var(--re)">⛔</span></td>'
-        : '<td style="text-align:center;padding:4px"><input type="checkbox" class="fin-cb" data-id="'+r.id+'" '+(lvl==='safe'?'checked':'')+' onchange="finUpdateBtn()"></td>';
+      var cbCell = '<td style="text-align:center;padding:4px"><input type="checkbox" class="fin-cb" data-id="'+r.id+'" data-level="'+lvl+'" onchange="finUpdateBtn()"></td>';
       var ecartStr = item.ecartMad===0 ? '0 MAD'
         : (item.ecartMad>0 ? '+'+item.ecartMad.toLocaleString('fr-MA') : item.ecartMad.toLocaleString('fr-MA'))+' MAD';
       var ecartColor = item.ecartMad>0?'var(--gr)':item.ecartMad<0?'var(--re)':'var(--tm)';
@@ -6779,41 +6777,106 @@ function finUpdateBtn() {
   }
 }
 
-async function applySelectedFinanceFix() {
-  var ids = [], nonSafeCount = 0;
+function applySelectedFinanceFix() {
+  var selectedItems = [];
   document.querySelectorAll('.fin-cb:checked').forEach(function(cb) {
-    var id = cb.getAttribute('data-id');
-    ids.push(id);
-    var r = DB.resa && DB.resa.find(function(x){ return x.id===id; });
-    if (r && classifyFinRow(r, expectedFinancials(r)) !== 'safe') nonSafeCount++;
+    var id  = cb.getAttribute('data-id');
+    var lvl = cb.getAttribute('data-level');
+    var r   = DB.resa && DB.resa.find(function(x){ return x.id===id; });
+    if (r) selectedItems.push({id:id, r:r, exp:expectedFinancials(r), level:lvl});
   });
-  if (!ids.length) { showToast('Aucune ligne sélectionnée'); return; }
-  var msg = 'Appliquer les corrections financières sur '+ids.length+' réservation(s) ?\n\n'+
-    'Champs modifiés : com_pct, commission, net.\n'+
-    'Brut, dates, statut, voyageur sont préservés.\n'+
-    'Les réservations verrouillées (override_manual=true) ne sont pas touchées.';
-  if (nonSafeCount > 0) {
-    msg += '\n\n⚠ ATTENTION : '+nonSafeCount+' ligne(s) classée(s) 🟡 ou 🔴 sont incluses.\n'+
-      'Ces corrections ne sont pas certaines à 100 %.\nÊtes-vous sûr(e) de vouloir continuer ?';
-  }
-  if (!confirm(msg)) return;
+  if (!selectedItems.length) { showToast('Aucune ligne sélectionnée'); return; }
+  finShowConfirmModal(selectedItems);
+}
+
+function finShowConfirmModal(items) {
+  var hasNonSafe = items.some(function(i){ return i.level !== 'safe'; });
+  var rows = items.map(function(item) {
+    var r=item.r, exp=item.exp;
+    var badge = item.level==='safe' ? '🟢' : item.level==='review' ? '🟡' : '🔴';
+    var riskLabel = item.level==='safe' ? 'Sûre' : item.level==='review' ? 'À vérifier' : 'Risquée';
+    return '<tr style="border-bottom:1px solid var(--br)">'+
+      '<td style="padding:5px 8px;white-space:nowrap">'+badge+' '+riskLabel+'</td>'+
+      '<td style="padding:5px 8px;white-space:nowrap">'+escHtml(r.ref||'—')+'</td>'+
+      '<td style="padding:5px 8px;white-space:nowrap">'+escHtml(r.voyageur||'—')+'</td>'+
+      '<td style="padding:5px 8px">'+chip(r.source,srcClass(r.source))+'</td>'+
+      '<td style="padding:5px 8px">'+chip(r.type_norm,typeClass(r.type_norm))+'</td>'+
+      '<td style="text-align:right;padding:5px 8px;color:var(--or)">'+fmtE(r.net)+'</td>'+
+      '<td style="text-align:right;padding:5px 8px;color:var(--gr)">'+fmtE(exp.net)+'</td>'+
+      '<td style="text-align:right;padding:5px 8px;color:var(--or)">'+fmtE(r.commission)+'</td>'+
+      '<td style="text-align:right;padding:5px 8px;color:var(--gr)">'+fmtE(exp.commission)+'</td>'+
+      '</tr>';
+  }).join('');
+
+  var warningHtml = hasNonSafe
+    ? '<div style="border:1px solid var(--or);border-radius:8px;padding:11px 14px;margin-bottom:16px;'+
+        'background:rgba(var(--or-rgb,200,120,0),.08);color:var(--or);font-size:12px;line-height:1.6">'+
+        '<b>⚠ Attention</b> — cette sélection contient des lignes 🟡 À vérifier ou 🔴 Risquées.<br>'+
+        'Le taux CRM standard peut ne pas correspondre au taux Smoobu réel pour ces lignes.<br>'+
+        'En confirmant, vous attestez <b>avoir vérifié la source financière officielle</b> (Smoobu / extranet Booking / Airbnb) pour chaque ligne concernée.'+
+        '</div>'
+    : '';
+
+  var confirmLabel = hasNonSafe
+    ? 'Je confirme avoir vérifié la source financière officielle avant correction'
+    : 'Confirmer la correction';
+
+  var html =
+    '<div id="fin-confirm-ov" style="position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:910;overflow-y:auto;padding:24px 16px">'+
+    '<div style="max-width:860px;margin:0 auto;background:var(--s1);border-radius:14px;border:1px solid var(--br);padding:24px">'+
+      '<div style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--tx)">'+
+        '🔍 Résumé avant correction — '+items.length+' ligne'+(items.length>1?'s':'')+
+      '</div>'+
+      warningHtml+
+      '<div style="overflow-x:auto;margin-bottom:20px;border:1px solid var(--br);border-radius:8px">'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:var(--s2)">'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Niveau</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Réf</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Voyageur</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Source</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">Type</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right;color:var(--or)">Net act.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right;color:var(--gr)">Net prop.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right;color:var(--or)">Com. act.</th>'+
+        '<th style="padding:5px 8px;font-weight:600;font-size:11px;border-bottom:1px solid var(--br);text-align:right;color:var(--gr)">Com. prop.</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody></table></div>'+
+      '<div style="font-size:11px;color:var(--tm);margin-bottom:16px">'+
+        'Champs modifiés : <b>com_pct, commission, net</b>. Brut, dates, statut, voyageur sont préservés. '+
+        'Les réservations verrouillées (override_manual) ne seront pas touchées.'+
+      '</div>'+
+      '<div style="display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap">'+
+        '<button onclick="document.getElementById(\'fin-confirm-ov\').remove()" '+
+          'class="ba ba-ghost" style="font-size:13px">Annuler</button>'+
+        '<button id="fin-confirm-go" class="bar" style="font-size:12px;max-width:420px;white-space:normal;text-align:center;line-height:1.4">'+
+          '✅ '+escHtml(confirmLabel)+'</button>'+
+      '</div>'+
+    '</div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('fin-confirm-go').addEventListener('click', function() {
+    document.getElementById('fin-confirm-ov').remove();
+    finDoApply(items);
+  });
+}
+
+async function finDoApply(items) {
   var btn = document.getElementById('fin-apply-btn');
-  if (btn) { btn.disabled=true; btn.style.pointerEvents='none'; btn.textContent='⏳ En cours (0/'+ids.length+')...'; }
+  if (btn) { btn.disabled=true; btn.style.pointerEvents='none'; btn.textContent='⏳ En cours (0/'+items.length+')...'; }
   var done=0, errors=0;
-  for (var i=0; i<ids.length; i++) {
-    var id=ids[i];
-    var r=DB.resa.find(function(x){ return x.id===id; });
+  for (var i=0; i<items.length; i++) {
+    var r=items[i].r, exp=items[i].exp;
     if (!r || r.override_manual) continue;
-    var exp=expectedFinancials(r);
     try {
-      var res=await SUPA.from('resa').update({com_pct:exp.comPct, commission:exp.commission, net:exp.net}).eq('id',id);
+      var res=await SUPA.from('resa').update({com_pct:exp.comPct, commission:exp.commission, net:exp.net}).eq('id',r.id);
       if (res.error) throw res.error;
       r.com_pct=exp.comPct; r.commission=exp.commission; r.net=exp.net;
       done++;
-      if (btn) btn.textContent='⏳ En cours ('+done+'/'+ids.length+')...';
+      if (btn) btn.textContent='⏳ En cours ('+done+'/'+items.length+')...';
     } catch(e) {
       errors++;
-      console.error('[fin-fix] id='+id, e);
+      console.error('[fin-fix] id='+r.id, e);
     }
   }
   document.getElementById('fin-audit-ov').style.display='none';
