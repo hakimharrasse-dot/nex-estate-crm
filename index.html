@@ -657,6 +657,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="ba ba-ghost admin-only" id="btn-api-sync" onclick="syncSmoobuAPI()" title="Synchroniser depuis l'API Smoobu (7 derniers jours)">⚡ Sync API</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
       <button class="ba ba-ghost admin-only" id="btn-audit-airbnb" onclick="auditAirbnbAvrilUI(getActiveMoisKpi())" title="Audit Airbnb du mois actif (filtre Réservations)">📊 Audit mois</button>
+      <button class="ba ba-ghost admin-only" id="btn-audit-fin" onclick="auditFinances()" title="Phase 1 — Détecter et corriger les incohérences financières (brut/net/commission/com_pct)">🔧 Audit finances</button>
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
       <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
@@ -1214,6 +1215,18 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
     </div>
     <div id="api-sync-body" style="font-size:13px;color:var(--tx)"></div>
+  </div>
+</div>
+
+<!-- ═══ FIN AUDIT OVERLAY ════════════════════════════════════════ -->
+<div id="fin-audit-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:904;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:1200px;margin:0 auto;background:var(--s1);border-radius:14px;border:1px solid var(--br);padding:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:17px;font-weight:700;color:var(--tx)">🔧 Audit financier — Phase 1</div>
+      <button onclick="document.getElementById('fin-audit-ov').style.display='none'"
+        style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
+    </div>
+    <div id="fin-audit-body" style="font-size:13px;color:var(--tx)"></div>
   </div>
 </div>
 
@@ -2714,8 +2727,9 @@ function occupNightsBiz(appart, pStart, pEnd) {
 // pBounds={start,end} optionnel pour occupation nuit/nuit ; appart optionnel pour filtre
 function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
   var rev     = resaRows.filter(function(r){ return isRevRow(r); });
-  var revPaye = rev.filter(function(r){ return r.statut==='Payé'; });
-  var revAtt  = rev.filter(function(r){ return r.statut==='En attente'; });
+  var td = today();
+  var revPaye = rev.filter(function(r){ return r.date_paiement && r.date_paiement <= td; });
+  var revAtt  = rev.filter(function(r){ return !r.date_paiement || r.date_paiement > td; });
   var NUITS_T = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'];
   var netEur    = sum(revPaye,'net');
   var netEurAtt = sum(revAtt,'net');
@@ -2737,6 +2751,7 @@ function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
 
 function renderDash() {
   renderNav('d');
+  var td=today();
   var p=P['d'], fa=val('d-fap');
   var nAp=fa?1:getNbLogementsForPeriod('d');
 
@@ -2749,8 +2764,8 @@ function renderDash() {
   var joursDispo=periodDays('d')*nAp;
   var pb=periodBounds('d'); // bornes de la période pour calcul occupation nuit/nuit
   var cur=computePeriodKPIs(allRes,bizRows,joursDispo,pb,fa||null);
-  var brutEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';}),'brut');
-  var comEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';}),'commission');
+  var brutEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;}),'brut');
+  var comEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;}),'commission');
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
@@ -2849,7 +2864,7 @@ function renderDash() {
     var smMk=smDate.toISOString().slice(0,7);
     var smRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(smMk);});
     if(fa) smRes=smRes.filter(function(r){return r.appart===fa;});
-    var smRev=smRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';});
+    var smRev=smRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
     var smNet=sum(smRev,'net')*EUR_MAD;
     var smY=smDate.getFullYear(),smM=smDate.getMonth();
     var smStart=smY+'-'+String(smM+1).padStart(2,'0')+'-01';
@@ -2907,7 +2922,7 @@ function renderDash() {
   }
 
   // ── Décisions rapides ──
-  var revRes=allRes.filter(function(r){return isRevRow(r)&&r.statut==='Payé';});
+  var revRes=allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
   // Meilleur appart
   var apNet=getAppartsForPeriod('d').map(function(ap){
     var n=sum(revRes.filter(function(r){return r.appart===ap;}),'net')*EUR_MAD;
@@ -6468,6 +6483,192 @@ function qualiteResetStatuses() {
   qualiteUpdateBadge();
   renderQualite();
   showToast('↺ Statuts réinitialisés');
+}
+
+// ── Phase 1 — Audit financier ──────────────────────────────────────────────────
+
+function expectedFinancials(r) {
+  var ZERO_TYPES = ['AIRCOVER','AJUSTEMENT','DIRECT','ANNULATION_NON_PAYEE'];
+  var comPct = ZERO_TYPES.indexOf(r.type_norm) >= 0 ? 0 : (COM[r.source] || 0);
+  var commission = Math.round(r.brut * comPct * 100) / 100;
+  var net = Math.round((r.brut - commission) * 100) / 100;
+  return {comPct:comPct, commission:commission, net:net};
+}
+
+function isFinanciallyInconsistent(r) {
+  if (!r.brut || r.type_norm === 'ANNULATION_NON_PAYEE') return false;
+  var exp = expectedFinancials(r);
+  return Math.abs(r.com_pct - exp.comPct) > 0.005
+    || Math.abs(r.commission - exp.commission) > 0.02
+    || Math.abs(r.net - exp.net) > 0.02;
+}
+
+function raisonFinance(r, exp) {
+  var ZERO_TYPES = ['AIRCOVER','AJUSTEMENT','DIRECT'];
+  if (ZERO_TYPES.indexOf(r.type_norm) >= 0 && (r.commission > 0.02 || r.com_pct > 0.005))
+    return 'Type ZERO_COM — commission non nulle';
+  if (r.type_norm === 'ANNULATION_PAYEE' && r.com_pct > exp.comPct + 0.15)
+    return 'Taux Smoobu sur annulation anormal';
+  if (Math.abs(r.com_pct - exp.comPct) > 0.10)
+    return 'Taux Smoobu très différent du standard';
+  return 'Taux Smoobu ≠ taux CRM standard';
+}
+
+function hesc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function auditFinances() {
+  if (!DB || !DB.resa || !DB.resa.length) { showToast('⚠ Données non chargées'); return; }
+  var anomalies = [], verrouilles = [];
+  DB.resa.forEach(function(r) {
+    if (!isFinanciallyInconsistent(r)) return;
+    var exp = expectedFinancials(r);
+    var ecartMad = Math.round((r.net - exp.net) * EUR_MAD);
+    var item = {r:r, exp:exp, ecartMad:ecartMad, raison:raisonFinance(r, exp)};
+    if (r.override_manual) verrouilles.push(item);
+    else anomalies.push(item);
+  });
+  anomalies.sort(function(a,b){ return Math.abs(b.ecartMad)-Math.abs(a.ecartMad); });
+  verrouilles.sort(function(a,b){ return Math.abs(b.ecartMad)-Math.abs(a.ecartMad); });
+  var totalImpact = anomalies.reduce(function(s,a){ return s - a.ecartMad; }, 0);
+
+  function TH(s,r) {
+    return '<th style="padding:5px 8px;text-align:'+(r?'right':'left')+';white-space:nowrap;'+
+      'font-weight:600;font-size:11px;border-bottom:1px solid var(--br)">'+s+'</th>';
+  }
+  function mkRow(item, locked) {
+    var r=item.r, exp=item.exp;
+    var ecartStr = item.ecartMad===0?'0':(item.ecartMad<0?item.ecartMad.toLocaleString('fr-MA'):'+'+item.ecartMad.toLocaleString('fr-MA'));
+    var ecartColor = item.ecartMad<0?'color:var(--re)':'color:var(--gr)';
+    var src=chip(r.source,srcClass(r.source));
+    var typ=chip(r.type_norm,typeClass(r.type_norm));
+    if (locked) {
+      return '<tr style="opacity:0.65"><td style="text-align:center;padding:4px">🔒</td>'+
+        '<td style="padding:4px">'+hesc(r.ref||'—')+'</td>'+
+        '<td style="padding:4px">'+hesc(r.voyageur||'—')+'</td>'+
+        '<td style="padding:4px">'+hesc(r.appart||'—')+'</td>'+
+        '<td style="padding:4px">'+src+'</td><td style="padding:4px">'+typ+'</td>'+
+        '<td style="text-align:right;padding:4px">'+hesc(fmtE(r.net))+'</td>'+
+        '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.net))+'</td>'+
+        '<td style="text-align:right;padding:4px">'+Math.round(r.com_pct*1000)/10+'% → '+Math.round(exp.comPct*1000)/10+'%</td>'+
+        '<td style="padding:4px;font-size:10px;color:var(--tm)">'+hesc(item.raison)+'</td></tr>';
+    }
+    return '<tr><td style="text-align:center;padding:4px"><input type="checkbox" class="fin-cb" data-id="'+r.id+'" checked></td>'+
+      '<td style="padding:4px">'+hesc(r.ref||'—')+'</td>'+
+      '<td style="padding:4px">'+hesc(r.voyageur||'—')+'</td>'+
+      '<td style="padding:4px">'+hesc(r.appart||'—')+'</td>'+
+      '<td style="padding:4px">'+src+'</td>'+
+      '<td style="padding:4px">'+typ+'</td>'+
+      '<td style="padding:4px">'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+      '<td style="text-align:right;padding:4px">'+hesc(fmtE(r.brut))+'</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--or)">'+hesc(fmtE(r.net))+'</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--or)">'+hesc(fmtE(r.commission))+'</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--or)">'+Math.round(r.com_pct*1000)/10+'%</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.net))+'</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--gr)">'+hesc(fmtE(exp.commission))+'</td>'+
+      '<td style="text-align:right;padding:4px;color:var(--gr)">'+Math.round(exp.comPct*1000)/10+'%</td>'+
+      '<td style="text-align:right;padding:4px;'+ecartColor+'">'+ecartStr+' MAD</td>'+
+      '<td style="padding:4px;font-size:10px;color:var(--tm)">'+hesc(item.raison)+'</td></tr>';
+  }
+
+  var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">'+
+    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Lignes corrigibles</div>'+
+      '<div class="kv" style="color:var(--or)">'+anomalies.length+'</div></div>'+
+    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Impact net si corrigé</div>'+
+      '<div class="kv" style="color:'+(totalImpact>=0?'var(--gr)':'var(--re)')+'">'+
+        (totalImpact>=0?'+':'')+Math.abs(totalImpact).toLocaleString('fr-MA')+' MAD</div></div>'+
+    '<div class="kc" style="flex:1;min-width:140px"><div class="kl">Verrouillées (info seule)</div>'+
+      '<div class="kv">'+verrouilles.length+'</div></div>'+
+    '</div>';
+
+  if (anomalies.length) {
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'+
+      '<div style="font-weight:700;font-size:14px">🔧 Corrigibles (non-verrouillées)</div>'+
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+        '<label style="font-size:12px;color:var(--tm);cursor:pointer;display:flex;align-items:center;gap:5px">'+
+          '<input type="checkbox" id="fin-sel-all" checked '+
+          'onchange="(function(v){document.querySelectorAll(\'.fin-cb\').forEach(function(c){c.checked=v;});finUpdateBtn();})(this.checked)">'+
+          'Tout sélectionner</label>'+
+        '<button class="bar" id="fin-apply-btn" onclick="applySelectedFinanceFix()">✅ Appliquer ('+anomalies.length+')</button>'+
+      '</div></div>';
+    html += '<div style="overflow-x:auto;max-height:400px;overflow-y:auto;border:1px solid var(--br);border-radius:8px">'+
+      '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead><tr style="background:var(--s2);position:sticky;top:0;z-index:1">'+
+        TH('',false)+TH('Réf',false)+TH('Voyageur',false)+TH('Appart',false)+
+        TH('Source',false)+TH('Type',false)+TH('Statut',false)+TH('Brut',true)+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">Net act.</th>'+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">Com. act.</th>'+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--or)">% act.</th>'+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">Net att.</th>'+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">Com. att.</th>'+
+        '<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--br);font-size:11px;color:var(--gr)">% att.</th>'+
+        TH('Écart MAD',true)+TH('Raison',false)+
+      '</tr></thead>'+
+      '<tbody>'+anomalies.map(function(i){ return mkRow(i,false); }).join('')+'</tbody>'+
+      '</table></div>';
+  } else {
+    html += '<div style="color:var(--gr);padding:24px;text-align:center;font-size:14px">✅ Aucune incohérence financière détectée</div>';
+  }
+
+  if (verrouilles.length) {
+    html += '<div style="margin-top:24px;font-weight:700;font-size:14px;margin-bottom:10px">'+
+      '🔒 Verrouillées (override_manual=true — correction manuelle requise)</div>'+
+      '<div style="overflow-x:auto;max-height:220px;overflow-y:auto;border:1px solid var(--br);border-radius:8px">'+
+      '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead><tr style="background:var(--s2)">'+
+        TH('',false)+TH('Réf',false)+TH('Voyageur',false)+TH('Appart',false)+
+        TH('Source',false)+TH('Type',false)+TH('Net actuel',true)+TH('Net attendu',true)+
+        TH('Com_pct',false)+TH('Raison',false)+
+      '</tr></thead>'+
+      '<tbody>'+verrouilles.map(function(i){ return mkRow(i,true); }).join('')+'</tbody>'+
+      '</table></div>';
+  }
+
+  document.getElementById('fin-audit-body').innerHTML = html;
+  document.getElementById('fin-audit-ov').style.display = 'block';
+  document.querySelectorAll('.fin-cb').forEach(function(cb) {
+    cb.addEventListener('change', finUpdateBtn);
+  });
+}
+
+function finUpdateBtn() {
+  var n = document.querySelectorAll('.fin-cb:checked').length;
+  var btn = document.getElementById('fin-apply-btn');
+  if (btn) btn.textContent = '✅ Appliquer ('+n+')';
+}
+
+async function applySelectedFinanceFix() {
+  var ids = [];
+  document.querySelectorAll('.fin-cb:checked').forEach(function(cb) { ids.push(cb.getAttribute('data-id')); });
+  if (!ids.length) { showToast('Aucune ligne sélectionnée'); return; }
+  if (!confirm(
+    'Appliquer les corrections financières sur '+ids.length+' réservation(s) ?\n\n'+
+    'Champs modifiés : com_pct, commission, net.\n'+
+    'Brut, dates, statut, voyageur et autres champs sont préservés.\n'+
+    'Les réservations verrouillées (override_manual=true) ne sont pas touchées.'
+  )) return;
+  var btn = document.getElementById('fin-apply-btn');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ En cours (0/'+ids.length+')...'; }
+  var done=0, errors=0;
+  for (var i=0; i<ids.length; i++) {
+    var id=ids[i];
+    var r=DB.resa.find(function(x){ return x.id===id; });
+    if (!r || r.override_manual) continue;
+    var exp=expectedFinancials(r);
+    try {
+      var res=await SUPA.from('resa').update({com_pct:exp.comPct, commission:exp.commission, net:exp.net}).eq('id',id);
+      if (res.error) throw res.error;
+      r.com_pct=exp.comPct; r.commission=exp.commission; r.net=exp.net;
+      done++;
+      if (btn) btn.textContent='⏳ En cours ('+done+'/'+ids.length+')...';
+    } catch(e) {
+      errors++;
+      console.error('[fin-fix] id='+id, e);
+    }
+  }
+  document.getElementById('fin-audit-ov').style.display='none';
+  if (btn) btn.disabled=false;
+  showToast(errors ? '⚠ '+done+' corrigée(s), '+errors+' erreur(s)' : '✅ '+done+' réservation(s) corrigée(s)');
+  renderResa(); renderDash();
 }
 
 // Lancer
