@@ -415,22 +415,36 @@ export default async function handler(req, res) {
     console.log('[poll] démarrage — fenêtre auto:', modifiedFrom);
   }
 
-  // 1. Fetch Smoobu
-  const smoobuUrl = `${SMOOBU_API}/reservations?modifiedFrom=${encodeURIComponent(modifiedFrom)}&pageSize=100&showCancellation=true`;
-  let smoobuRes;
-  try {
-    smoobuRes = await fetch(smoobuUrl, {
-      headers: { 'Api-Key': process.env.SMOOBU_API_KEY, 'Content-Type': 'application/json' }
-    });
-    if (!smoobuRes.ok) throw new Error(`Smoobu ${smoobuRes.status}`);
-  } catch (err) {
-    console.error('[poll] Smoobu fetch error:', err.message);
-    return res.status(502).json({ error: 'Smoobu API unreachable', detail: err.message });
-  }
+  // Mode backfill finances-safe : ?datesonly=true
+  // → protège brut/net/commission/com_pct/taxe_sejour/type_norm sur toutes les lignes
+  // → recalcule date_paiement / mois_kpi / statut depuis les vraies dates (règles CRM)
+  // → les lignes override_manual=true conservent en plus leur statut/date_paiement/mois_kpi
+  const datesOnly = req.query?.datesonly === 'true';
+  if (datesOnly) console.log('[poll] mode DATESONLY actif — montants financiers non modifiés');
 
-  const smoobuData = await smoobuRes.json();
-  const bookings = smoobuData.reservations || smoobuData.bookings || smoobuData.data || [];
-  console.log(`[poll] ${bookings.length} réservations Smoobu reçues`);
+  // 1. Fetch Smoobu — paginé (jusqu'à 5 pages × 100 = 500 réservations max)
+  // Sans pagination, seules les 100 premières réservations seraient traitées.
+  const MAX_PAGES = 5;
+  let bookings = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const smoobuUrl = `${SMOOBU_API}/reservations?modifiedFrom=${encodeURIComponent(modifiedFrom)}&pageSize=100&showCancellation=true&page=${page}`;
+    let smoobuRes;
+    try {
+      smoobuRes = await fetch(smoobuUrl, {
+        headers: { 'Api-Key': process.env.SMOOBU_API_KEY, 'Content-Type': 'application/json' }
+      });
+      if (!smoobuRes.ok) throw new Error(`Smoobu ${smoobuRes.status}`);
+    } catch (err) {
+      console.error('[poll] Smoobu fetch error:', err.message);
+      return res.status(502).json({ error: 'Smoobu API unreachable', detail: err.message });
+    }
+    const smoobuData = await smoobuRes.json();
+    const pageBookings = smoobuData.reservations || smoobuData.bookings || smoobuData.data || [];
+    bookings.push(...pageBookings);
+    console.log(`[poll] page ${page}: ${pageBookings.length} réservation(s)`);
+    if (pageBookings.length < 100) break; // Dernière page
+  }
+  console.log(`[poll] total: ${bookings.length} réservations Smoobu reçues`);
 
   if (!bookings.length) {
     return res.json({ ok: true, modifiedFrom, stats: { fetched: 0, skipped: 0, warnings: 0, errors: 0, upserted: 0 } });
@@ -488,13 +502,44 @@ export default async function handler(req, res) {
         console.log(`[poll] PARTIAL ${smoobuId} (override_manual=true — finances protégées)`);
 
       } else {
-        // ── C. Mise à jour complète → UPDATE (même id) ──
-        // override_manual exclu du payload : on ne touche jamais ce champ en sync.
-        // Si l'admin a verrouillé manuellement entre-temps, la valeur en base est préservée.
-        const { override_manual: _om, ...mappedData } = mapped;
-        await sbUpsert('resa', { ...mappedData, id: rec.id });
-        stats.upserted++;
-        console.log(`[poll] UPDATE ${smoobuId}`);
+        // ── C. Mise à jour → UPDATE (même id) ──
+        if (datesOnly) {
+          // ── C-DATESONLY : backfill finances-safe ──────────────────────────────
+          // Règle utilisateur : Smoobu n'est pas la vérité financière finale.
+          // On complète uniquement les champs utiles (dates, coordonnées, nuits)
+          // et on recalcule date_paiement / mois_kpi / statut via les règles CRM.
+          // Jamais touché : brut, net, commission, com_pct, taxe_sejour, type_norm,
+          //                 override_manual, notes.
+          await sbPatch('resa', rec.id, {
+            checkin:        mapped.checkin,
+            checkout:       mapped.checkout,
+            voyageur:       mapped.voyageur,
+            adults:         mapped.adults,
+            children:       mapped.children,
+            nb_personnes:   mapped.nb_personnes,
+            appart:         mapped.appart,
+            source:         mapped.source,
+            phone:          mapped.phone,
+            email:          mapped.email,
+            guest_language: mapped.guest_language,
+            nuits_sejour:   mapped.nuits_sejour,
+            nuits_fact:     mapped.nuits_fact,
+            date_creation:  mapped.date_creation,
+            // Recalculés par les règles CRM depuis les vraies dates :
+            date_paiement:  mapped.date_paiement,
+            mois_kpi:       mapped.mois_kpi,
+            statut:         mapped.statut,
+          });
+          stats.upserted++;
+          console.log(`[poll] DATESONLY ${smoobuId} (finances préservées)`);
+        } else {
+          // ── C-NORMAL : mise à jour complète ──────────────────────────────────
+          // override_manual exclu du payload : on ne touche jamais ce champ en sync.
+          const { override_manual: _om, ...mappedData } = mapped;
+          await sbUpsert('resa', { ...mappedData, id: rec.id });
+          stats.upserted++;
+          console.log(`[poll] UPDATE ${smoobuId}`);
+        }
       }
     } catch (err) {
       stats.errors++;
@@ -503,8 +548,11 @@ export default async function handler(req, res) {
   }
 
   // 4. Filet de sécurité — ré-enrichir les enregistrements incomplets hors fenêtre
-  await remediateStragglers(smoobuIds, process.env.SMOOBU_API_KEY, stats);
+  // Ignoré en mode datesonly (le backfill est ciblé, pas besoin du filet général)
+  if (!datesOnly) {
+    await remediateStragglers(smoobuIds, process.env.SMOOBU_API_KEY, stats);
+  }
 
   console.log('[poll] terminé:', JSON.stringify(stats));
-  return res.json({ ok: true, modifiedFrom, stats });
+  return res.json({ ok: true, modifiedFrom, datesOnly, stats });
 }
