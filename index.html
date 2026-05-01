@@ -2172,6 +2172,23 @@ document.addEventListener('keydown', function(e) {
 // CONSTANTS
 // ============================================================
 var APPARTS = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+
+// ── Liste dynamique des appartements pour les formulaires ────
+// Retourne les logements actifs depuis DB.logements.
+// Si currentAppart est fourni et archivé, il est ajouté en fin de liste
+// (pour que l'édition d'une ancienne réservation conserve sa valeur).
+// Fallback sur APPARTS si DB.logements n'est pas encore chargé.
+function getAppartsForForm(currentAppart) {
+  if (!DB || !DB.logements || !DB.logements.length) return APPARTS.slice();
+  var actifs = DB.logements
+    .filter(function(l) { return l.actif; })
+    .map(function(l) { return l.nom; })
+    .sort(function(a, b) { return a.localeCompare(b); });
+  if (currentAppart && actifs.indexOf(currentAppart) < 0) {
+    actifs = actifs.concat([currentAppart]); // archivé — visible en édition seulement
+  }
+  return actifs.length ? actifs : APPARTS.slice();
+}
 var RABAT   = ['Résidence Al Boustane','Agdal 13'];
 var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
@@ -2997,12 +3014,13 @@ function renderResa() {
     var periodRows = R_QUICK
       ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
       : filterResa(DB.resa,'r');
+    var activeList = getAppartsForForm('');
     var extras = [];
     periodRows.forEach(function(r){
-      if (r.appart && APPARTS.indexOf(r.appart)<0 && extras.indexOf(r.appart)<0) extras.push(r.appart);
+      if (r.appart && activeList.indexOf(r.appart)<0 && extras.indexOf(r.appart)<0) extras.push(r.appart);
     });
     var opts = '<option value="">Tous apparts</option>';
-    APPARTS.forEach(function(ap){ opts += '<option'+(savedFap===ap?' selected':'')+'>'+escHtml(ap)+'</option>'; });
+    activeList.forEach(function(ap){ opts += '<option'+(savedFap===ap?' selected':'')+'>'+escHtml(ap)+'</option>'; });
     extras.sort().forEach(function(ap){ opts += '<option'+(savedFap===ap?' selected':'')+'>'+escHtml(ap)+'</option>'; });
     sel.innerHTML = opts;
   })();
@@ -4189,7 +4207,7 @@ function buildForm(type, editId) {
     return '<div class="fg">'+
       fieldFull('Référence *','fi-ref','text',existingRef,'AIR-XXXX / BKG-XXXX / SMB-XXXX')+
       field2('Source','fi-src','select',src,['Airbnb','Booking.com','Direct','VRBO'])+
-      field2('Appartement','fi-app','select',ap,APPARTS)+
+      field2('Appartement','fi-app','select',ap,getAppartsForForm(ap))+
       fieldFull('Voyageur','fi-voy','text',v('voyageur',''),'Nom du voyageur')+
       fieldFull('Téléphone','fi-phone','text',v('phone',''),'+212 6XX XXX XXX')+
       fieldFull('Email','fi-email','text',v('email',''),'email@example.com')+
@@ -4242,7 +4260,7 @@ function buildForm(type, editId) {
       '</div><input type="hidden" id="fi-scope" value="'+scope+'"></div>'+
       '<div class="ff" id="appt-chips-row" style="display:'+(isGlobal?'none':'block')+'"><label class="fl">Appartement(s)</label>'+
       '<div class="chips-row" id="appt-chips">'+
-      APPARTS.map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'\" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
+      getAppartsForForm(rec&&rec.appart?rec.appart:'').map(function(ap){return '<div class="achip'+(rec&&rec.appart===ap?' sel':'')+'\" onclick="toggleChip(this)" data-v="'+ap+'">'+aptShort(ap)+'</div>';}).join('')+
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
@@ -4257,7 +4275,7 @@ function buildForm(type, editId) {
   if(type==='taxe') {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      field2('Appartement','fi-app','select',v('appart','Agdal 13'),APPARTS)+
+      field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
       field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
@@ -4270,7 +4288,7 @@ function buildForm(type, editId) {
   if(type==='serv') {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      field2('Appartement','fi-app','select',v('appart','Agdal 13'),APPARTS)+
+      field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service</label><select class="fse" id="fi-svc">'+CATS_S.map(function(c){return '<option'+(v('svc')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
@@ -4806,7 +4824,7 @@ function showCSVPrev(rejectedCount) {
     (rejectedCount ? ' <span style="color:var(--re)">✕ ' + rejectedCount + ' rejetées</span>' : '') +
     ' <span style="color:var(--td)">· ' + csvPending.length + ' lues</span>';
 
-  var APPARTS_OK = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+  var APPARTS_OK = DB.logements.length > 0 ? DB.logements.map(function(l){return l.nom;}) : ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
 
   var html =
     '<div style="font-size:12px;font-family:\'DM Mono\',monospace;margin-bottom:10px">' + stat + '</div>' +
