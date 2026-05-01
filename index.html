@@ -5660,7 +5660,9 @@ function getActiveMoisKpi() {
 
 // Retourne la liste des logements actifs pour la période k (mode mois).
 // Utilise DB.logements (actifs + archivés) filtré par date_debut/date_fin.
-// Inclut les logements archivés si leur date_fin est dans la période (ex : Studio Océan en janvier 2026).
+// Règle : date_fin est le PREMIER JOUR NON DISPONIBLE (exclusif).
+//   → un logement avec date_fin='2026-02-01' compte en janvier, PAS en février.
+//   → condition : date_debut <= pEnd  &&  fin > pStart  (strict)
 // Fallback sur APPARTS si DB.logements n'est pas encore chargé.
 function getAppartsForPeriod(k) {
   if (P[k] === 'mois' && DB.logements.length > 0) {
@@ -5671,7 +5673,7 @@ function getAppartsForPeriod(k) {
       if (!l.date_debut) return false;
       var fin = l.actif ? '9999-12-31' : (l.date_fin || null);
       if (fin === null) return false; // archivé sans date_fin : on l'exclut
-      return l.date_debut <= pEnd && fin >= pStart;
+      return l.date_debut <= pEnd && fin > pStart; // > strict : date_fin = 1er jour hors dispo
     }).map(function(l) { return l.nom; });
     if (res.length > 0) return res;
   }
