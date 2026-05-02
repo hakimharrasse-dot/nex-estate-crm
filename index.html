@@ -3578,14 +3578,17 @@ function renderWkCards() {
     var name = m.name;
     var isCleaner = m.role === 'cleaner';
 
+    // date_reglement = date de paiement réelle ; fallback sur date si absent
+    var rd = function(r){ return r.date_reglement || r.date; };
+
     // ── Section avance caisse (tous membres) ─────────────────
     // Avances reçues : cat='Avance caisse', bénéficiaire = fmen
-    var avances   = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
+    var avances   = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
     // Dépenses réalisées avec l'avance :
     //   · dépenses non-ménage où fmen=personne (Consommables, Technicien…)
     //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
-    var depNonMen = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
-    var depMenage = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name; }), 'montant');
+    var depNonMen = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
+    var depMenage = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name; }), 'montant');
     var depenses  = depNonMen + depMenage;
     var solde     = avances - depenses;
     var hasAvance = avances > 0;
@@ -3593,16 +3596,16 @@ function renderWkCards() {
     // ── Section ménage (femmes de ménage uniquement) ─────────
     var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0, payers=[];
     if (isCleaner) {
-      var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
+      var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
       men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
       // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
       adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
       tax  = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
       ext  = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
-      nbMen= DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
-      paid = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+      nbMen= DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).length;
+      paid = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
       // Payeurs tiers : ménages où paid_by est quelqu'un d'autre que la femme de ménage
-      DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'&&r.paid_by&&r.paid_by!==name; })
+      DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'&&r.paid_by&&r.paid_by!==name; })
         .forEach(function(r){ if(payers.indexOf(r.paid_by)===-1) payers.push(r.paid_by); });
     }
     var total = men+adv, net = total-tax-ext;
@@ -4438,7 +4441,8 @@ function buildForm(type, editId) {
     var scope = rec ? (rec.scope || 'property') : 'property';
     var isGlobal = scope === 'global';
     return '<div class="fg">'+
-      fieldFull('Date','fi-date','date',v('date',T))+
+      field2('Date prestation','fi-date','date',v('date',T))+
+      field2('Date paiement','fi-date-reg','date',v('date_reglement',''))+
       '<div class="ff"><label class="fl">Portée</label>'+
       '<div style="display:flex;gap:6px;margin-top:4px">'+
       '<button type="button" id="scope-appart-btn" onclick="setBizScope(\'property\')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;border:1.5px solid '+(isGlobal?'var(--br)':'var(--or)')+';background:'+(isGlobal?'var(--s2)':'var(--ors)')+';color:'+(isGlobal?'var(--tm)':'var(--or)')+';font-weight:'+(isGlobal?'400':'600')+'">Par appartement</button>'+
@@ -4632,6 +4636,7 @@ async function saveBiz() {
   var montant=parseFloat(gv('fi-montant'))||0, date=gv('fi-date');
   if(!date||!montant){alert('Date et montant requis');return;}
   var cat=gv('fi-cat');
+  var dateReg=gv('fi-date-reg')||null;
   var fmenName=gv('fi-fmen')||'';
   var fmenMember=DB.team.find(function(m){return m.name===fmenName&&m.active;});
   var fmenId=fmenMember?fmenMember.id:null;
@@ -4640,14 +4645,14 @@ async function saveBiz() {
   var paidById=paidByMember?paidByMember.id:null;
   var scope = gv('fi-scope') || 'property';
   if(scope === 'global') {
-    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
+    await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+      await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
     }
   }
   closeModal(); renderBiz();
