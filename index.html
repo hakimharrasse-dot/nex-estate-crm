@@ -1056,7 +1056,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div class="mt" id="team-modal-title">Nouveau membre</div>
       <div class="fg">
         <div class="ff ffw"><label class="fl">Nom complet *</label><input class="fi" id="tm-name" type="text" placeholder="Prénom Nom"></div>
-        <div class="ff"><label class="fl">Rôle *</label><select class="fi" id="tm-role"><option value="cleaner">Femme de ménage</option><option value="manager">Manager</option><option value="technician">Technicien</option><option value="driver">Chauffeur</option><option value="other">Autre</option></select></div>
+        <div class="ff"><label class="fl">Rôle *</label><select class="fi" id="tm-role"><option value="cleaner">Femme de ménage</option><option value="field_agent">Agent terrain</option><option value="manager">Manager</option><option value="technician">Technicien</option><option value="driver">Chauffeur</option><option value="other">Autre</option></select></div>
         <div class="ff"><label class="fl">Téléphone</label><input class="fi" id="tm-phone" type="tel" placeholder="+212 6XX XXX XXX"></div>
         <div class="ff"><label class="fl">Email</label><input class="fi" id="tm-email" type="email" placeholder="membre@exemple.com"></div>
         <div class="ff ffw"><label class="fl">Notes</label><input class="fi" id="tm-notes" type="text" placeholder="Notes internes"></div>
@@ -2205,7 +2205,7 @@ var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
-var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
+var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
@@ -2386,7 +2386,9 @@ function getCleaners(onlyActive) {
 
 function buildFmenOptions(selectedName) {
   var opts = '<option value="">— Non applicable —</option>';
-  getCleaners(true).forEach(function(m){
+  var members = DB.team.filter(function(m){ return m.active; });
+  members.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  members.forEach(function(m){
     opts += '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(m.name)+'</option>';
   });
   return opts;
@@ -2404,10 +2406,11 @@ function populateTeamSelects() {
   }
 }
 
+var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance'];
 function onBizCatChange(sel) {
   var ffFmen = document.getElementById('ff-fmen');
   if (!ffFmen) return;
-  ffFmen.style.display = (sel && sel.value === 'Ménage') ? 'block' : 'none';
+  ffFmen.style.display = (sel && CATS_WITH_PAYEUR.indexOf(sel.value) !== -1) ? 'block' : 'none';
 }
 // ───────────────────────────────────────────────────────────
 
@@ -4358,7 +4361,7 @@ function buildForm(type, editId) {
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-fmen" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Femme de ménage</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl">Qui a payé / avancé</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
