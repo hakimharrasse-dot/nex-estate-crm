@@ -752,7 +752,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <!-- Récap paiement femme de ménage -->
   <div class="wb">
-    <div class="wbt">🧮 Récap paiement par femme de ménage</div>
+    <div class="wbt">🧮 Récap paiement & avances caisse</div>
     <div class="wm">
       <button class="wmb on" id="wmt-semaine" onclick="setWkMode('semaine')">Semaine</button>
       <button class="wmb" id="wmt-mois" onclick="setWkMode('mois')">Mois</button>
@@ -2394,6 +2394,14 @@ function buildFmenOptions(selectedName) {
   return opts;
 }
 
+function buildCleanerOptions(selectedName) {
+  var opts = '<option value="">— Non applicable —</option>';
+  getCleaners(true).forEach(function(m){
+    opts += '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(m.name)+'</option>';
+  });
+  return opts;
+}
+
 function populateTeamSelects() {
   // b-fmen filter select
   var bfmen = document.getElementById('b-fmen');
@@ -2408,12 +2416,19 @@ function populateTeamSelects() {
 
 var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Avance caisse'];
 function onBizCatChange(sel) {
-  var ffFmen = document.getElementById('ff-fmen');
-  var lblFmen = document.getElementById('lbl-fmen');
+  var ffFmen   = document.getElementById('ff-fmen');
+  var lblFmen  = document.getElementById('lbl-fmen');
+  var fiFmen   = document.getElementById('fi-fmen');
+  var ffPaidBy = document.getElementById('ff-paid-by');
   if (!ffFmen) return;
-  var cat = sel ? sel.value : '';
-  ffFmen.style.display = (CATS_WITH_PAYEUR.indexOf(cat) !== -1) ? 'block' : 'none';
-  if (lblFmen) lblFmen.textContent = (cat === 'Avance caisse') ? 'Bénéficiaire' : 'Qui a payé / avancé';
+  var cat      = sel ? sel.value : '';
+  var isMenage = cat === 'Ménage';
+  var isAvance = cat === 'Avance caisse';
+  var showFmen = CATS_WITH_PAYEUR.indexOf(cat) !== -1;
+  ffFmen.style.display = showFmen ? 'block' : 'none';
+  if (ffPaidBy) ffPaidBy.style.display = isMenage ? 'block' : 'none';
+  if (lblFmen) lblFmen.textContent = isAvance ? 'Bénéficiaire' : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
+  if (fiFmen) fiFmen.innerHTML = isMenage ? buildCleanerOptions(fiFmen.value||'') : buildFmenOptions(fiFmen.value||'');
 }
 // ───────────────────────────────────────────────────────────
 
@@ -3554,12 +3569,25 @@ function renderWkCards() {
     var name = m.name;
     var isCleaner = m.role === 'cleaner';
 
+    // ── Section avance caisse (tous membres) ─────────────────
+    // Avances reçues : cat='Avance caisse', bénéficiaire = fmen
+    var avances   = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
+    // Dépenses réalisées avec l'avance :
+    //   · dépenses non-ménage où fmen=personne (Consommables, Technicien…)
+    //   · dépenses ménage où paid_by=personne (Rabiaa a fait le ménage, Ayman a payé)
+    var depNonMen = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
+    var depMenage = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.paid_by===name&&r.cat==='Ménage'; }), 'montant');
+    var depenses  = depNonMen + depMenage;
+    var solde     = avances - depenses;
+    var hasAvance = avances > 0;
+
     // ── Section ménage (femmes de ménage uniquement) ─────────
     var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0;
     if (isCleaner) {
       var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
       men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
-      adv  = sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
+      // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
+      adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
       tax  = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
       ext  = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
       nbMen= DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
@@ -3569,13 +3597,7 @@ function renderWkCards() {
     var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
     var lbl = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
 
-    // ── Section avance caisse (tous membres) ─────────────────
-    var avances  = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
-    var depenses = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
-    var solde    = avances - depenses;
-
     var hasMenage = isCleaner && (men>0||adv>0||nbMen>0||paid>0);
-    var hasAvance = avances>0||depenses>0;
     if (!hasMenage && !hasAvance) return '';
 
     var html = '<div class="cc">'+
@@ -4390,7 +4412,8 @@ function buildForm(type, editId) {
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':'Qui a payé / avancé')+'</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
+      '<div class="ff" id="ff-paid-by" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Payé par</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
@@ -4569,20 +4592,23 @@ async function saveResa() {
 async function saveBiz() {
   var montant=parseFloat(gv('fi-montant'))||0, date=gv('fi-date');
   if(!date||!montant){alert('Date et montant requis');return;}
+  var cat=gv('fi-cat');
   var fmenName=gv('fi-fmen')||'';
   var fmenMember=DB.team.find(function(m){return m.name===fmenName&&m.active;});
   var fmenId=fmenMember?fmenMember.id:null;
+  var paidByName=(cat==='Ménage')?(gv('fi-paid-by')||''):'';
+  var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName&&m.active;}):null;
+  var paidById=paidByMember?paidByMember.id:null;
   var scope = gv('fi-scope') || 'property';
   if(scope === 'global') {
-    // Entrée unique, appart = null (pas de string 'Global'), scope = 'global'
-    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:gv('fi-cat'),fmen:fmenName,fmen_id:fmenId,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
+    await upsert('business',{id:M_ID||uid(),date:date,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:gv('fi-cat'),fmen:fmenName,fmen_id:fmenId,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+      await upsert('business',{id:_id,date:date,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
     }
   }
   closeModal(); renderBiz();
