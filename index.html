@@ -3583,9 +3583,9 @@ function renderWkCards() {
     var avances   = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
     // Dépenses réalisées avec l'avance :
     //   · dépenses non-ménage où fmen=personne (Consommables, Technicien…)
-    //   · dépenses ménage où paid_by=personne (Rabiaa a fait le ménage, Ayman a payé)
+    //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
     var depNonMen = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
-    var depMenage = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.paid_by===name&&r.cat==='Ménage'; }), 'montant');
+    var depMenage = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name; }), 'montant');
     var depenses  = depNonMen + depMenage;
     var solde     = avances - depenses;
     var hasAvance = avances > 0;
