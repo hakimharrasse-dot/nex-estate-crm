@@ -784,7 +784,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="b-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Payé par</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="b-tb"></tbody>
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
@@ -3477,6 +3477,7 @@ function renderBiz() {
         '<td>'+(r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+'</td>'+
         '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
         '<td>'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>'+
+        (function(){var pb=r.paid_by||(r.cat!=='Ménage'?r.fmen:'')||'Hakim';return '<td class="hm">'+(pb?chip(pb,colClass(pb)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>';})() +
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
@@ -3608,7 +3609,7 @@ function renderWkCards() {
     if (hasMenage) {
       html +=
         '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
-        (adv>0 ? '<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
+        (adv>0 ? '<div class="ccr"><div class="ccl">Avancé par la personne</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
         '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
           '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
         '</div>'+
@@ -3625,7 +3626,7 @@ function renderWkCards() {
         '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+(hasMenage?'8':'0')+'px;padding-top:8px">'+
           '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
         '<div class="ccr"><div class="ccl">Avances reçues</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
-        '<div class="ccr"><div class="ccl">Dépenses réalisées</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
+        '<div class="ccr"><div class="ccl">Utilisé depuis avance caisse</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
         '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>';
     }
 
