@@ -542,6 +542,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <option value="trimestre">Trimestre</option>
       <option value="semestre">Semestre</option>
       <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
     </select>
     <div id="d-nav"></div>
     <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -654,16 +655,19 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <div class="vw active" id="vw-resa">
   <div class="vh">
     <div><div class="vt" style="color:var(--gr)">Réservations</div><div class="vsub">Airbnb · Booking · Direct · VRBO</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
-      <button class="ba ba-ghost admin-only" onclick="showImportLog()" id="btn-import-log" title="Log du dernier import CSV Smoobu">📋 Log CSV</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="ba ba-ghost admin-only" id="btn-api-sync" onclick="syncSmoobuAPI()" title="Synchroniser depuis l'API Smoobu (7 derniers jours)">⚡ Sync API</button>
       <button class="ba ba-ghost admin-only" id="btn-recompute" onclick="recomputeAndSave()" title="Recalculer date_paiement / mois_kpi / statut et sauvegarder en Supabase">🔄 Recalculer</button>
-      <button class="ba ba-ghost admin-only" id="btn-audit-airbnb" onclick="auditAirbnbAvrilUI(getActiveMoisKpi())" title="Audit Airbnb du mois actif (filtre Réservations)">📊 Audit mois</button>
-      <button class="ba ba-ghost admin-only" id="btn-audit-fin" onclick="auditFinances()" title="Phase 1 — Détecter et corriger les incohérences financières (brut/net/commission/com_pct)">🔧 Audit finances</button>
-      <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
-      <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
+      <button class="ba ba-ghost admin-only" id="btn-audit-fin" onclick="auditFinances()" title="Détecter et corriger les incohérences financières (brut/net/commission/com_pct)">🔧 Audit finances</button>
+      <button class="ba ba-ghost admin-only" onclick="var d=document.getElementById('r-tools-more');d.style.display=d.style.display==='flex'?'none':'flex'" title="Autres outils" style="padding:6px 10px;letter-spacing:.05em">···</button>
       <button id="r-add-btn" class="ba bar manager-plus" onclick="openModal('resa')">+ Ajouter</button>
+    </div>
+    <div id="r-tools-more" class="admin-only" style="display:none;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="ba ba-ghost admin-only" onclick="document.getElementById('csvfile').click()">📥 Import CSV</button>
+      <button class="ba ba-ghost admin-only" onclick="showImportLog()" id="btn-import-log" title="Log du dernier import CSV Smoobu">📋 Log CSV</button>
+      <button class="ba ba-ghost admin-only" id="btn-audit-airbnb" onclick="auditAirbnbAvrilUI(getActiveMoisKpi())" title="Audit Airbnb du mois actif (filtre Réservations)">📊 Audit mois</button>
+      <button class="bdel-mois admin-only" id="r-bdel-mois" onclick="deleteResaMois()" title="Supprimer toutes les réservations du mois affiché">🗑 Mois affiché</button>
+      <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
     </div>
   </div>
   <!-- Barre sélection multiple -->
@@ -703,6 +707,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <option value="trimestre">Trimestre</option>
       <option value="semestre">Semestre</option>
       <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
     </select>
     <div id="r-nav"></div>
     <select class="fsel" id="r-fap" onchange="resaFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -2423,6 +2428,8 @@ var DAY = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
 var WK  = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
 var MO  = {r:new Date(),b:new Date(),t:new Date(),s:new Date(),p:new Date(),d:new Date()};
 var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().getFullYear(),s:new Date().getFullYear(),p:new Date().getFullYear(),d:new Date().getFullYear()};
+var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:''};
+var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:''};
 var wkRef     = today();
 var WK_MODE   = 'semaine';  // 'semaine' | 'mois' | 'perso' | 'cumul'
 var WK_MO_REF = today().slice(0,7); // 'YYYY-MM' pour le mode mois
@@ -2447,6 +2454,10 @@ function filterPer(rows, k) {
     var b=multiMonthBounds(MO[k],n);
     return rows.filter(function(r){var d=r.date||'';return d>=b.start&&d<b.end;});
   }
+  if(p==='custom') {
+    var cf=CUSTOM_FROM[k]||today(), ct=CUSTOM_TO[k]||today();
+    return rows.filter(function(r){var d=r.date||'';return d>=cf&&d<=ct;});
+  }
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.date||'').startsWith(mk);});
 }
@@ -2464,6 +2475,10 @@ function filterResa(rows, k) {
     var endMk=endMo.getFullYear()+'-'+String(endMo.getMonth()+1).padStart(2,'0');
     return rows.filter(function(r){var mk=r.mois_kpi||dateKey(r).slice(0,7);return mk>=startMk&&mk<=endMk;});
   }
+  if(p==='custom') {
+    var cf=CUSTOM_FROM[k]||today(), ct=CUSTOM_TO[k]||today();
+    return rows.filter(function(r){var d=dateKey(r);return d>=cf&&d<=ct;});
+  }
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.mois_kpi||dateKey(r)).startsWith(mk);});
 }
@@ -2471,6 +2486,10 @@ function filterResa(rows, k) {
 function setPer(k, p) {
   if(k==='r'){R_QUICK=null;document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});}
   P[k]=p;
+  if(p==='custom') {
+    if(!CUSTOM_FROM[k]) CUSTOM_FROM[k]=today().slice(0,7)+'-01';
+    if(!CUSTOM_TO[k])   CUSTOM_TO[k]=today();
+  }
   // Snap MO[k] au début du bloc calendaire fixe (trimestres T1-T4, semestres S1-S2, bimestres B1-B6)
   if(p==='bimestre'||p==='trimestre'||p==='semestre') {
     var n=p==='bimestre'?2:p==='trimestre'?3:6;
@@ -2524,11 +2543,20 @@ function renderNav(k) {
       : MONTHS_FR[m]+' '+y+' – '+MONTHS_FR[endMo.getMonth()]+' '+endMo.getFullYear();
     curYr=y;
     periodHtml='<div class="nc"><button class="nb2" onclick="shiftMulti(\''+k+'\','+n+',-1)">‹</button><div class="nv">'+lbl+'</div><button class="nb2" onclick="shiftMulti(\''+k+'\','+n+',1)">›</button></div>';
+  } else if(p==='custom') {
+    var cf=CUSTOM_FROM[k]||today(), ct=CUSTOM_TO[k]||today();
+    periodHtml='<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">'
+      +'<span style="font-size:12px;color:var(--td)">Du</span>'
+      +'<input type="date" class="fdt" value="'+cf+'" onchange="CUSTOM_FROM[\''+k+'\']=this.value;renderView(\''+k+'\')">'
+      +'<span style="font-size:12px;color:var(--td)">au</span>'
+      +'<input type="date" class="fdt" value="'+ct+'" onchange="CUSTOM_TO[\''+k+'\']=this.value;renderView(\''+k+'\')">'
+      +'</div>';
   } else {
     curYr=MO[k].getFullYear();
     periodHtml='<div class="nc"><button class="nb2" onclick="shiftM(\''+k+'\',-1)">‹</button><div class="nv">'+MO[k].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})+'</div><button class="nb2" onclick="shiftM(\''+k+'\',1)">›</button></div>';
   }
-  var yrHtml='<div class="ync"><button class="ynb" onclick="shiftY(\''+k+'\',-1)">‹</button><div class="ynv">'+curYr+'</div><button class="ynb" onclick="shiftY(\''+k+'\',1)">›</button></div>';
+  var yrHtml=p==='custom'?''
+    :'<div class="ync"><button class="ynb" onclick="shiftY(\''+k+'\',-1)">‹</button><div class="ynv">'+curYr+'</div><button class="ynb" onclick="shiftY(\''+k+'\',1)">›</button></div>';
   el.innerHTML='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+yrHtml+periodHtml+'</div>';
 }
 
@@ -2537,6 +2565,7 @@ function shiftM(k,d) { MO[k].setMonth(MO[k].getMonth()+d); YR[k]=MO[k].getFullYe
 function shiftMulti(k,n,d) { MO[k].setMonth(MO[k].getMonth()+n*d); YR[k]=MO[k].getFullYear(); renderNav(k); renderView(k); }
 function shiftY(k,d) {
   var p=P[k];
+  if(p==='custom') return;
   YR[k]+=d;
   if(p==='mois'||p==='bimestre'||p==='trimestre'||p==='semestre') {
     MO[k].setFullYear(YR[k]);
@@ -2772,6 +2801,7 @@ function periodBounds(k) {
     var n=p==='bimestre'?2:p==='trimestre'?3:6;
     return multiMonthBounds(MO[k],n);
   }
+  if(p==='custom'){var cf=CUSTOM_FROM[k]||today(),ct=CUSTOM_TO[k]||today();return {start:cf,end:addDays(ct,1)};}
   var y=MO[k].getFullYear(),m=MO[k].getMonth();
   return {start:y+'-'+String(m+1).padStart(2,'0')+'-01',end:new Date(Date.UTC(y,m+1,1)).toISOString().slice(0,10)};
 }
@@ -3058,6 +3088,7 @@ function periodDays(k) {
     for(var i=0;i<n;i++) total+=new Date(y,m+i+1,0).getDate();
     return total;
   }
+  if(p==='custom'){var cf=CUSTOM_FROM[k]||today(),ct=CUSTOM_TO[k]||today();return Math.max(1,diffNuits(cf,ct)+1);}
   var y=MO[k].getFullYear(), m=MO[k].getMonth();
   return new Date(y,m+1,0).getDate();
 }
@@ -5727,10 +5758,18 @@ function getActiveMoisKpi() {
 //   → condition : date_debut <= pEnd  &&  fin > pStart  (strict)
 // Fallback sur APPARTS si DB.logements n'est pas encore chargé.
 function getAppartsForPeriod(k) {
-  if (P[k] === 'mois' && DB.logements.length > 0) {
-    var mo = MO[k], y = mo.getFullYear(), m = mo.getMonth();
-    var pStart = y + '-' + String(m + 1).padStart(2, '0') + '-01';
-    var pEnd   = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(new Date(y, m + 1, 0).getDate()).padStart(2, '0');
+  if (DB.logements.length > 0) {
+    var pStart, pEnd;
+    if (P[k] === 'mois') {
+      var mo = MO[k], y = mo.getFullYear(), m = mo.getMonth();
+      pStart = y + '-' + String(m + 1).padStart(2, '0') + '-01';
+      pEnd   = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(new Date(y, m + 1, 0).getDate()).padStart(2, '0');
+    } else if (P[k] === 'custom') {
+      pStart = CUSTOM_FROM[k] || today();
+      pEnd   = CUSTOM_TO[k]   || today();
+    } else {
+      return APPARTS.slice();
+    }
     var res = DB.logements.filter(function(l) {
       if (!l.date_debut) return false;
       var fin = l.actif ? '9999-12-31' : (l.date_fin || null);
@@ -5746,12 +5785,14 @@ function getAppartsForPeriod(k) {
 // En mode "mois" : dérivé de getAppartsForPeriod (source : DB.logements).
 // Autres modes   : fallback sur APPARTS.length (V2).
 function getNbLogementsForPeriod(k) {
-  if (P[k] === 'mois') {
+  if (P[k] === 'mois' || P[k] === 'custom') {
     if (DB.logements.length > 0) return getAppartsForPeriod(k).length;
-    // fallback : vue pré-calculée Supabase
-    var mo = MO[k];
-    var mk = mo.getFullYear() + '-' + String(mo.getMonth() + 1).padStart(2, '0');
-    if (DB.logements_par_mois[mk] != null) return DB.logements_par_mois[mk];
+    if (P[k] === 'mois') {
+      // fallback : vue pré-calculée Supabase
+      var mo = MO[k];
+      var mk = mo.getFullYear() + '-' + String(mo.getMonth() + 1).padStart(2, '0');
+      if (DB.logements_par_mois[mk] != null) return DB.logements_par_mois[mk];
+    }
   }
   return APPARTS.length;
 }
