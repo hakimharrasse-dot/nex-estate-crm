@@ -2205,7 +2205,7 @@ var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
-var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Autre'];
+var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Autre'];
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
@@ -2406,11 +2406,14 @@ function populateTeamSelects() {
   }
 }
 
-var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance'];
+var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Avance caisse'];
 function onBizCatChange(sel) {
   var ffFmen = document.getElementById('ff-fmen');
+  var lblFmen = document.getElementById('lbl-fmen');
   if (!ffFmen) return;
-  ffFmen.style.display = (sel && CATS_WITH_PAYEUR.indexOf(sel.value) !== -1) ? 'block' : 'none';
+  var cat = sel ? sel.value : '';
+  ffFmen.style.display = (CATS_WITH_PAYEUR.indexOf(cat) !== -1) ? 'block' : 'none';
+  if (lblFmen) lblFmen.textContent = (cat === 'Avance caisse') ? 'Bénéficiaire' : 'Qui a payé / avancé';
 }
 // ───────────────────────────────────────────────────────────
 
@@ -2865,6 +2868,7 @@ function renderDash() {
   var allRes=filterResa(DB.resa,'d');
   if(fa) allRes=allRes.filter(function(r){return r.appart===fa;});
   var bizRows=filterPer(DB.business,'d').filter(function(r){
+    if(r.cat==='Avance caisse') return false;
     if(fa) return r.appart===fa&&r.scope!=='global'; return true;
   });
   var joursDispo=periodDays('d')*nAp;
@@ -2876,7 +2880,7 @@ function renderDash() {
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
   // ── Nouveaux calculs cash ──
-  var bizPeriod=filterPer(DB.business,'d').filter(function(r){return !fa||(r.appart===fa||r.scope==='global');});
+  var bizPeriod=filterPer(DB.business,'d').filter(function(r){return r.cat!=='Avance caisse'&&(!fa||(r.appart===fa||r.scope==='global'));});
   var depAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente';}),'montant');
   var menageAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente'&&r.cat==='Ménage';}),'montant');
   var autresAtt=depAtt-menageAtt;
@@ -3528,60 +3532,85 @@ function renderGainsCards() {
 }
 
 function renderWkCards() {
-  // Mise à jour des onglets mode
   ['semaine','mois','perso','cumul'].forEach(function(m){
     var btn=document.getElementById('wmt-'+m);
     if(btn) btn.classList.toggle('on', m===WK_MODE);
   });
-  // Nav contextuelle
   renderWkNavRow();
 
-  // Plage de dates (null = pas de filtre = mode cumulé)
   var range = getWkRange();
   var inRange = range
     ? function(d){ return d && d>=range.s && d<=range.e; }
     : function(){ return true; };
 
-  var cleaners = getCleaners(true);
-  if (!cleaners.length) {
-    set('wk-cards','<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune femme de ménage active</div>');
+  var members = DB.team.filter(function(m){ return m.active; });
+  members.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  if (!members.length) {
+    set('wk-cards','<div style="color:var(--td);font-size:13px;padding:8px 0">Aucun membre d\'équipe actif</div>');
     return;
   }
 
-  set('wk-cards', cleaners.map(function(m) {
+  var cards = members.map(function(m) {
     var name = m.name;
+    var isCleaner = m.role === 'cleaner';
 
-    // ── Calcul (règles inchangées) ────────────────────────────
-    // Dépenses En attente uniquement
-    var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'; });
-    var men   = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
-    var adv   = sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
-    var tax   = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
-    var ext   = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
+    // ── Section ménage (femmes de ménage uniquement) ─────────
+    var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0;
+    if (isCleaner) {
+      var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
+      men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
+      adv  = sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
+      tax  = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
+      ext  = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
+      nbMen= DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
+      paid = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+    }
     var total = men+adv, net = total-tax-ext;
-    var col   = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
-    var lbl   = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
-    // ─────────────────────────────────────────────────────────
+    var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
+    var lbl = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
 
-    // Infos complémentaires
-    var nbMen  = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
-    var paid   = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+    // ── Section avance caisse (tous membres) ─────────────────
+    var avances  = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
+    var depenses = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
+    var solde    = avances - depenses;
 
-    return '<div class="cc">'+
+    var hasMenage = isCleaner && (men>0||adv>0||nbMen>0||paid>0);
+    var hasAvance = avances>0||depenses>0;
+    if (!hasMenage && !hasAvance) return '';
+
+    var html = '<div class="cc">'+
       '<div class="ccn '+colClass(name)+'">'+name+
         (nbMen ? '<span class="ccnt">'+nbMen+' intervention'+(nbMen>1?'s':'')+'</span>' : '')+
-      '</div>'+
-      '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
-      (adv>0 ? '<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
-      '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
-        '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
-      '</div>'+
-      (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
-      (ext>0 ? '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
-      '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
-      (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '')+
-    '</div>';
-  }).join(''));
+      '</div>';
+
+    if (hasMenage) {
+      html +=
+        '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
+        (adv>0 ? '<div class="ccr"><div class="ccl">Dépenses avancées</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
+          '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
+        '</div>'+
+        (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
+        (ext>0 ? '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
+        '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
+        (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '');
+    }
+
+    if (hasAvance) {
+      var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
+      var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
+      html +=
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+(hasMenage?'8':'0')+'px;padding-top:8px">'+
+          '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
+        '<div class="ccr"><div class="ccl">Avances reçues</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
+        '<div class="ccr"><div class="ccl">Dépenses réalisées</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
+        '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>';
+    }
+
+    return html + '</div>';
+  }).filter(Boolean).join('');
+
+  set('wk-cards', cards || '<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune donnée sur cette période</div>');
 }
 
 function renderTaxe() {
@@ -4361,7 +4390,7 @@ function buildForm(type, editId) {
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl">Qui a payé / avancé</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':'Qui a payé / avancé')+'</label><select class="fse" id="fi-fmen">'+buildFmenOptions(v('fmen',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
