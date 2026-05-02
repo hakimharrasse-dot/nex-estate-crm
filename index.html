@@ -3653,28 +3653,9 @@ function renderWkCards() {
     return;
   }
 
-  var perPage = isMobile() ? 1 : 3;
-  var total   = cards.length;
-  var maxPage = Math.max(0, Math.ceil(total / perPage) - 1);
-  if (WK_CARD_PAGE < 0) WK_CARD_PAGE = 0;
-  if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
-  var start        = WK_CARD_PAGE * perPage;
-  var sliced       = cards.slice(start, start + perPage);
-  var visible      = sliced.join('');
-  var cols         = isMobile() ? 1 : sliced.length;
-  var gridStyle    = 'grid-template-columns:repeat(' + cols + ',minmax(0,1fr));';
-
-  var navHtml = '';
-  if (total > perPage) {
-    var from = start + 1, to = Math.min(start + perPage, total);
-    navHtml = '<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px">'
-      + '<button class="nb2"' + (WK_CARD_PAGE <= 0 ? ' disabled' : '') + ' onclick="wkCardPage(-1)">‹</button>'
-      + '<span style="font-size:12px;color:var(--td)">' + from + '–' + to + ' / ' + total + '</span>'
-      + '<button class="nb2"' + (WK_CARD_PAGE >= maxPage ? ' disabled' : '') + ' onclick="wkCardPage(1)">›</button>'
-      + '</div>';
-  }
-
-  set('wk-cards', '<div class="cg" style="' + gridStyle + '">' + visible + '</div>' + navHtml);
+  var cols      = isMobile() ? Math.min(cards.length, 2) : Math.min(cards.length, 4);
+  var gridStyle = 'grid-template-columns:repeat(' + cols + ',minmax(0,1fr));';
+  set('wk-cards', '<div class="cg" style="' + gridStyle + '">' + cards.join('') + '</div>');
 }
 
 function renderTaxe() {
