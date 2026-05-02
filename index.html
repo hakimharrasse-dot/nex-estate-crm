@@ -3591,7 +3591,7 @@ function renderWkCards() {
     var hasAvance = avances > 0;
 
     // ── Section ménage (femmes de ménage uniquement) ─────────
-    var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0;
+    var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0, payers=[];
     if (isCleaner) {
       var bPend = DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
       men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
@@ -3601,6 +3601,9 @@ function renderWkCards() {
       ext  = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
       nbMen= DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'; }).length;
       paid = sum(DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+      // Payeurs tiers : ménages où paid_by est quelqu'un d'autre que la femme de ménage
+      DB.business.filter(function(r){ return inRange(r.date)&&r.fmen===name&&r.cat==='Ménage'&&r.paid_by&&r.paid_by!==name; })
+        .forEach(function(r){ if(payers.indexOf(r.paid_by)===-1) payers.push(r.paid_by); });
     }
     var total = men+adv, net = total-tax-ext;
     var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
@@ -3617,6 +3620,7 @@ function renderWkCards() {
     if (hasMenage) {
       html +=
         '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
+        (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl);font-size:12px">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
         (adv>0 ? '<div class="ccr"><div class="ccl">Avancé par la personne</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
         '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
           '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
@@ -3651,20 +3655,23 @@ function renderWkCards() {
   var maxPage = Math.max(0, Math.ceil(total / perPage) - 1);
   if (WK_CARD_PAGE < 0) WK_CARD_PAGE = 0;
   if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
-  var start   = WK_CARD_PAGE * perPage;
-  var visible = cards.slice(start, start + perPage).join('');
+  var start        = WK_CARD_PAGE * perPage;
+  var sliced       = cards.slice(start, start + perPage);
+  var visible      = sliced.join('');
+  var cols         = isMobile() ? 1 : sliced.length;
+  var gridStyle    = 'grid-template-columns:repeat(' + cols + ',minmax(0,1fr));';
 
   var navHtml = '';
   if (total > perPage) {
     var from = start + 1, to = Math.min(start + perPage, total);
-    navHtml = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+    navHtml = '<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px">'
       + '<button class="nb2"' + (WK_CARD_PAGE <= 0 ? ' disabled' : '') + ' onclick="wkCardPage(-1)">‹</button>'
       + '<span style="font-size:12px;color:var(--td)">' + from + '–' + to + ' / ' + total + '</span>'
       + '<button class="nb2"' + (WK_CARD_PAGE >= maxPage ? ' disabled' : '') + ' onclick="wkCardPage(1)">›</button>'
       + '</div>';
   }
 
-  set('wk-cards', navHtml + '<div class="cg">' + visible + '</div>');
+  set('wk-cards', '<div class="cg" style="' + gridStyle + '">' + visible + '</div>' + navHtml);
 }
 
 function renderTaxe() {
