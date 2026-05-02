@@ -767,6 +767,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
       <button class="tab" id="bts" onclick="setPer('b','semaine')">Semaine</button>
       <button class="tab on" id="btm" onclick="setPer('b','mois')">Mois</button>
+      <button class="tab" id="btcu" onclick="setPer('b','custom')">Période</button>
+      <button class="tab" id="btcum" onclick="setPer('b','cumul')">Cumulé</button>
     </div>
     <div id="b-nav"></div>
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -2452,10 +2454,11 @@ var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().ge
 var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:''};
 var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:''};
 var wkRef     = today();
-var WK_MODE   = 'semaine';  // 'semaine' | 'mois' | 'perso' | 'cumul'
-var WK_MO_REF = today().slice(0,7); // 'YYYY-MM' pour le mode mois
-var WK_FROM   = '';         // date début période perso
-var WK_TO     = '';         // date fin période perso
+var WK_MODE      = 'semaine';  // 'semaine' | 'mois' | 'perso' | 'cumul'
+var WK_MO_REF    = today().slice(0,7); // 'YYYY-MM' pour le mode mois
+var WK_FROM      = '';         // date début période perso
+var WK_TO        = '';         // date fin période perso
+var WK_CARD_PAGE = 0;          // page courante de la pagination des cartes
 
 function wkRange(ref) {
   var d=new Date(ref), day=d.getDay()||7;
@@ -2479,6 +2482,7 @@ function filterPer(rows, k) {
     var cf=CUSTOM_FROM[k]||today(), ct=CUSTOM_TO[k]||today();
     return rows.filter(function(r){var d=r.date||'';return d>=cf&&d<=ct;});
   }
+  if(p==='cumul') return rows;
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.date||'').startsWith(mk);});
 }
@@ -2527,7 +2531,7 @@ function setPer(k, p) {
     var pre=tabMap[k];
     if(pre) {
       var onCls={b:'on',t:'ont',s:'ons',p:'onp'};
-      var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem'};
+      var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem',custom:'cu',cumul:'cum'};
       Object.values(TAB_SFX).forEach(function(x){
         var el=document.getElementById(pre+x); if(el) el.className='tab';
       });
@@ -2572,11 +2576,13 @@ function renderNav(k) {
       +'<span style="font-size:12px;color:var(--td)">au</span>'
       +'<input type="date" class="fdt" value="'+ct+'" onchange="CUSTOM_TO[\''+k+'\']=this.value;renderView(\''+k+'\')">'
       +'</div>';
+  } else if(p==='cumul') {
+    periodHtml='<div class="nv" style="font-size:12px;color:var(--td)">Tout l\'historique</div>';
   } else {
     curYr=MO[k].getFullYear();
     periodHtml='<div class="nc"><button class="nb2" onclick="shiftM(\''+k+'\',-1)">‹</button><div class="nv">'+MO[k].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})+'</div><button class="nb2" onclick="shiftM(\''+k+'\',1)">›</button></div>';
   }
-  var yrHtml=p==='custom'?''
+  var yrHtml=(p==='custom'||p==='cumul')?''
     :'<div class="ync"><button class="ynb" onclick="shiftY(\''+k+'\',-1)">‹</button><div class="ynv">'+curYr+'</div><button class="ynb" onclick="shiftY(\''+k+'\',1)">›</button></div>';
   el.innerHTML='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+yrHtml+periodHtml+'</div>';
 }
@@ -2600,9 +2606,11 @@ function shiftY(k,d) {
   renderNav(k); renderView(k);
 }
 function shiftWk(d)  { var dt=new Date(wkRef); dt.setDate(dt.getDate()+d*7); wkRef=dt.toISOString().slice(0,10); renderWkCards(); }
+function wkCardPage(d) { WK_CARD_PAGE += d; renderWkCards(); }
 
 function setWkMode(mode) {
   WK_MODE = mode;
+  WK_CARD_PAGE = 0;
   if (mode === 'perso' && !WK_FROM) { var w=wkRange(wkRef); WK_FROM=w.s; WK_TO=w.e; }
   renderWkCards();
 }
@@ -3631,9 +3639,32 @@ function renderWkCards() {
     }
 
     return html + '</div>';
-  }).filter(Boolean).join('');
+  }).filter(Boolean);
 
-  set('wk-cards', cards || '<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune donnée sur cette période</div>');
+  if (!cards.length) {
+    set('wk-cards', '<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune donnée sur cette période</div>');
+    return;
+  }
+
+  var perPage = isMobile() ? 1 : 3;
+  var total   = cards.length;
+  var maxPage = Math.max(0, Math.ceil(total / perPage) - 1);
+  if (WK_CARD_PAGE < 0) WK_CARD_PAGE = 0;
+  if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
+  var start   = WK_CARD_PAGE * perPage;
+  var visible = cards.slice(start, start + perPage).join('');
+
+  var navHtml = '';
+  if (total > perPage) {
+    var from = start + 1, to = Math.min(start + perPage, total);
+    navHtml = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      + '<button class="nb2"' + (WK_CARD_PAGE <= 0 ? ' disabled' : '') + ' onclick="wkCardPage(-1)">‹</button>'
+      + '<span style="font-size:12px;color:var(--td)">' + from + '–' + to + ' / ' + total + '</span>'
+      + '<button class="nb2"' + (WK_CARD_PAGE >= maxPage ? ' disabled' : '') + ' onclick="wkCardPage(1)">›</button>'
+      + '</div>';
+  }
+
+  set('wk-cards', navHtml + '<div class="cg">' + visible + '</div>');
 }
 
 function renderTaxe() {
