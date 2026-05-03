@@ -3653,8 +3653,18 @@ function renderWkCards() {
     return;
   }
 
+  var total = cards.length;
+
+  // ≤ 5 cartes : tout afficher d'un coup, grille auto-fill, pas de navigation
+  if (total <= 5) {
+    var minW = isMobile() ? 140 : 200;
+    set('wk-cards', '<div class="cg" style="grid-template-columns:repeat(auto-fill,minmax('+minW+'px,1fr));">'
+      + cards.join('') + '</div>');
+    return;
+  }
+
+  // > 5 cartes : pagination à 4 (desktop) ou 2 (mobile)
   var perPage = isMobile() ? 2 : 4;
-  var total   = cards.length;
   var maxPage = Math.max(0, Math.ceil(total / perPage) - 1);
   if (WK_CARD_PAGE < 0) WK_CARD_PAGE = 0;
   if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
@@ -3663,16 +3673,14 @@ function renderWkCards() {
   var cols    = Math.min(sliced.length, perPage);
   var grid    = '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'+sliced.join('')+'</div>';
 
-  var nav = '';
-  if (total > perPage) {
-    var canPrev = WK_CARD_PAGE > 0;
-    var canNext = WK_CARD_PAGE < maxPage;
-    var from = start + 1, to = Math.min(start + perPage, total);
-    nav = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px">'
-      + '<span style="font-size:12px;color:var(--td);margin-right:4px">'+from+'–'+to+' / '+total+'</span>'
-      + '<button class="nb2"'+(canPrev?'':' disabled')+' onclick="wkCardPage(-1)" title="Précédent">←</button>'
-      + '<button class="nb2"'+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Suivant">→</button>'
-      + '</div>';
+  var canPrev = WK_CARD_PAGE > 0;
+  var canNext = WK_CARD_PAGE < maxPage;
+  var from = start + 1, to = Math.min(start + perPage, total);
+  var nav = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px">'
+    + '<span style="font-size:12px;color:var(--td);margin-right:4px">'+from+'–'+to+' / '+total+'</span>'
+    + '<button class="nb2"'+(canPrev?'':' disabled')+' onclick="wkCardPage(-1)" title="Précédent">←</button>'
+    + '<button class="nb2"'+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Suivant">→</button>'
+    + '</div>';
   }
 
   set('wk-cards', grid + nav);
