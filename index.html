@@ -790,6 +790,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toutes femmes de ménage</option></select>
     <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
     <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
+    <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
   </div></div>
   <!-- Barre sélection business -->
   <div class="sel-bar hidden" id="biz-sel-bar">
@@ -3051,7 +3052,7 @@ function renderDash() {
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
   // ── Nouveaux calculs cash ──
-  var bizPeriod=filterPer(DB.business,'d').filter(function(r){return r.cat!=='Avance caisse'&&(!fa||(r.appart===fa||r.scope==='global'));});
+  var bizPeriod=filterPer(DB.business,'d').filter(function(r){return r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'&&(!fa||(r.appart===fa||r.scope==='global'));});
   var depAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente';}),'montant');
   var menageAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente'&&r.cat==='Ménage';}),'montant');
   var autresAtt=depAtt-menageAtt;
@@ -3565,11 +3566,13 @@ function renderBiz() {
   initWbState();
   var rows=filterPer(DB.business,'b');
   var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
+  var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fa)rows=rows.filter(function(r){return r.appart===fa;}); // scope global (appart null) exclu automatiquement
   if(fc)rows=rows.filter(function(r){return r.cat===fc;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
+  if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
   var chg=sum(rows.filter(function(r){return r.cat!=='Ménage';}), 'montant');
@@ -3751,7 +3754,7 @@ function renderWkCards() {
     tax = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
     ext = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
     if (isCleaner) {
-      var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
+      var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
       men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
       // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
       adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
