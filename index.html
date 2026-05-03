@@ -3719,12 +3719,12 @@ function renderWkCards() {
 
     // ── Section avance caisse (tous membres) ─────────────────
     // Avances reçues : cat='Avance caisse', bénéficiaire = fmen
-    var avances   = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'; }), 'montant');
-    // Dépenses réalisées avec l'avance :
-    //   · dépenses non-ménage où fmen=personne (Consommables, Technicien…)
+    var avances   = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }), 'montant');
+    // Dépenses réalisées avec l'avance (Payé uniquement — En attente n'impacte pas la caisse)
+    //   · dépenses non-ménage où fmen=personne (Consommables, Technicien, Règlement terrain…)
     //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
-    var depNonMen = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'; }), 'montant');
-    var depMenage = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name; }), 'montant');
+    var depNonMen = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.statut==='Payé'; }), 'montant');
+    var depMenage = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name&&r.statut==='Payé'; }), 'montant');
     var depenses  = depNonMen + depMenage;
     var solde     = avances - depenses;
     var hasAvance = avances > 0;
