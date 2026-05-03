@@ -756,6 +756,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div class="wb-summary" id="gains-summary" style="display:none"></div>
     <div id="gains-body"></div>
+    <div style="font-size:11px;color:var(--td);font-style:italic;padding:6px 2px 2px">ℹ️ Montant brut des ménages effectués ce mois — avant déduction des taxes et services collectés. Le net réel à payer figure dans le récap ci-dessous.</div>
   </div>
   <!-- Récap paiement femme de ménage -->
   <div class="wb">
@@ -823,6 +824,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="ttj" onclick="setPer('t','jour')">Jour</button>
       <button class="tab" id="tts" onclick="setPer('t','semaine')">Semaine</button>
       <button class="tab ont" id="ttm" onclick="setPer('t','mois')">Mois</button>
+      <button class="tab" id="tta" onclick="setPer('t','annee')">Année</button>
+      <button class="tab" id="ttcu" onclick="setPer('t','custom')">Période</button>
+      <button class="tab" id="ttcum" onclick="setPer('t','cumul')">Cumulé</button>
     </div>
     <div id="t-nav"></div>
     <select class="fsel" id="t-fap" onchange="taxeFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -864,6 +868,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="stj" onclick="setPer('s','jour')">Jour</button>
       <button class="tab" id="sts" onclick="setPer('s','semaine')">Semaine</button>
       <button class="tab ons" id="stm" onclick="setPer('s','mois')">Mois</button>
+      <button class="tab" id="sta" onclick="setPer('s','annee')">Année</button>
+      <button class="tab" id="stcu" onclick="setPer('s','custom')">Période</button>
+      <button class="tab" id="stcum" onclick="setPer('s','cumul')">Cumulé</button>
     </div>
     <div id="s-nav"></div>
     <select class="fsel" id="s-fap" onchange="servFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -2444,6 +2451,15 @@ function populateTeamSelects() {
     bfmen.innerHTML = '<option value="">Toutes femmes de ménage</option>';
     getCleaners(true).forEach(function(m){
       bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
+    });
+  }
+  // b-fcat — filtre catégorie business (synchronisé avec CATS_B)
+  var bfcat = document.getElementById('b-fcat');
+  if (bfcat) {
+    var curCat = bfcat.value;
+    bfcat.innerHTML = '<option value="">Toutes catégories</option>';
+    CATS_B.forEach(function(c){
+      bfcat.innerHTML += '<option value="'+escHtml(c)+'"'+(c===curCat?' selected':'')+'>'+escHtml(c)+'</option>';
     });
   }
   // t-fcol — filtre collecteur taxe (tous membres + Équipe pour historique)
