@@ -755,6 +755,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="wb-toggle" id="gains-toggle" onclick="toggleWb('gains')">▾ Réduire</button>
     </div>
     <div class="wb-summary" id="gains-summary" style="display:none"></div>
+    <div class="tabs" style="margin-bottom:6px">
+      <button class="tab" id="gnj" onclick="setPer('gn','jour')">Jour</button>
+      <button class="tab" id="gns" onclick="setPer('gn','semaine')">Semaine</button>
+      <button class="tab ong" id="gnm" onclick="setPer('gn','mois')">Mois</button>
+      <button class="tab" id="gna" onclick="setPer('gn','annee')">Année</button>
+      <button class="tab" id="gncu" onclick="setPer('gn','custom')">Période</button>
+      <button class="tab" id="gncum" onclick="setPer('gn','cumul')">Cumulé</button>
+    </div>
+    <div id="gn-nav"></div>
     <div id="gains-body"></div>
     <div style="font-size:11px;color:var(--td);font-style:italic;padding:6px 2px 2px">ℹ️ Montant brut des ménages effectués ce mois — avant déduction des taxes et services collectés. Le net réel à payer figure dans le récap ci-dessous.</div>
   </div>
@@ -767,10 +776,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="wb-summary" id="recap-summary" style="display:none"></div>
     <div id="recap-body">
       <div class="wm">
-        <button class="wmb on" id="wmt-semaine" onclick="setWkMode('semaine')">Semaine</button>
+        <button class="wmb" id="wmt-semaine" onclick="setWkMode('semaine')">Semaine</button>
         <button class="wmb" id="wmt-mois" onclick="setWkMode('mois')">Mois</button>
         <button class="wmb" id="wmt-perso" onclick="setWkMode('perso')">Période</button>
-        <button class="wmb" id="wmt-cumul" onclick="setWkMode('cumul')">Cumulé</button>
+        <button class="wmb on" id="wmt-cumul" onclick="setWkMode('cumul')">📋 En cours</button>
       </div>
       <div id="wk-nav-row"></div>
       <div id="wk-cards"></div>
@@ -787,7 +796,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div id="b-nav"></div>
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="b-fcat" onchange="bizFilter()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
-    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toutes femmes de ménage</option></select>
+    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
     <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
     <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
     <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
@@ -2195,9 +2204,10 @@ async function launchApp() {
 
     // Init UI — tout en une passe
     console.log('[launch] renderNav + setPer');
-    ['r','b','t','s','p','d'].forEach(function(k){ renderNav(k); });
+    ['r','b','t','s','p','d','gn'].forEach(function(k){ renderNav(k); });
     setPer('r','mois'); setPer('b','mois'); setPer('t','mois');
     setPer('s','mois'); setPer('p','mois'); setPer('d','mois');
+    setPer('gn','mois');
 
     // Rôle + navigation initiale
     console.log('[launch] applyRoleUI');
@@ -2463,14 +2473,16 @@ function buildCollectorOptions(selectedName) {
 }
 
 function populateTeamSelects() {
-  // b-fmen — filtre dépenses business (femmes de ménage uniquement)
+  // b-fmen — filtre dépenses business (toute l'équipe active)
   var bfmen = document.getElementById('b-fmen');
   if (bfmen) {
     var cur = bfmen.value;
-    bfmen.innerHTML = '<option value="">Toutes femmes de ménage</option>';
-    getCleaners(true).forEach(function(m){
-      bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
-    });
+    bfmen.innerHTML = '<option value="">Toute l\'équipe</option>';
+    DB.team.filter(function(m){ return m.active; })
+      .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+      .forEach(function(m){
+        bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
+      });
   }
   // b-fcat — filtre catégorie business (synchronisé avec CATS_B)
   var bfcat = document.getElementById('b-fcat');
@@ -2547,15 +2559,15 @@ function actBtns(type,id) {
 // ============================================================
 // PERIODS
 // ============================================================
-var P   = {r:'mois',b:'mois',t:'mois',s:'mois',p:'mois',d:'mois'};
-var DAY = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
-var WK  = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today()};
-var MO  = {r:new Date(),b:new Date(),t:new Date(),s:new Date(),p:new Date(),d:new Date()};
-var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().getFullYear(),s:new Date().getFullYear(),p:new Date().getFullYear(),d:new Date().getFullYear()};
-var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:''};
-var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:''};
+var P   = {r:'mois',b:'mois',t:'mois',s:'mois',p:'mois',d:'mois',gn:'mois'};
+var DAY = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today(),gn:today()};
+var WK  = {r:today(),b:today(),t:today(),s:today(),p:today(),d:today(),gn:today()};
+var MO  = {r:new Date(),b:new Date(),t:new Date(),s:new Date(),p:new Date(),d:new Date(),gn:new Date()};
+var YR  = {r:new Date().getFullYear(),b:new Date().getFullYear(),t:new Date().getFullYear(),s:new Date().getFullYear(),p:new Date().getFullYear(),d:new Date().getFullYear(),gn:new Date().getFullYear()};
+var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
+var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
 var wkRef     = today();
-var WK_MODE      = 'semaine';  // 'semaine' | 'mois' | 'perso' | 'cumul'
+var WK_MODE      = 'cumul';    // 'semaine' | 'mois' | 'perso' | 'cumul' — défaut: En cours (tout ouvert)
 var WK_MO_REF    = today().slice(0,7); // 'YYYY-MM' pour le mode mois
 var WK_FROM      = '';         // date début période perso
 var WK_TO        = '';         // date fin période perso
@@ -2571,7 +2583,7 @@ function getWbSummary(key) {
     return n + ' femme' + (n > 1 ? 's' : '') + ' de ménage';
   }
   if (key === 'recap') {
-    var modeLabel = {semaine:'Semaine',mois:'Mois',perso:'Période',cumul:'Cumulé'}[WK_MODE] || WK_MODE;
+    var modeLabel = {semaine:'Semaine',mois:'Mois',perso:'Période',cumul:'En cours'}[WK_MODE] || WK_MODE;
     var nm = DB.team.filter(function(m){ return m.active; }).length;
     return 'Mode ' + modeLabel + ' · ' + nm + ' membre' + (nm > 1 ? 's' : '');
   }
@@ -2676,10 +2688,10 @@ function setPer(k, p) {
     if(selEl && selEl.value!==p) selEl.value=p;
   } else {
     // Autres sections : boutons tabs classiques
-    var tabMap={b:'bt',t:'tt',s:'st',p:'pt'};
+    var tabMap={b:'bt',t:'tt',s:'st',p:'pt',gn:'gn'};
     var pre=tabMap[k];
     if(pre) {
-      var onCls={b:'on',t:'ont',s:'ons',p:'onp'};
+      var onCls={b:'on',t:'ont',s:'ons',p:'onp',gn:'ong'};
       var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem',custom:'cu',cumul:'cum'};
       Object.values(TAB_SFX).forEach(function(x){
         var el=document.getElementById(pre+x); if(el) el.className='tab';
@@ -2694,7 +2706,7 @@ function setPer(k, p) {
 }
 
 function renderNav(k) {
-  var navId={r:'r-nav',b:'b-nav',t:'t-nav',s:'s-nav',p:'p-nav',d:'d-nav'}[k];
+  var navId={r:'r-nav',b:'b-nav',t:'t-nav',s:'s-nav',p:'p-nav',d:'d-nav',gn:'gn-nav'}[k];
   var el=document.getElementById(navId); if(!el) return;
   var p=P[k];
   var periodHtml='';
@@ -2822,6 +2834,7 @@ function renderView(k) {
   else if(k==='s') renderServ();
   else if(k==='d') renderDash();
   else if(k==='dup') renderDoublons();
+  else if(k==='gn') renderGainsCards();
   else renderPerso();
 }
 
@@ -3656,10 +3669,11 @@ function renderBiz() {
 // RENDER: TAXE
 // ============================================================
 function renderGainsCards() {
-  var mk    = MO.b.toISOString().slice(0,7);
-  var mLbl  = MONTHS_FR[MO.b.getMonth()] + ' ' + MO.b.getFullYear();
+  renderNav('gn');
+  var gnPer = P['gn'] || 'mois';
+  var perLabels = {jour:'Jour',semaine:'Semaine',mois:'Mois',annee:'Année',custom:'Période',cumul:'Cumulé'};
   var title = document.getElementById('gains-wbt');
-  if (title) title.textContent = '💰 Gains ménage — ' + mLbl;
+  if (title) title.textContent = '💰 Gains ménage — ' + (perLabels[gnPer] || gnPer);
 
   var body = document.getElementById('gains-body');
   if (!body) return;
@@ -3670,9 +3684,9 @@ function renderGainsCards() {
     return;
   }
 
-  // Toutes les lignes Ménage du mois (Payé + En attente = travail effectué)
-  var allMen = DB.business.filter(function(r){
-    return r.date && r.date.startsWith(mk) && r.cat === 'Ménage';
+  // Toutes les lignes Ménage de la période sélectionnée (Payé + En attente = travail effectué)
+  var allMen = filterPer(DB.business, 'gn').filter(function(r){
+    return r.cat === 'Ménage';
   });
 
   var cards = cleaners.map(function(m) {
@@ -3965,7 +3979,7 @@ function openSoldeModal(name) {
   // Titre avec période
   var range  = getWkRange();
   var perLbl = range ? range.s + ' → ' + range.e : 'Tout l\'historique';
-  var modeLbl = {semaine:'Semaine',mois:'Mois',perso:'Période',cumul:'Cumulé'}[WK_MODE] || WK_MODE;
+  var modeLbl = {semaine:'Semaine',mois:'Mois',perso:'Période',cumul:'En cours'}[WK_MODE] || WK_MODE;
   var titEl = document.getElementById('solde-title');
   if (titEl) titEl.textContent = '💳 Solder ' + name + ' — ' + modeLbl + ' ' + perLbl;
 
