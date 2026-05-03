@@ -4023,10 +4023,18 @@ async function confirmSolde() {
 
   try {
     // ① Dépenses business → Payé
+    //   Si payeur ≠ Hakim : neutraliser paid_by sur les ménages couverts
+    //   (le Règlement terrain devient la seule trace cash — évite le double comptage)
     for (var i = 0; i < d.bizIds.length; i++) {
       var bid = d.bizIds[i];
       var bi  = DB.business.findIndex(function(x){ return x.id===bid; });
-      if (bi >= 0) { DB.business[bi].statut = 'Payé'; await saveOne('business', DB.business[bi]); }
+      if (bi >= 0) {
+        DB.business[bi].statut = 'Payé';
+        if (payeur !== 'Hakim' && DB.business[bi].cat === 'Ménage' && DB.business[bi].paid_by === payeur) {
+          DB.business[bi].paid_by = null;
+        }
+        await saveOne('business', DB.business[bi]);
+      }
     }
     // ② Taxe → Reversé
     for (var j = 0; j < d.taxeIds.length; j++) {
