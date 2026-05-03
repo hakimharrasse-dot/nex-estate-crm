@@ -1219,6 +1219,23 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt" id="mn-logout" onclick="closeMobMore();doLogout()" style="gap:4px;padding:6px 16px;color:var(--td);border-color:var(--br)"><span class="mic">🔒</span>Déconnexion</div>
 </div>
 
+<!-- MODAL SOLDER PERSONNE -->
+<div class="ov hidden" id="solde-ov" onclick="if(event.target===this)closeSoldeModal()">
+  <div class="mbox" style="max-width:460px">
+    <div class="mt" id="solde-title">💳 Solder</div>
+    <div id="solde-recap" style="margin-bottom:12px"></div>
+    <div style="font-size:11px;color:var(--td);font-style:italic;margin-bottom:14px" id="solde-ops"></div>
+    <div class="ff" style="margin-bottom:18px">
+      <label class="fl">Réglé par</label>
+      <select class="fse" id="solde-payeur"></select>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="ba ba-ghost" onclick="closeSoldeModal()" style="padding:8px 18px;font-size:13px">Annuler</button>
+      <button id="solde-btn-confirm" class="ba bab" onclick="confirmSolde()" style="padding:8px 18px;font-size:13px">✅ Valider le solde</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL UNIQUE -->
 <div class="ov hidden" id="modal-overlay">
   <div class="mbox">
@@ -2231,7 +2248,7 @@ var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
-var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Autre'];
+var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Règlement terrain','Autre'];
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
@@ -3007,7 +3024,7 @@ function renderDash() {
   var allRes=filterResa(DB.resa,'d');
   if(fa) allRes=allRes.filter(function(r){return r.appart===fa;});
   var bizRows=filterPer(DB.business,'d').filter(function(r){
-    if(r.cat==='Avance caisse') return false;
+    if(r.cat==='Avance caisse'||r.cat==='Règlement terrain') return false;
     if(fa) return r.appart===fa&&r.scope!=='global'; return true;
   });
   var joursDispo=periodDays('d')*nAp;
@@ -3778,6 +3795,14 @@ function renderWkCards() {
         '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>';
     }
 
+    // Bouton Solder — cleaner uniquement, net positif
+    if (hasMenage && net > 0) {
+      html += '<div style="padding:8px 0 2px;text-align:right">'+
+        '<button class="ba bab" style="font-size:11px;padding:5px 14px" '+
+        'data-solde="'+escHtml(name)+'" onclick="openSoldeModal(this.dataset.solde)">💳 Solder</button>'+
+        '</div>';
+    }
+
     return html + '</div>';
   }).filter(Boolean);
 
@@ -3829,6 +3854,151 @@ function renderWkCards() {
   if (recapSumEl && WB_COLLAPSED['recap']) recapSumEl.textContent = getWbSummary('recap');
 }
 
+// ============================================================
+// SOLDER PERSONNE
+// ============================================================
+var SOLDE_NAME = '';
+var SOLDE_DATA = null;
+
+function getSoldeData(name) {
+  var range = getWkRange();
+  var inRange = range
+    ? function(d){ return d && d>=range.s && d<=range.e; }
+    : function(){ return true; };
+  var rd = function(r){ return r.date_reglement || r.date; };
+
+  // Business en attente (hors Avance caisse et Règlement terrain)
+  var bizPend = DB.business.filter(function(r){
+    return inRange(rd(r)) && r.fmen===name && r.statut==='En attente'
+        && r.cat!=='Avance caisse' && r.cat!=='Règlement terrain';
+  });
+  var bizIds = bizPend.map(function(r){ return r.id; });
+  var men    = sum(bizPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
+  var adv    = sum(bizPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
+
+  // Taxe non reversée collectée par cette personne
+  var taxeRows = DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; });
+  var taxeIds  = taxeRows.map(function(r){ return r.id; });
+  var tax      = sum(taxeRows, 'montant');
+
+  // Services non payés collectés par cette personne
+  var servRows = DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; });
+  var servIds  = servRows.map(function(r){ return r.id; });
+  var ext      = sum(servRows, 'montant');
+
+  var net = Math.round((men + adv - tax - ext) * 100) / 100;
+  return { bizIds:bizIds, taxeIds:taxeIds, servIds:servIds, men:men, adv:adv, tax:tax, ext:ext, net:net };
+}
+
+function openSoldeModal(name) {
+  SOLDE_NAME = name;
+  SOLDE_DATA = getSoldeData(name);
+  var d = SOLDE_DATA;
+
+  // Titre avec période
+  var range  = getWkRange();
+  var perLbl = range ? range.s + ' → ' + range.e : 'Tout l\'historique';
+  var modeLbl = {semaine:'Semaine',mois:'Mois',perso:'Période',cumul:'Cumulé'}[WK_MODE] || WK_MODE;
+  var titEl = document.getElementById('solde-title');
+  if (titEl) titEl.textContent = '💳 Solder ' + name + ' — ' + modeLbl + ' ' + perLbl;
+
+  // Récap montants
+  var rows = '';
+  if (d.men > 0) rows += '<div class="ccr"><div class="ccl">Ménages en attente</div><div class="ccv">'+fmt(d.men)+'</div></div>';
+  if (d.adv > 0) rows += '<div class="ccr"><div class="ccl">Consommables / avancés</div><div class="ccv" style="color:var(--bl)">'+fmt(d.adv)+'</div></div>';
+  if (d.tax > 0) rows += '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(d.tax)+'</div></div>';
+  if (d.ext > 0) rows += '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(d.ext)+'</div></div>';
+  var netCol = d.net>0?'var(--re)':d.net<0?'var(--te)':'var(--gr)';
+  rows += '<div class="cct" style="margin-top:8px"><div class="cctl">💰 Net à régler</div><div class="cctv" style="color:'+netCol+'">'+fmt(Math.abs(d.net))+'</div></div>';
+  var recapEl = document.getElementById('solde-recap');
+  if (recapEl) recapEl.innerHTML = rows;
+
+  // Résumé des opérations
+  var ops = [];
+  if (d.bizIds.length)  ops.push(d.bizIds.length + ' dépense'+(d.bizIds.length>1?'s':'')+' → Payé');
+  if (d.taxeIds.length) ops.push(d.taxeIds.length + ' taxe'+(d.taxeIds.length>1?'s':'')+' → Reversé');
+  if (d.servIds.length) ops.push(d.servIds.length + ' service'+(d.servIds.length>1?'s':'')+' → Payé');
+  var opsEl = document.getElementById('solde-ops');
+  if (opsEl) opsEl.textContent = ops.length ? ops.join(' · ') : 'Aucune entrée en attente sur cette période.';
+
+  // Select payeur : tous membres actifs sauf la personne elle-même + Hakim en premier
+  var sel = document.getElementById('solde-payeur');
+  if (sel) {
+    sel.innerHTML = '<option value="Hakim">Hakim (direct — sans impact caisse)</option>';
+    DB.team.filter(function(m){ return m.active && m.name!==name; })
+      .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+      .forEach(function(m){
+        sel.innerHTML += '<option value="'+escHtml(m.name)+'">'+escHtml(m.name)+' (via avance caisse)</option>';
+      });
+  }
+
+  // Bouton reset
+  var btn = document.getElementById('solde-btn-confirm');
+  if (btn) { btn.disabled = false; btn.textContent = '✅ Valider le solde'; }
+
+  var ov = document.getElementById('solde-ov');
+  if (ov) ov.classList.remove('hidden');
+}
+
+function closeSoldeModal() {
+  var ov = document.getElementById('solde-ov');
+  if (ov) ov.classList.add('hidden');
+  SOLDE_NAME = ''; SOLDE_DATA = null;
+}
+
+async function confirmSolde() {
+  var d = SOLDE_DATA;
+  if (!d) return;
+  var payeur      = (document.getElementById('solde-payeur')||{}).value || 'Hakim';
+  var nameCapture = SOLDE_NAME;
+  var btn = document.getElementById('solde-btn-confirm');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ En cours…'; }
+
+  try {
+    // ① Dépenses business → Payé
+    for (var i = 0; i < d.bizIds.length; i++) {
+      var bid = d.bizIds[i];
+      var bi  = DB.business.findIndex(function(x){ return x.id===bid; });
+      if (bi >= 0) { DB.business[bi].statut = 'Payé'; await saveOne('business', DB.business[bi]); }
+    }
+    // ② Taxe → Reversé
+    for (var j = 0; j < d.taxeIds.length; j++) {
+      var tid = d.taxeIds[j];
+      var ti  = DB.taxe.findIndex(function(x){ return x.id===tid; });
+      if (ti >= 0) { DB.taxe[ti].rev = 'Reversé'; await saveOne('taxe', DB.taxe[ti]); }
+    }
+    // ③ Services → Payé
+    for (var k = 0; k < d.servIds.length; k++) {
+      var sid = d.servIds[k];
+      var si  = DB.serv.findIndex(function(x){ return x.id===sid; });
+      if (si >= 0) { DB.serv[si].statut = 'Payé'; await saveOne('serv', DB.serv[si]); }
+    }
+    // ④ Règlement terrain si payeur ≠ Hakim et net positif
+    if (payeur !== 'Hakim' && d.net > 0) {
+      var range  = getWkRange();
+      var perLbl = range ? range.s + ' → ' + range.e : 'cumulé';
+      var reg = {
+        id: uid(), cat: 'Règlement terrain', fmen: payeur,
+        montant: d.net, date: today(), statut: 'Payé',
+        scope: 'global', appart: null,
+        desc: 'Règlement ' + nameCapture + ' — ' + perLbl
+      };
+      await upsert('business', reg);
+    }
+
+    closeSoldeModal();
+    var msg = '✅ ' + nameCapture + ' soldé(e)';
+    if (d.net > 0) msg += ' — ' + fmt(d.net) + ' réglés par ' + payeur;
+    showToast(msg);
+    renderBiz(); renderTaxe(); renderServ();
+  } catch(e) {
+    console.error('confirmSolde error:', e);
+    showToast('❌ Erreur lors du solde — vérifier la console');
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Valider le solde'; }
+  }
+}
+
+// ============================================================
 function renderTaxe() {
   renderNav('t');
   var rows=filterPer(DB.taxe,'t');
