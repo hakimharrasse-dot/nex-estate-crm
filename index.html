@@ -789,6 +789,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="b-fcat" onchange="bizFilter()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toutes femmes de ménage</option></select>
     <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+    <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
   </div></div>
   <!-- Barre sélection business -->
   <div class="sel-bar hidden" id="biz-sel-bar">
@@ -2499,6 +2500,20 @@ function populateTeamSelects() {
     });
     sfcol.innerHTML += '<option value="Équipe"'+('Équipe'===curS?' selected':'')+'>Équipe</option>';
   }
+  // b-fpay — filtre "Payé par / avancé par" (membres actifs + valeurs historiques paid_by)
+  var bfpay = document.getElementById('b-fpay');
+  if (bfpay) {
+    var curPay = bfpay.value;
+    var payNames = DB.team.filter(function(m){ return m.active; }).map(function(m){ return m.name; });
+    DB.business.forEach(function(r){
+      if (r.paid_by && payNames.indexOf(r.paid_by) === -1) payNames.push(r.paid_by);
+    });
+    payNames.sort(function(a,b){ return a.localeCompare(b); });
+    bfpay.innerHTML = '<option value="">Tous payeurs</option>';
+    payNames.forEach(function(n){
+      bfpay.innerHTML += '<option value="'+escHtml(n)+'"'+(n===curPay?' selected':'')+'>'+escHtml(n)+'</option>';
+    });
+  }
 }
 
 var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Avance caisse'];
@@ -3549,11 +3564,12 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst');
+  var fa=val('b-fap'),fc=val('b-fcat'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
   if(fa)rows=rows.filter(function(r){return r.appart===fa;}); // scope global (appart null) exclu automatiquement
   if(fc)rows=rows.filter(function(r){return r.cat===fc;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
+  if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
   var chg=sum(rows.filter(function(r){return r.cat!=='Ménage';}), 'montant');
