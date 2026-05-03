@@ -3737,13 +3737,16 @@ function renderWkCards() {
     var rd = function(r){ return r.date_reglement || r.date; };
 
     // ── Section avance caisse (tous membres) ─────────────────
-    // Avances reçues : cat='Avance caisse', bénéficiaire = fmen
-    var avances   = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }), 'montant');
+    // Avances reçues : cat='Avance caisse', bénéficiaire = fmen, statut=Payé
+    var avancesRows  = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; });
+    var avances      = sum(avancesRows, 'montant');
     // Dépenses réalisées avec l'avance (Payé uniquement — En attente n'impacte pas la caisse)
     //   · dépenses non-ménage où fmen=personne (Consommables, Technicien, Règlement terrain…)
     //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
-    var depNonMen = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.statut==='Payé'; }), 'montant');
-    var depMenage = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name&&r.statut==='Payé'; }), 'montant');
+    var depNonMenRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.statut==='Payé'; });
+    var depMenageRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name&&r.statut==='Payé'; });
+    var depNonMen = sum(depNonMenRows, 'montant');
+    var depMenage = sum(depMenageRows, 'montant');
     var depenses  = depNonMen + depMenage;
     var solde     = avances - depenses;
     var hasAvance = avances > 0;
@@ -3806,12 +3809,57 @@ function renderWkCards() {
     if (hasAvance) {
       var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
       var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
+      // Détail Utilisé — toutes les lignes incluses dans le calcul
+      var allDepRows = depNonMenRows.concat(depMenageRows);
+      allDepRows.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      var detailRows = allDepRows.map(function(r){
+        return '<tr style="font-size:10px;color:var(--td);border-bottom:1px solid var(--br)">' +
+          '<td style="padding:2px 4px;white-space:nowrap">'+(r.date||'—')+'</td>'+
+          '<td style="padding:2px 4px">'+escHtml(r.cat||'')+'</td>'+
+          '<td style="padding:2px 4px">'+escHtml(r.fmen||'—')+'</td>'+
+          '<td style="padding:2px 4px;color:var(--bl)">'+(r.paid_by?escHtml(r.paid_by):'<span style="opacity:.5">—</span>')+'</td>'+
+          '<td style="padding:2px 4px;text-align:right;font-weight:600;color:var(--re);font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</td>'+
+          '<td style="padding:2px 4px">'+(r.statut==='Payé'?'✅':'⏳')+'</td>'+
+          '<td style="padding:2px 4px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(r.desc||'')+'">'+escHtml((r.desc||'').slice(0,30))+'</td>'+
+          '<td style="padding:2px 4px;opacity:.4;font-size:9px">'+escHtml((r.id||'').slice(-6))+'</td>'+
+        '</tr>';
+      }).join('');
+      var detailHtml = allDepRows.length
+        ? '<details style="margin:4px 0 0"><summary style="font-size:11px;color:var(--bl);cursor:pointer;list-style:none;padding:3px 0">▸ Détail Utilisé ('+allDepRows.length+' ligne'+(allDepRows.length>1?'s':'')+')</summary>'+
+          '<div style="overflow-x:auto;margin-top:4px"><table style="width:100%;border-collapse:collapse">'+
+            '<thead><tr style="font-size:9px;color:var(--td);text-transform:uppercase">'+
+              '<th style="padding:2px 4px;text-align:left">Date</th>'+
+              '<th style="padding:2px 4px;text-align:left">Catégorie</th>'+
+              '<th style="padding:2px 4px;text-align:left">fmen</th>'+
+              '<th style="padding:2px 4px;text-align:left">paid_by</th>'+
+              '<th style="padding:2px 4px;text-align:right">Montant</th>'+
+              '<th style="padding:2px 4px;text-align:left">St.</th>'+
+              '<th style="padding:2px 4px;text-align:left">Desc.</th>'+
+              '<th style="padding:2px 4px;text-align:left">ID</th>'+
+            '</tr></thead><tbody>'+detailRows+'</tbody>'+
+          '</table></div></details>'
+        : '<div style="font-size:11px;color:var(--td);font-style:italic;padding:2px 0">Aucune dépense payée trouvée</div>';
+      // Solde global réel = Reçu + collecté terrain non reversé − Utilisé
+      var soldeGlobal = avances + tax + ext - depenses;
+      var sgCol = soldeGlobal>0?'var(--or)':soldeGlobal<0?'var(--re)':'var(--gr)';
+      var sgLbl = soldeGlobal>0?'🌐 Solde global à justifier':soldeGlobal<0?'⚠️ Dépenses > total reçu':'✅ Soldé globalement';
       html +=
         '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+((hasMenage||hasCollected)?'8':'0')+'px;padding-top:6px">'+
           '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
         '<div class="ccr"><div class="ccl">Reçu</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
         '<div class="ccr"><div class="ccl">Utilisé</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
-        '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>';
+        '<div style="padding:0 0 4px">'+detailHtml+'</div>'+
+        '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>'+
+        ((tax>0||ext>0) ?
+          '<div class="ccr" style="margin-top:6px;padding-top:4px;border-top:1px dashed var(--br)">'+
+            '<div class="ccl" style="font-size:11px;color:var(--td)">+ Collecté non reversé</div>'+
+            '<div class="ccv" style="color:var(--or);font-size:11px">+'+fmt(tax+ext)+'</div>'+
+          '</div>'+
+          '<div class="cct" style="background:var(--s2)">'+
+            '<div class="cctl">'+sgLbl+'</div>'+
+            '<div class="cctv" style="color:'+sgCol+'">'+fmt(Math.abs(soldeGlobal))+'</div>'+
+          '</div>'
+        : '');
     }
 
     // Bouton Solder — cleaner uniquement, net positif
