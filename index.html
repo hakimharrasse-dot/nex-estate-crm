@@ -3655,10 +3655,17 @@ function renderWkCards() {
 
   var total = cards.length;
 
-  // ≤ 5 cartes : tout afficher d'un coup, grille auto-fill, pas de navigation
+  // ≤ 5 cartes : tout afficher d'un coup, pas de navigation
   if (total <= 5) {
-    var minW = isMobile() ? 140 : 200;
-    set('wk-cards', '<div class="cg" style="grid-template-columns:repeat(auto-fill,minmax('+minW+'px,1fr));">'
+    var cols;
+    if (isMobile()) {
+      cols = Math.min(total, 2);
+    } else if (total === 5) {
+      cols = 3; // 3+2 : cartes à ~375px, propre et lisible
+    } else {
+      cols = total; // 1, 2, 3 ou 4 colonnes égales
+    }
+    set('wk-cards', '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'
       + cards.join('') + '</div>');
     return;
   }
