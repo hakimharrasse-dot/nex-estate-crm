@@ -2421,8 +2421,23 @@ function buildCleanerOptions(selectedName) {
   return opts;
 }
 
+// Options "Collecté par" — tous membres actifs, "Équipe" préservé si valeur historique
+function buildCollectorOptions(selectedName) {
+  var members = DB.team.filter(function(m){ return m.active; });
+  members.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  var opts = '';
+  // Préserver "Équipe" pour les entrées historiques uniquement
+  if (selectedName === 'Équipe') {
+    opts += '<option value="Équipe" selected>⚠️ Équipe (historique)</option>';
+  }
+  members.forEach(function(m){
+    opts += '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(m.name)+'</option>';
+  });
+  return opts;
+}
+
 function populateTeamSelects() {
-  // b-fmen filter select
+  // b-fmen — filtre dépenses business (femmes de ménage uniquement)
   var bfmen = document.getElementById('b-fmen');
   if (bfmen) {
     var cur = bfmen.value;
@@ -2430,6 +2445,26 @@ function populateTeamSelects() {
     getCleaners(true).forEach(function(m){
       bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
     });
+  }
+  // t-fcol — filtre collecteur taxe (tous membres + Équipe pour historique)
+  var tfcol = document.getElementById('t-fcol');
+  if (tfcol) {
+    var curT = tfcol.value;
+    tfcol.innerHTML = '<option value="">Tous collecteurs</option>';
+    DB.team.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).forEach(function(m){
+      tfcol.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===curT?' selected':'')+'>'+escHtml(m.name)+'</option>';
+    });
+    tfcol.innerHTML += '<option value="Équipe"'+('Équipe'===curT?' selected':'')+'>Équipe</option>';
+  }
+  // s-fcol — filtre collecteur services (tous membres + Équipe pour historique)
+  var sfcol = document.getElementById('s-fcol');
+  if (sfcol) {
+    var curS = sfcol.value;
+    sfcol.innerHTML = '<option value="">Tous collecteurs</option>';
+    DB.team.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).forEach(function(m){
+      sfcol.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===curS?' selected':'')+'>'+escHtml(m.name)+'</option>';
+    });
+    sfcol.innerHTML += '<option value="Équipe"'+('Équipe'===curS?' selected':'')+'>Équipe</option>';
   }
 }
 
@@ -3663,13 +3698,14 @@ function renderWkCards() {
 
     // ── Section ménage (femmes de ménage uniquement) ─────────
     var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0, payers=[];
+    // Taxe et extras collectés par ce membre (tous rôles — ex: agent terrain)
+    tax = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
+    ext = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
     if (isCleaner) {
       var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'; });
       men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
       // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
       adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
-      tax  = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
-      ext  = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
       nbMen= DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).length;
       paid = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
       // Payeurs tiers : ménages où paid_by est quelqu'un d'autre que la femme de ménage
@@ -3680,8 +3716,9 @@ function renderWkCards() {
     var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
     var lbl = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
 
-    var hasMenage = isCleaner && (men>0||adv>0||nbMen>0||paid>0);
-    if (!hasMenage && !hasAvance) return '';
+    var hasMenage   = isCleaner && (men>0||adv>0||nbMen>0||paid>0);
+    var hasCollected = (tax > 0 || ext > 0);
+    if (!hasMenage && !hasAvance && !hasCollected) return '';
 
     var html = '<div class="cc">'+
       '<div class="ccn '+colClass(name)+'">'+name+
@@ -3702,11 +3739,23 @@ function renderWkCards() {
         (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '');
     }
 
+    // Collectés terrain (membres non-ménage : agent, chauffeur, etc.)
+    // Pour les cleaners, cette section est déjà intégrée dans hasMenage via − Taxe / − Extras
+    if (!hasMenage && hasCollected) {
+      var dueTerrain = tax + ext;
+      html +=
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:0;padding-top:6px">'+
+          '<div class="ccl" style="font-weight:600;color:var(--td)">💵 Collectés terrain</div></div>'+
+        (tax>0 ? '<div class="ccr"><div class="ccl">Taxe (non reversée)</div><div class="ccv" style="color:var(--or)">'+fmt(tax)+'</div></div>' : '')+
+        (ext>0 ? '<div class="ccr"><div class="ccl">Extras (non payés)</div><div class="ccv" style="color:var(--go)">'+fmt(ext)+'</div></div>' : '')+
+        '<div class="cct"><div class="cctl">⬅️ '+escHtml(name)+' te doit</div><div class="cctv" style="color:var(--te)">'+fmt(dueTerrain)+'</div></div>';
+    }
+
     if (hasAvance) {
       var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
       var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
       html +=
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+(hasMenage?'8':'0')+'px;padding-top:6px">'+
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+((hasMenage||hasCollected)?'8':'0')+'px;padding-top:6px">'+
           '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
         '<div class="ccr"><div class="ccl">Reçu</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
         '<div class="ccr"><div class="ccl">Utilisé</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
@@ -4556,7 +4605,7 @@ function buildForm(type, editId) {
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
-      field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
+      '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
@@ -4569,7 +4618,7 @@ function buildForm(type, editId) {
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service</label><select class="fse" id="fi-svc">'+CATS_S.map(function(c){return '<option'+(v('svc')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
-      field2('Collecté par','fi-col','select',v('col','Hakim'),['Hakim','Amal','Rabiaa','Touria','Équipe'])+
+      '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
