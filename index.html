@@ -49,13 +49,13 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .wl{font-family:'DM Mono',monospace;font-size:12px;min-width:155px;text-align:center;color:var(--tm);}
 .nb2{background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px;font-family:'DM Sans',sans-serif;}
 .cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
-.cc{background:var(--s2);border:1px solid var(--br);border-radius:12px;padding:16px;}
-.ccn{font-size:14px;font-weight:600;margin-bottom:12px;}
-.ccr{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--br);font-size:13px;}
+.cc{background:var(--s2);border:1px solid var(--br);border-radius:12px;padding:13px;}
+.ccn{font-size:13px;font-weight:600;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ccr{display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid var(--br);font-size:12px;}
 .ccr:last-of-type{border-bottom:none;}
-.ccl{color:var(--tm);}.ccv{font-family:'DM Mono',monospace;font-weight:500;}
-.cct{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--s);}
-.cctl{font-size:13px;font-weight:600;}.cctv{font-family:'DM Mono',monospace;font-size:16px;font-weight:600;}
+.ccl{color:var(--tm);font-size:11px;flex-shrink:0;max-width:60%;}.ccv{font-family:'DM Mono',monospace;font-weight:500;font-size:12px;text-align:right;}
+.cct{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--s);gap:4px;}
+.cctl{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.cctv{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;white-space:nowrap;}
 /* Bloc paiement ménage — modes période */
 .wm{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
 .wmb{background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:5px 13px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s,color .15s;}
@@ -3622,14 +3622,14 @@ function renderWkCards() {
 
     if (hasMenage) {
       html +=
-        '<div class="ccr"><div class="ccl">Ménage effectué (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
-        (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl);font-size:12px">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
-        (adv>0 ? '<div class="ccr"><div class="ccl">Avancé par la personne</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px">'+
+        '<div class="ccr"><div class="ccl">Ménage (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
+        (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl)">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
+        (adv>0 ? '<div class="ccr"><div class="ccl">Avancé</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:6px">'+
           '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
         '</div>'+
-        (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
-        (ext>0 ? '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
+        (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
+        (ext>0 ? '<div class="ccr"><div class="ccl">− Extras</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
         '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
         (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '');
     }
@@ -3638,10 +3638,10 @@ function renderWkCards() {
       var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
       var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
       html +=
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+(hasMenage?'8':'0')+'px;padding-top:8px">'+
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+(hasMenage?'8':'0')+'px;padding-top:6px">'+
           '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
-        '<div class="ccr"><div class="ccl">Avances reçues</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
-        '<div class="ccr"><div class="ccl">Utilisé depuis avance caisse</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
+        '<div class="ccr"><div class="ccl">Reçu</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
+        '<div class="ccr"><div class="ccl">Utilisé</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
         '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>';
     }
 
