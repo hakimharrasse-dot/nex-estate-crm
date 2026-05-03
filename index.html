@@ -1202,10 +1202,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 
 <!-- Mobile — Backdrop + drawer "Plus" -->
 <div id="mob-backdrop" style="display:none;position:fixed;inset:0;z-index:21;background:rgba(0,0,0,.45)" onclick="closeMobMore()"></div>
-<div id="mob-drawer" style="display:none;position:fixed;bottom:58px;left:0;right:0;background:var(--s);border-top:1px solid var(--br);border-radius:16px 16px 0 0;padding:16px 12px 14px;z-index:22;justify-content:space-around;align-items:center;box-shadow:0 -8px 32px rgba(0,0,0,.5)">
-  <div class="mbt manager-plus" id="mn-recur" onclick="goTo('recur');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">🔄</span>Charges</div>
-  <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">👥</span>Équipe</div>
-  <div class="mbt admin-only" id="mn-admin" onclick="goTo('admin');closeMobMore()" style="gap:4px;padding:6px 14px"><span class="mic">⚙️</span>Utilisateurs</div>
+<div id="mob-drawer" style="display:none;position:fixed;bottom:58px;left:0;right:0;background:var(--s);border-top:1px solid var(--br);border-radius:16px 16px 0 0;padding:16px 12px 14px;z-index:22;flex-wrap:wrap;justify-content:center;gap:8px;align-items:center;box-shadow:0 -8px 32px rgba(0,0,0,.5)">
+  <div class="mbt manager-plus" id="mn-recur" onclick="goTo('recur');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🔄</span>Charges</div>
+  <div class="mbt manager-plus" id="mn-logements" onclick="goTo('logements');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🏘️</span>Logements</div>
+  <div class="mbt manager-plus" id="mn-qualite" onclick="goTo('qualite');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">✅</span>Qualité</div>
+  <div class="mbt admin-only" id="mn-reconcil" onclick="goTo('reconcil');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🔍</span>Réconcil.</div>
+  <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">👥</span>Équipe</div>
+  <div class="mbt admin-only" id="mn-admin" onclick="goTo('admin');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">⚙️</span>Utilisateurs</div>
 </div>
 
 <!-- MODAL UNIQUE -->
