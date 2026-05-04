@@ -758,6 +758,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
   </div>
+  <div id="b-recap-paye" style="display:none"></div>
   <div class="sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
   <!-- Gains par femme de ménage -->
@@ -2273,6 +2274,7 @@ var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
 var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Règlement terrain','Autre'];
+function catLabel(c){return c==='Règlement terrain'?'Solde équipe déjà comptabilisé':c;}
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
@@ -2502,7 +2504,7 @@ function populateTeamSelects() {
     var curCat = bfcat.value;
     bfcat.innerHTML = '<option value="">Toutes catégories</option>';
     CATS_B.forEach(function(c){
-      bfcat.innerHTML += '<option value="'+escHtml(c)+'"'+(c===curCat?' selected':'')+'>'+escHtml(c)+'</option>';
+      bfcat.innerHTML += '<option value="'+escHtml(c)+'"'+(c===curCat?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';
     });
   }
   // t-fcol — filtre collecteur taxe (tous membres + Équipe pour historique)
@@ -3612,6 +3614,33 @@ function renderBiz() {
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}), 'montant');
   set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
+  // ── Récap mouvements payés (visible uniquement quand filtre statut = Payé) ──
+  var recapPayeEl=document.getElementById('b-recap-paye');
+  if(recapPayeEl) {
+    if(fs==='Payé') {
+      var allPeriodPaye=filterPer(DB.business,'b').filter(function(r){return r.statut==='Payé';});
+      var rpDepReel=sum(allPeriodPaye.filter(function(r){return r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain';}), 'montant');
+      var rpAvances=sum(allPeriodPaye.filter(function(r){return r.cat==='Avance caisse';}), 'montant');
+      var rpSolde  =sum(allPeriodPaye.filter(function(r){return r.cat==='Règlement terrain';}), 'montant');
+      var rpTotal  =sum(allPeriodPaye, 'montant');
+      recapPayeEl.style.display='';
+      recapPayeEl.innerHTML=
+        '<div style="background:var(--s2);border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid rgba(76,175,125,.25)">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px">📊 Récap mouvements payés — période</div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--s3)">'+
+          '<span style="color:var(--tx)">Dépenses réelles payées</span><span style="font-weight:600;color:var(--re)">'+fmt(rpDepReel)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--s3)">'+
+          '<span style="color:var(--tm)">Avances caisse</span><span style="color:var(--or)">'+fmt(rpAvances)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--s3)">'+
+          '<span style="color:var(--tm)">Solde équipe déjà comptabilisé</span><span style="color:var(--tm)">'+fmt(rpSolde)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0 0">'+
+          '<span style="font-weight:700">Total mouvements payés</span><span style="font-weight:700">'+fmt(rpTotal)+'</span></div>'+
+        '</div>';
+    } else {
+      recapPayeEl.style.display='none';
+      recapPayeEl.innerHTML='';
+    }
+  }
   var mk=MO.b.toISOString().slice(0,7);
   // Recap ménage par appart (hors global)
   set('b-recap',APPARTS.map(function(ap){
@@ -3650,7 +3679,7 @@ function renderBiz() {
           '<label class="r-card-chk"><input type="checkbox" class="gcb" data-id="'+r.id+'"'+checked+' onchange="toggleBizSel(\''+r.id+'\',this.checked)"></label>'+
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           (r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+
-          chip(r.cat,catClass(r.cat))+
+          chip(catLabel(r.cat),catClass(r.cat))+
           chip(r.statut,stClass(r.statut))+
         '</div>'+
         (r.fmen||r.paid_by||r.desc?'<div class="r-card-row2">'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'')+
@@ -3670,7 +3699,7 @@ function renderBiz() {
         '<td><input type="checkbox" class="gcb" data-id="'+r.id+'"'+checked+' onchange="toggleBizSel(\''+r.id+'\',this.checked)"></td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td>'+(r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+'</td>'+
-        '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
+        '<td>'+chip(catLabel(r.cat),catClass(r.cat))+'</td>'+
         '<td>'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>'+
         (function(){var pb=r.paid_by||(r.cat!=='Ménage'?r.fmen:'')||'Hakim';return '<td class="hm">'+(pb?chip(pb,colClass(pb)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>';})() +
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
@@ -4886,7 +4915,7 @@ function buildForm(type, editId) {
       '</div><div style="font-size:11px;color:var(--td);margin-top:5px">Si plusieurs, le montant est réparti automatiquement</div></div>'+
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
-      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option value="'+escHtml(c)+'"'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';}).join('')+'</select></div>'+
       '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
       '<div class="ff" id="ff-paid-by" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Payé par</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
