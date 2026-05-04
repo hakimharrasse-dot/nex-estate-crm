@@ -10,7 +10,7 @@
 
 **Nex-Estate CRM** est un outil de gestion de réservations locatives courte durée (Airbnb, Booking.com, VRBO, Direct) pour 4 appartements au Maroc.
 
-- **Frontend** : `index.html` unique (~5500 lignes), vanilla JS, zéro framework, zéro build
+- **Frontend** : `index.html` unique (~7528 lignes), vanilla JS, zéro framework, zéro build
 - **Backend** : Vercel Serverless Functions (Node.js)
 - **Base de données** : Supabase (PostgreSQL 17, projet `zjultuaqkzjupiiewxhy`, région `eu-west-1`)
 - **Source de réservations** : Smoobu (PMS) via webhook temps réel + cron horaire
@@ -249,6 +249,27 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 | `occupNightsBiz(appart, pStart, pEnd)` | Agrège les nuits business par appartement sur une période |
 | `recomputeAndSave()` | Recalcule statuts/dates de toutes les réservations |
 | `calcDatePaiement()` | Règle de date paiement par source (identique à `lib/smoobu-normalizer.js`) |
+| `filterPer(rows, k)` | Filtre universel par période — clés : `r, b, t, s, p, d, gn` |
+| `setPer(k, p)` | Active une période pour une clé — met à jour l'onglet actif |
+| `renderNav(k)` | Génère la barre de navigation dates pour la clé donnée |
+| `renderBiz()` | Rendu liste Dépenses Business avec filtres b-fap/b-fcat/b-fmen/b-fst/b-fpay/b-fsearch |
+| `populateTeamSelects()` | Peuple b-fmen (toute l'équipe active), b-fpay (équipe + historique paid_by), t-fcol, s-fcol |
+| `renderWkCards()` | Récap équipe : cartes avec gains, avances, dépenses, solde net — modes cumul/semaine/mois/perso |
+| `renderGainsCards()` | Gains ménage par membre — filterPer sur clé 'gn' (période indépendante) |
+| `getSoldeData(name)` | Calcule bizIds/taxeIds/servIds + men/adv/tax/ext/net pour la modale Solder |
+| `confirmSolde()` | Exécute le règlement : ①bizPend→Payé + neutralise paid_by, ②taxe→Reversé, ③serv→Payé, ④crée Règlement terrain |
+
+### Variables globales d'état des périodes (lignes ~2550-2558)
+```javascript
+var P   = {r:'mois',b:'mois',t:'mois',s:'mois',p:'mois',d:'mois',gn:'mois'};
+var DAY = {r:today(),b:today(),...,gn:today()};
+var WK  = {r:today(),b:today(),...,gn:today()};
+var MO  = {r:new Date(),b:new Date(),...,gn:new Date()};
+var YR  = {r:new Date().getFullYear(),...,gn:new Date().getFullYear()};
+var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
+var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
+var WK_MODE = 'cumul';    // default: 📋 En cours (tout ouvert, sans limite de date)
+```
 
 ### IDs importants dans le DOM
 - `fi-nuits-biz` — input nuits_business dans le modal réservation
@@ -257,6 +278,12 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 - `api-sync-ov` — overlay résultat sync API (z-index 903)
 - `import-log-ov` — overlay log CSV (z-index 902)
 - `audit-occ-ov` — overlay audit occupation (z-index 901)
+- `b-fmen` — filtre membre (toute l'équipe active)
+- `b-fpay` — filtre payeur strict (paid_by)
+- `b-fsearch` — recherche libre "Lié à" (paid_by + fmen + desc)
+- `b-fcat` — filtre catégorie (CATS_B complet)
+- `wmt-cumul` — bouton "📋 En cours" (WK_MODE=cumul, défaut)
+- `gn-nav` — barre navigation Gains ménage (clé 'gn')
 
 ---
 
@@ -337,3 +364,86 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-01 | Protection triple `override_manual` déployée (Fix 1 Audit finances, Fix 2 webhook, Fix 3 poll) |
 | 2026-05-01 | Diagnostic Jan/Feb/Mar : 118/154 records sans checkout → 0% occupation → correction via poll backfill from=2025-10-01 |
 | 2026-05-01 | Studio Ocean documenté comme logement historique valide (restitué fév 2026, non dans Smoobu) |
+| 2026-05-02 | Feat: Solder personne — règlement net par période avec Règlement terrain (`b938678`) |
+| 2026-05-03 | Fix: avance caisse Reçu/Utilisé filtrés sur `statut=Payé` uniquement — corrige comptage En attente (`a292eca`) |
+| 2026-05-03 | Feat: filtre `b-fpay` "Tous payeurs" strict sur `paid_by` dans Dépenses Business (`d920305`) |
+| 2026-05-03 | Fix: `bizPeriod` exclut Règlement terrain (anti double-comptage dashboard cash) ; ajout `b-fsearch` "🔍 Lié à" ; `bPend` exclut Règlement terrain (`da1adc9`) |
+| 2026-05-03 | Feat: détail "Utilisé" dépliable par membre dans Récap équipe + Solde global réel (`2d62dd2`) |
+| 2026-05-03 | Fix CRITIQUE: neutralisation `paid_by` sur ménages soldés via Règlement terrain — élimine le double-comptage (`751fe73`) |
+| 2026-05-04 | Feat: b-fmen "Toute l'équipe" (tous membres actifs) ; gains ménage période indépendante (clé 'gn') ; WK_MODE='cumul' "📋 En cours" par défaut (`ac692b1`) |
+| 2026-05-04 | Fix: `paid_by` affiché comme badge bleu 💳 dans les cartes Business mobiles (`384e40f`) |
+| 2026-05-04 | Backup `nex-estate-crm-backup-2026-05-04` produit — suppression ancien backup 2026-05-02 |
+
+---
+
+## 13. Règles métier Avance caisse / Solder / Équipe (validées 2026-05-04)
+
+### Architecture Avance caisse
+
+- **Reçu** (`avances`) = entrées `cat=Avance caisse`, `fmen=membre`, `statut=Payé` — cash remis au membre
+- **Utilisé** (`depMenage + depNonMen`) = toutes dépenses réelles `statut=Payé` imputées au membre — cash dépensé
+  - `depMenage` : `cat=Ménage`, `(paid_by || fmen) === name`, `statut=Payé`
+  - `depNonMen` : `cat !== Ménage && cat !== Avance caisse`, `fmen === name`, `statut=Payé`
+- **Collecté terrain** = taxe séjour + extras collectés
+- **Solde net** = Reçu + Collecté terrain − Utilisé
+- **⚠️ JAMAIS filtrer sans `statut=Payé`** — les entrées "En attente" ne sont pas du cash réel
+
+### Catégories CATS_B (complètes)
+```javascript
+var CATS_B = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic',
+  'Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration',
+  'Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements',
+  'Outils / logiciels','Avance caisse','Règlement terrain','Autre'];
+```
+
+### Exclusions KPI (IMMUABLES)
+
+| Catégorie | bizRows (Dashboard KPI) | bizPeriod (Cash dashboard) | bPend (En attente) |
+|---|---|---|---|
+| `Avance caisse` | ❌ Exclu | ❌ Exclu | ❌ Exclu |
+| `Règlement terrain` | ❌ Exclu | ❌ Exclu | ❌ Exclu |
+
+> `bizRows` et `bizPeriod` excluent les deux — jamais de double-comptage dans les KPIs financiers.
+
+### Flux Solder personne (`confirmSolde()`)
+
+1. **① Dépenses business pendantes → Payé**
+   - `bizIds` → `statut = 'Payé'`
+   - Si `payeur !== 'Hakim'` ET `cat === 'Ménage'` ET `paid_by === payeur` → **`paid_by = null`** (neutralisation anti-double-comptage)
+2. **② Taxe de séjour → Reversé** (`taxeIds`)
+3. **③ Services → Payé** (`servIds`)
+4. **④ Crée "Règlement terrain"** (si `payeur !== 'Hakim'`) — montant = net, `cat='Règlement terrain'`, `fmen=payeur`, `statut='Payé'`
+
+> **Règle critique** : le Règlement terrain représente le cash réel versé. Sans neutralisation du `paid_by` sur les ménages couverts, les ménages seraient comptés UNE FOIS via `depMenage` ET UNE FOIS via le RT dans `depNonMen`.
+
+### Filtres Dépenses Business
+
+| ID | Label | Logique |
+|---|---|---|
+| `b-fap` | Appartement | `r.appart === fa` |
+| `b-fcat` | Catégorie | `r.cat === fc` — CATS_B complet |
+| `b-fmen` | Membre | `r.fmen === fm` — toute l'équipe active (pas seulement ménage) |
+| `b-fst` | Statut | `r.statut === fs` |
+| `b-fpay` | Payé par | `r.paid_by === fp` — strict, membres actifs + historique |
+| `b-fsearch` | 🔍 Lié à | texte libre sur `paid_by + fmen + desc` (audit) |
+
+### Mode Récap équipe (WK_MODE)
+
+| Mode | ID bouton | Comportement |
+|---|---|---|
+| `'cumul'` | `wmt-cumul` | **Défaut "📋 En cours"** — tout ouvert, sans limite de date |
+| `'semaine'` | `wmt-semaine` | Semaine en cours |
+| `'mois'` | `wmt-mois` | Mois en cours |
+| `'perso'` | `wmt-perso` | Période libre |
+
+### Gains ménage (clé 'gn')
+
+- Filtre période **indépendant** des Dépenses Business (clé séparée `'gn'`)
+- Système `filterPer/setPer` standard — onglets : Jour / Semaine / Mois / Année / Période / Cumulé
+- Navigation : `id="gn-nav"`, onglets : `gnj, gns, gnm, gna, gncu, gncum`
+- `tabMap` inclut `gn:'gn'`, `onCls` inclut `gn:'ong'`
+
+### Mobile
+
+- Cartes Business : `paid_by` affiché comme badge bleu 💳 dans `row2`
+- Logique : `isMobile()` = `window.innerWidth < 700`
