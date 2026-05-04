@@ -3633,7 +3633,8 @@ function renderBiz() {
           chip(r.cat,catClass(r.cat))+
           chip(r.statut,stClass(r.statut))+
         '</div>'+
-        (r.fmen||r.desc?'<div class="r-card-row2">'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'')+
+        (r.fmen||r.paid_by||r.desc?'<div class="r-card-row2">'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'')+
+          (r.paid_by?'<span style="font-size:11px;color:var(--bl);background:var(--bls,rgba(91,130,217,.12));border-radius:4px;padding:2px 6px;white-space:nowrap">💳 '+escHtml(r.paid_by)+'</span>':'')+
           (r.desc?'<span style="font-size:12px;color:var(--tm);font-style:italic;flex:1">'+r.desc+'</span>':'')+'</div>':'')+
         '<div class="r-card-row3">'+
           '<span class="r-card-net" style="color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</span>'+
