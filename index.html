@@ -567,12 +567,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         <span class="cash-total-lbl" style="color:var(--re)">Total à payer</span>
         <span class="cash-total-val" style="color:var(--re)" id="d-total-att">0 MAD</span>
       </div>
+      <div class="cash-row-item" style="margin-top:8px;border-top:1px solid rgba(224,82,82,.2);padding-top:8px">
+        <span class="cash-row-label" style="color:var(--tm);font-size:11px">Taxe à reverser (État)</span>
+        <span class="cash-row-val" id="d-cash-taxe-nr" style="color:var(--tm);font-size:11px">0 MAD</span>
+      </div>
     </div>
     <!-- Cash encaissé -->
     <div class="cash-card" style="border-color:rgba(76,175,125,.35)">
       <div class="cash-card-title" style="color:var(--gr)">💰 Cash encaissé</div>
       <div class="cash-row-item">
-        <span class="cash-row-label">Revenus nets</span>
+        <span class="cash-row-label">CA réservations</span>
         <span class="cash-row-val" id="d-cash-net" style="color:var(--gr)">0 MAD</span>
       </div>
       <div class="cash-row-item">
@@ -580,12 +584,20 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         <span class="cash-row-val" id="d-cash-serv" style="color:var(--go)">0 MAD</span>
       </div>
       <div class="cash-row-item">
-        <span class="cash-row-label">Taxe non reversée</span>
+        <span class="cash-row-label">Taxe reversée</span>
         <span class="cash-row-val" id="d-cash-taxe" style="color:var(--te)">0 MAD</span>
       </div>
+      <div class="cash-row-item" style="border-top:1px solid rgba(76,175,125,.3);margin-top:4px;padding-top:6px">
+        <span class="cash-row-label" style="font-weight:600">Cash encaissé total</span>
+        <span class="cash-row-val" id="d-cash-tot" style="font-weight:600;color:var(--gr)">0 MAD</span>
+      </div>
+      <div class="cash-row-item">
+        <span class="cash-row-label">Dépenses réelles (payées)</span>
+        <span class="cash-row-val" id="d-cash-dep" style="color:var(--re)">0 MAD</span>
+      </div>
       <div class="cash-total" style="background:var(--grs)">
-        <span class="cash-total-lbl" style="color:var(--gr)">Résultat réel <span id="d-res-reel-delta" style="font-size:10px;font-weight:400;margin-left:6px"></span></span>
-        <span class="cash-total-val" style="color:var(--gr)" id="d-res-reel">0 MAD</span>
+        <span class="cash-total-lbl" style="color:var(--gr)">Résultat net réel <span id="d-res-reel-delta" style="font-size:10px;font-weight:400;margin-left:6px"></span></span>
+        <span class="cash-total-val" id="d-res-reel">0 MAD</span>
       </div>
     </div>
   </div>
@@ -645,7 +657,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <!-- Décisions rapides -->
   <div class="dec-row" id="d-decisions"></div>
   <div class="kg">
-    <div class="kc"><div class="kl">Taxe collectée</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Hors CA — argent État</div></div>
+    <div class="kc"><div class="kl">Taxe suivie</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Total taxe saisie — argent État</div></div>
     <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
   </div>
   <div class="sl">Performance par appartement</div>
@@ -3072,16 +3084,21 @@ function renderDash() {
   var depPaye=sum(bizPeriod.filter(function(r){return r.statut==='Payé';}),'montant');
   var servPaye=sum(filterPer(DB.serv,'d').filter(function(r){return (!fa||r.appart===fa)&&r.statut==='Payé';}),'montant');
   var taxeNonRev=sum(filterPer(DB.taxe,'d').filter(function(r){return (!fa||r.appart===fa)&&r.rev==='Non reversé';}),'montant');
-  var resultatReel=cur.netMad-depPaye;
+  var taxeReversee=sum(filterPer(DB.taxe,'d').filter(function(r){return (!fa||r.appart===fa)&&r.rev==='Reversé';}),'montant');
+  var cashTotal=cur.netMad+servPaye+taxeReversee;
+  var resultatReel=cashTotal-depPaye;
 
   // ── Cash à payer ──
   set('d-menage-att',fmt(menageAtt));
   set('d-autres-att',fmt(autresAtt));
   set('d-total-att',fmt(depAtt));
+  set('d-cash-taxe-nr',fmt(taxeNonRev));
   // ── Cash encaissé ──
   set('d-cash-net',fmt(cur.netMad));
   set('d-cash-serv',fmt(servPaye));
-  set('d-cash-taxe',fmt(taxeNonRev));
+  set('d-cash-taxe',fmt(taxeReversee));
+  set('d-cash-tot',fmt(cashTotal));
+  set('d-cash-dep',fmt(depPaye));
   set('d-res-reel',fmt(resultatReel));
   var el_rres=document.getElementById('d-res-reel');
   if(el_rres) el_rres.style.color=resultatReel>=0?'var(--gr)':'var(--re)';
@@ -3209,10 +3226,13 @@ function renderDash() {
     }
   }
 
-  // ── Résultat réel delta vs précédent ──
+  // ── Résultat net réel delta vs précédent ──
   if(prev && prev.netMad!==undefined) {
     var prevDepPaye=sum(prevBiz.filter(function(r){return r.statut==='Payé';}), 'montant');
-    var prevResReel=prev.netMad - prevDepPaye;
+    var prevServPaye=prevBounds?sum(DB.serv.filter(function(r){return r.date>=prevBounds.start&&r.date<prevBounds.end&&(!fa||r.appart===fa)&&r.statut==='Payé';}),'montant'):0;
+    var prevTaxeRev=prevBounds?sum(DB.taxe.filter(function(r){return r.date>=prevBounds.start&&r.date<prevBounds.end&&(!fa||r.appart===fa)&&r.rev==='Reversé';}),'montant'):0;
+    var prevCashTot=prev.netMad+prevServPaye+prevTaxeRev;
+    var prevResReel=prevCashTot - prevDepPaye;
     set('d-res-reel-delta', deltaArrow(resultatReel, prevResReel, 'mad', prevLbl));
   }
 
