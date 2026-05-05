@@ -44,7 +44,7 @@ async function upsertResa(supabase, entry) {
   // 1. Lire l'état actuel pour savoir si l'enregistrement est verrouillé
   const { data: existing, error: fetchErr } = await supabase
     .from('resa')
-    .select('id, override_manual')
+    .select('id, override_manual, type_norm')
     .eq('smoobu_id', sid)
     .maybeSingle();
 
@@ -78,6 +78,37 @@ async function upsertResa(supabase, entry) {
     return { ok: true, ref: entry.ref, protected: true };
   }
 
+  // F2 — Downgrade guard : ANNULATION_PAYEE / ANNULATION_NON_PAYEE / AIRCOVER
+  // ne peuvent pas redevenir RESERVATION via un webhook updateReservation/newReservation.
+  // Smoobu peut envoyer un updateReservation après une annulation (mise à jour du voyageur,
+  // du prix affiché, etc.) — sans ce guard, le type_norm serait écrasé.
+  const DOWNGRADE_PROTECTED = ['ANNULATION_PAYEE', 'ANNULATION_NON_PAYEE', 'AIRCOVER'];
+  if (existing && DOWNGRADE_PROTECTED.includes(existing.type_norm) && entry.type_norm === 'RESERVATION') {
+    const { error: patchErr } = await supabase
+      .from('resa')
+      .update({
+        checkin:        entry.checkin,
+        checkout:       entry.checkout,
+        voyageur:       entry.voyageur,
+        adults:         entry.adults,
+        children:       entry.children,
+        nb_personnes:   entry.nb_personnes,
+        appart:         entry.appart,
+        source:         entry.source,
+        phone:          entry.phone,
+        email:          entry.email,
+        guest_language: entry.guest_language,
+        nuits_sejour:   entry.nuits_sejour,
+        nuits_fact:     entry.nuits_fact,
+        // Champs préservés : type_norm, statut, brut, net, commission,
+        //                    com_pct, taxe_sejour, date_paiement, mois_kpi
+      })
+      .eq('smoobu_id', sid);
+    if (patchErr) throw patchErr;
+    console.log('[webhook] DOWNGRADE BLOQUÉ (', existing.type_norm, '→ RESERVATION) — partial update:', sid, '| ref:', entry.ref);
+    return { ok: true, ref: entry.ref, downgrade_blocked: true, preserved: existing.type_norm };
+  }
+
   // 3. Non verrouillé (ou nouveau) → UPSERT complet
   const clean = stripMeta(entry);
 
@@ -106,7 +137,7 @@ async function softDeleteResa(supabase, smoobuId) {
   // 1. Lire l'entrée existante pour préserver notes et brut
   const { data: existing, error: fetchErr } = await supabase
     .from('resa')
-    .select('notes, brut, type_norm')
+    .select('notes, brut, type_norm, override_manual')
     .eq('smoobu_id', sid)
     .maybeSingle();
 
@@ -116,6 +147,14 @@ async function softDeleteResa(supabase, smoobuId) {
     // Entrée inconnue en base — rien à faire
     console.warn('[webhook] deleteReservation: smoobu_id introuvable en base:', sid);
     return { skipped: true, reason: 'not_found' };
+  }
+
+  // F1 — Protéger les lignes verrouillées manuellement
+  // Une ligne override_manual=true ne peut pas être soft-deletée par Smoobu.
+  // L'utilisateur devra déverrouiller manuellement si besoin.
+  if (existing.override_manual) {
+    console.warn('[webhook] softDelete BLOQUÉ — override_manual=true | smoobu_id:', sid, '| type_norm:', existing.type_norm);
+    return { skipped: true, reason: 'override_manual_protected', smoobu_id: sid };
   }
 
   const existingNotes = existing.notes || '';

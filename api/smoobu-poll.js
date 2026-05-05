@@ -452,7 +452,7 @@ export default async function handler(req, res) {
 
   // 2. Charger les enregistrements existants par smoobu_id
   const smoobuIds = bookings.map(b => String(b.id));
-  const existing = await sbGet(`resa?smoobu_id=in.(${smoobuIds.join(',')})&select=id,smoobu_id,override_manual`);
+  const existing = await sbGet(`resa?smoobu_id=in.(${smoobuIds.join(',')})&select=id,smoobu_id,override_manual,type_norm`);
   const existingMap = {};
   (existing || []).forEach(r => { existingMap[r.smoobu_id] = r; });
 
@@ -535,10 +535,39 @@ export default async function handler(req, res) {
         } else {
           // ── C-NORMAL : mise à jour complète ──────────────────────────────────
           // override_manual exclu du payload : on ne touche jamais ce champ en sync.
-          const { override_manual: _om, ...mappedData } = mapped;
-          await sbUpsert('resa', { ...mappedData, id: rec.id });
-          stats.upserted++;
-          console.log(`[poll] UPDATE ${smoobuId}`);
+
+          // F3 — Downgrade guard : ANNULATION_PAYEE / ANNULATION_NON_PAYEE / AIRCOVER
+          // ne peuvent pas redevenir RESERVATION via le poll.
+          // Smoobu peut retourner une réservation annulée comme active dans la fenêtre
+          // de poll — sans ce guard, le type_norm serait écrasé en RESERVATION.
+          const DOWNGRADE_PROTECTED = ['ANNULATION_PAYEE', 'ANNULATION_NON_PAYEE', 'AIRCOVER'];
+          if (DOWNGRADE_PROTECTED.includes(rec.type_norm) && mapped.type_norm === 'RESERVATION') {
+            await sbPatch('resa', rec.id, {
+              checkin:        mapped.checkin,
+              checkout:       mapped.checkout,
+              voyageur:       mapped.voyageur,
+              adults:         mapped.adults,
+              children:       mapped.children,
+              nb_personnes:   mapped.nb_personnes,
+              appart:         mapped.appart,
+              source:         mapped.source,
+              phone:          mapped.phone,
+              email:          mapped.email,
+              guest_language: mapped.guest_language,
+              nuits_sejour:   mapped.nuits_sejour,
+              nuits_fact:     mapped.nuits_fact,
+              date_creation:  mapped.date_creation,
+              // Champs préservés : type_norm, statut, brut, net, commission,
+              //                    com_pct, taxe_sejour, date_paiement, mois_kpi
+            });
+            stats.upserted++;
+            console.log(`[poll] DOWNGRADE BLOQUÉ ${smoobuId} (${rec.type_norm} → RESERVATION) — partial update`);
+          } else {
+            const { override_manual: _om, ...mappedData } = mapped;
+            await sbUpsert('resa', { ...mappedData, id: rec.id });
+            stats.upserted++;
+            console.log(`[poll] UPDATE ${smoobuId}`);
+          }
         }
       }
     } catch (err) {
