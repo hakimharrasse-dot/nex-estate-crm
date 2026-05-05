@@ -4848,7 +4848,9 @@ function buildForm(type, editId) {
     var ci=v('checkin',T), co=v('checkout','');
     var brutEur=rec?rec.brut:0;
     var brutMad=Math.round(brutEur*EUR_MAD);
-    var comPct=COM[src]||0.155;
+    // Fix: utiliser com_pct existant du record (0 pour AIRCOVER/AJUSTEMENT)
+    // Jamais écraser par COM[src] lors de l'édition — COM[src] sert uniquement à la création
+    var comPct = rec ? (rec.com_pct||0) : (COM[src]||0.155);
     var np=v('nb_personnes',1);
     var nf=v('nuits_fact',diffNuits(ci,co));
     var netMad=Math.round(brutMad-brutMad*comPct);
@@ -5051,8 +5053,13 @@ async function saveResa() {
   if(!ci||!brutMad){alert('Check-in et montant brut requis');return;}
   if(!ref){alert('La référence est obligatoire');return;}
   var src=gv('fi-src');
+  var typeNorm=gv('fi-type')||'RESERVATION';
   // Commission depuis le champ (peut être manuelle)
   var comPct=(parseFloat(gv('fi-com'))||0)/100;
+  // Guard ZERO_COM : AIRCOVER et AJUSTEMENT ont toujours commission=0, net=brut
+  // Règle absolue — indépendante de la source et de ce qui est affiché dans fi-com
+  var ZERO_COM_TYPES=['AIRCOVER','AJUSTEMENT'];
+  if(ZERO_COM_TYPES.indexOf(typeNorm)>=0) comPct=0;
   var co=gv('fi-co'), dp=gv('fi-dp');
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
