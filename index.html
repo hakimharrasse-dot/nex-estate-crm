@@ -5359,15 +5359,11 @@ function parseSmoobuRow(row, idx) {
   var nuitsFact  = (typeNorm === 'RESERVATION' || typeNorm === 'ANNULATION_PAYEE') ? nuits : 0;
   var nuitsSejou = (typeNorm === 'RESERVATION') ? nuits : 0;
 
-  // ── Commission : réelle du CSV si disponible, sinon % standard ──
-  var comPct, comEurFinal;
-  if (commEur > 0 && prixEur > 0 && commEur < prixEur) {
-    comEurFinal = commEur;
-    comPct      = commEur / prixEur;
-  } else {
-    comPct      = COM[src] || 0;
-    comEurFinal = prixEur * comPct;
-  }
+  // ── Commission : toujours taux standard CRM — montant CSV ignoré ──
+  // Règle CRM : COM[src] fait foi. Le CSV Smoobu contient le montant réel
+  // Smoobu (taux négociés, variables) — non fiable comme référence de taux.
+  var comPct      = COM[src] || 0;
+  var comEurFinal = prixEur * comPct;
   var netEur = prixEur - comEurFinal;
 
   // ── Net = 0 pour ANNULATION_NON_PAYEE ──
@@ -7201,11 +7197,13 @@ function isFinanciallyInconsistent(r) {
 function classifyFinRow(r, exp) {
   // 🟢 Sûre : AIRCOVER/AJUSTEMENT avec commission non nulle — règle ZERO_COM absolue
   if (['AIRCOVER','AJUSTEMENT'].indexOf(r.type_norm) >= 0 && r.commission > 0.02) return 'safe';
-  // 🔴 Risquée : Booking.com, VRBO, ANNULATION_PAYEE, ou gros écart > 100 EUR
-  if (r.source === 'Booking.com' || r.source === 'VRBO') return 'risky';
-  if (r.type_norm === 'ANNULATION_PAYEE') return 'risky';
+  // 🔴 Risquée : gros écart > 100 EUR net (anomalie de montant brut, pas juste de taux)
   if (Math.abs(r.net - exp.net) > 100) return 'risky';
-  // 🟡 À vérifier : tout le reste (taux Smoobu ≠ standard CRM mais cause incertaine)
+  // 🟡 À vérifier : taux Smoobu ≠ taux CRM standard (Booking.com, VRBO, ANNULATION_PAYEE)
+  // Cause connue : Smoobu renvoie son taux réel variable — règle CRM toujours prioritaire.
+  // Écart ≤ 100 EUR → corrigeable manuellement via Audit, sans risque de perte.
+  if (r.source === 'Booking.com' || r.source === 'VRBO') return 'review';
+  if (r.type_norm === 'ANNULATION_PAYEE') return 'review';
   return 'review';
 }
 
