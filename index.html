@@ -6046,27 +6046,9 @@ function recomputeAllPaymentDates() {
   var t = today();
   DB.resa.forEach(function(r) {
     var src = r.source || '';
-    var isOTA = OTA_SOURCES.indexOf(src) !== -1;
-    // date_paiement avant check-in pour une OTA = impossible → forcer correction même si override_manual
-    var dpImpossible = isOTA && r.checkin && r.date_paiement && r.date_paiement < r.checkin;
-    if (r.override_manual && !dpImpossible) {
-      // Protection manuelle : ne jamais recalculer date_paiement / mois_kpi / finances
-      // Recalculer le statut uniquement si décalé par rapport à la date_paiement existante
-      var correctStatut;
-      if (r.type_norm === 'ANNULATION_NON_PAYEE') {
-        correctStatut = 'Annulé';
-      } else if (r.type_norm !== 'AJUSTEMENT' && r.date_paiement) {
-        correctStatut = (t >= r.date_paiement) ? 'Payé' : 'En attente';
-      } else {
-        return;
-      }
-      if (r.statut !== correctStatut) {
-        r.statut = correctStatut;
-        dirty.push(r);
-      }
-      return;
-    }
-    // Règle CRM stricte — ignore toujours la valeur Smoobu, recalcule depuis source/ci/co
+    // override_manual protège uniquement brut/net/commission/notes.
+    // date_paiement, mois_kpi et statut suivent toujours les règles CRM.
+    // Règle CRM stricte — recalcule depuis source/ci/co pour tous les records
     var newDp = calcDatePaiement(src, r.type_norm, r.checkin, r.checkout, r.date_creation);
     var newMk = (newDp || r.checkin || t).slice(0, 7);
 
@@ -6948,15 +6930,19 @@ function detectForResa(r, allAppartNoms) {
 
   // ── 3. Dates ──
   // Checkin vide
+  // Critique uniquement pour RESERVATION/RELOCATION — les autres types n'exigent pas de checkin
   if (!ci || ci.trim()==='') {
-    if (isFinancialTn) add('critique','date','CHECKIN_EMPTY','Check-in vide sur '+tn,'Renseigner la date de check-in');
-    else if (!isSpecial) add('attention','date','CHECKIN_EMPTY','Check-in vide (type '+tn+')','À compléter si ce n\'est pas une ligne technique');
+    if (isTrueResa)      add('critique','date','CHECKIN_EMPTY','Check-in vide sur '+tn,'Renseigner la date de check-in');
+    else if (isAnnulPaye) add('attention','date','CHECKIN_EMPTY','Check-in vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
+    else if (!isSpecial)  add('attention','date','CHECKIN_EMPTY','Check-in vide (type '+tn+')','À compléter si ce n\'est pas une ligne technique');
     // AIRCOVER/AJUSTEMENT sans checkin : pas signalé
   }
   // Checkout vide
+  // Critique uniquement pour RESERVATION/RELOCATION — les annulations et lignes techniques n'en ont pas toujours
   if (!co || co.trim()==='') {
-    if (isFinancialTn) add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
-    else if (isSpecial) add('info','date','CHECKOUT_EMPTY','Check-out vide sur '+tn+' — ligne technique','Pas d\'action requise');
+    if (isTrueResa)      add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
+    else if (isAnnulPaye) add('attention','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
+    else if (isSpecial)   add('info','date','CHECKOUT_EMPTY','Check-out vide sur '+tn+' — ligne technique','Pas d\'action requise');
     else add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
   }
   if (ci && co && /^\d{4}-\d{2}-\d{2}/.test(ci) && /^\d{4}-\d{2}-\d{2}/.test(co) && ci.slice(0,10) >= co.slice(0,10))
