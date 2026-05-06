@@ -4413,36 +4413,46 @@ function _sameName(a, b) {
 function detectDups() {
   var smoobuCount = {}, refCount = {}, stayGroups = {};
 
+  // Seuls ces types peuvent créer un vrai doublon financier (comptent dans le CA).
+  // AIRCOVER, AJUSTEMENT, ANNULATION_NON_PAYEE, RELOCATION sont des lignes
+  // complémentaires métier — jamais des doublons par construction.
+  function isFinDup(r) {
+    return r.type_norm === 'RESERVATION' || r.type_norm === 'ANNULATION_PAYEE';
+  }
+
   DB.resa.forEach(function(r) {
-    // Règle 1 : même smoobu_id
-    if (r.smoobu_id) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
-    // Règle 2 : même ref (hors refs générées localement AIR-xxx, BKG-xxx…)
-    var isNative = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
-    if (r.ref && !isNative) refCount[r.ref] = (refCount[r.ref]||0)+1;
-    // Règle 2b : cross-match ref native (BKG-5236561776) avec ref brute (5236561776)
-    if (isNative) {
-      var normRef = r.ref.replace(/^(AIR|BKG|DIR|VRB|SMB)-/i, '');
-      if (normRef) refCount[normRef] = (refCount[normRef]||0)+1;
+    // Règle 1 : même smoobu_id — uniquement types financiers
+    if (r.smoobu_id && isFinDup(r)) smoobuCount[r.smoobu_id] = (smoobuCount[r.smoobu_id]||0)+1;
+    // Règles 2 / 2b : même ref (ou ref normalisée) — uniquement types financiers
+    // Exclure AIRCOVER (AIR-xxx), ANNULATION_NON_PAYEE, AJUSTEMENT du comptage
+    // pour ne pas détecter les paires légitimes RESERVATION+AIRCOVER ou PAYEE+NON_PAYEE.
+    if (isFinDup(r) && r.ref) {
+      var isNative = /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+      var refKey   = isNative ? r.ref.replace(/^(AIR|BKG|DIR|VRB|SMB)-/i, '') : r.ref;
+      if (refKey) refCount[refKey] = (refCount[refKey]||0)+1;
     }
-    // Règle 3 : même séjour (appart + checkin + checkout + nuits + type_norm)
-    if (r.appart && r.checkin && r.checkout && r.type_norm) {
+    // Règle 3 : même séjour RESERVATION uniquement (appart + checkin + checkout + nuits)
+    if (r.type_norm === 'RESERVATION' && r.appart && r.checkin && r.checkout) {
       var nuits = (r.nuits_sejour != null) ? r.nuits_sejour : diffNuits(r.checkin, r.checkout);
-      var sk = [r.appart, r.checkin, r.checkout, nuits, r.type_norm].join('||');
+      var sk = [r.appart, r.checkin, r.checkout, nuits].join('||');
       if (!stayGroups[sk]) stayGroups[sk] = [];
       stayGroups[sk].push(r);
     }
   });
 
-  // Pour chaque groupe de séjour identique, vérifier qu'au moins 2 entrées
-  // ont le même voyageur (normalized) — sinon c'est une coïncidence de dates.
-  var sejourId2Key = {}; // resa.id -> 'st:'+sk
+  // Règle 3 : groupe valide ssi ≥ 2 entrées avec même voyageur ET montants proches (≤ 15 %)
+  var sejourId2Key = {};
   Object.keys(stayGroups).forEach(function(sk) {
     var grp = stayGroups[sk];
     if (grp.length < 2) return;
     var found = false;
     for (var i = 0; i < grp.length && !found; i++) {
       for (var j = i+1; j < grp.length; j++) {
-        if (_sameName(grp[i].voyageur, grp[j].voyageur)) { found = true; break; }
+        var sameName = _sameName(grp[i].voyageur, grp[j].voyageur);
+        var brI = parseFloat(grp[i].brut)||0, brJ = parseFloat(grp[j].brut)||0;
+        var maxBr = Math.max(brI, brJ);
+        var closeAmounts = maxBr === 0 || Math.abs(brI-brJ)/maxBr <= 0.15;
+        if (sameName && closeAmounts) { found = true; break; }
       }
     }
     if (found) grp.forEach(function(r) { sejourId2Key[r.id] = 'st:'+sk; });
@@ -4451,17 +4461,23 @@ function detectDups() {
   var dupReasons = {}, groupKey = {};
   var dups = DB.resa.filter(function(r) {
     var reasons = [], gk = null;
-    if (r.smoobu_id && smoobuCount[r.smoobu_id] > 1) {
+    // Règle 1
+    if (r.smoobu_id && isFinDup(r) && smoobuCount[r.smoobu_id] > 1) {
       reasons.push('Même Smoobu ID');
       if (!gk) gk = 's:'+r.smoobu_id;
     }
-    var isNative = r.ref && /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
-    if (r.ref && !isNative && refCount[r.ref] > 1) {
-      reasons.push('Même ref');
-      if (!gk) gk = 'r:'+r.ref;
+    // Règle 2 / 2b
+    if (isFinDup(r) && r.ref) {
+      var isNative = /^(AIR|BKG|DIR|VRB|SMB)-/.test(r.ref);
+      var refKey   = isNative ? r.ref.replace(/^(AIR|BKG|DIR|VRB|SMB)-/i, '') : r.ref;
+      if (refKey && refCount[refKey] > 1) {
+        reasons.push('Même ref');
+        if (!gk) gk = 'r:'+refKey;
+      }
     }
+    // Règle 3
     if (sejourId2Key[r.id]) {
-      reasons.push('Même séjour + voyageur + type');
+      reasons.push('Même séjour + voyageur + montant');
       if (!gk) gk = sejourId2Key[r.id];
     }
     if (reasons.length) {
