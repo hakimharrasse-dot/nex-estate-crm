@@ -4311,10 +4311,15 @@ function renderPerso() {
   renderNav('p');
   var rows=filterPer(DB.perso,'p');
   var fc=val('p-fcat'),fs=val('p-fst');
-  if(fc)rows=rows.filter(function(r){return r.cat===fc;});
+  if(fc)rows=rows.filter(function(r){
+    if(fc==='Dons / Aides') return r.cat===fc||(r.don||0)>0;
+    return r.cat===fc;
+  });
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var tot=sum(rows,'montant');
+  var tot=fc==='Dons / Aides'
+    ?rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0)
+    :sum(rows,'montant');
   var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École'].indexOf(r.cat)>=0;}),'montant');
   var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
