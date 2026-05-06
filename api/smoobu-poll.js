@@ -308,6 +308,7 @@ async function remediateStragglers(processedIds, apiKey, stats) {
     incomplete = await sbGet(
       `resa?select=id,smoobu_id,ref,voyageur,source` +
       `&smoobu_id=not.is.null` +
+      `&override_manual=eq.false` +
       `&or=(voyageur.is.null,voyageur.eq.,ref.is.null,ref.eq.)` +
       `&limit=${MAX_REMEDIATE}` + excl
     );
@@ -476,25 +477,20 @@ export default async function handler(req, res) {
         console.log(`[poll] INSERT ${smoobuId}`);
 
       } else if (rec.override_manual) {
-        // ── B. Protégé → UPDATE partiel (champs non-financiers uniquement) ──
+        // ── B. Verrouillé → UPDATE calendaire uniquement ──
+        // RÈGLE ABSOLUE : si override_manual=true, seules les dates et le
+        // nombre de personnes sont synchronisées. Tous les autres champs
+        // (source, appart, voyageur, phone, email, nuits, finances, statut,
+        // date_paiement, mois_kpi, notes) sont préservés tels que saisis manuellement.
         await sbPatch('resa', rec.id, {
           checkin:      mapped.checkin,
           checkout:     mapped.checkout,
-          voyageur:     mapped.voyageur,
           adults:       mapped.adults,
           children:     mapped.children,
           nb_personnes: mapped.nb_personnes,
-          appart:       mapped.appart,
-          source:       mapped.source,
-          phone:        mapped.phone,
-          email:        mapped.email,
-          nuits_sejour: mapped.nuits_sejour,
-          nuits_fact:   mapped.nuits_fact,
-          // Champs financiers conservés : brut, net, commission, com_pct,
-          // statut, type_norm, date_paiement, mois_kpi, notes, taxe_sejour
         });
         stats.skipped++;
-        console.log(`[poll] PARTIAL ${smoobuId} (override_manual=true — finances protégées)`);
+        console.log(`[poll] LOCKED ${smoobuId} (override_manual=true — calendaire uniquement)`);
 
       } else {
         // ── C. Mise à jour → UPDATE (même id) ──

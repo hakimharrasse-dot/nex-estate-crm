@@ -51,30 +51,24 @@ async function upsertResa(supabase, entry) {
   if (fetchErr) throw fetchErr;
 
   if (existing && existing.override_manual) {
-    // 2. Verrouillé → UPDATE partiel (champs non-financiers uniquement)
+    // 2. Verrouillé → UPDATE calendaire uniquement
+    // RÈGLE ABSOLUE : si override_manual=true, seules les dates et le
+    // nombre de personnes sont synchronisées. Tous les autres champs
+    // (source, appart, voyageur, phone, email, nuits, finances, statut,
+    // date_paiement, mois_kpi, notes) sont préservés tels que saisis manuellement.
     const { error: patchErr } = await supabase
       .from('resa')
       .update({
-        checkin:        entry.checkin,
-        checkout:       entry.checkout,
-        voyageur:       entry.voyageur,
-        adults:         entry.adults,
-        children:       entry.children,
-        nb_personnes:   entry.nb_personnes,
-        appart:         entry.appart,
-        source:         entry.source,
-        phone:          entry.phone,
-        email:          entry.email,
-        guest_language: entry.guest_language,
-        nuits_sejour:   entry.nuits_sejour,
-        nuits_fact:     entry.nuits_fact,
-        // Champs financiers protégés : brut, net, commission, com_pct,
-        // taxe_sejour, type_norm, statut, date_paiement, mois_kpi
+        checkin:      entry.checkin,
+        checkout:     entry.checkout,
+        adults:       entry.adults,
+        children:     entry.children,
+        nb_personnes: entry.nb_personnes,
       })
       .eq('smoobu_id', sid);
 
     if (patchErr) throw patchErr;
-    console.log('[webhook] PARTIAL (override_manual=true — finances protégées):', sid, '| ref:', entry.ref);
+    console.log('[webhook] LOCKED (override_manual=true — calendaire uniquement):', sid, '| ref:', entry.ref);
     return { ok: true, ref: entry.ref, protected: true };
   }
 
