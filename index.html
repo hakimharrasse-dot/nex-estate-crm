@@ -4322,8 +4322,13 @@ function renderPerso() {
   set('p-fam',fmt(fam)); set('p-crd',fmt(crd)); set('p-att',fmt(att));
   var allP=filterPer(DB.perso,'p');
   set('p-recap',CATS_P.map(function(cat){
-    var x=allP.filter(function(r){return r.cat===cat;}); if(!x.length)return'';
-    return'<div class="rc"><div><div class="rn">'+cat+'</div><div class="rsb">'+x.length+' entrée'+(x.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--pu)">'+fmt(sum(x,'montant'))+'</div></div>';
+    var x=allP.filter(function(r){return r.cat===cat;});
+    var extraDon=cat==='Dons / Aides'?allP.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0):0;
+    var total=sum(x,'montant')+extraDon;
+    if(!x.length&&!extraDon)return'';
+    var subtitle=x.length+' entrée'+(x.length>1?'s':'');
+    if(cat==='Dons / Aides'&&extraDon>0)subtitle+=' + pourboires';
+    return'<div class="rc"><div><div class="rn">'+cat+'</div><div class="rsb">'+subtitle+'</div></div><div class="rv" style="color:var(--pu)">'+fmt(total)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune dépense</div>');
   var tb=document.getElementById('p-tb'),em=document.getElementById('p-em');
   var cardsCont=document.getElementById('p-cards');
@@ -4351,6 +4356,7 @@ function renderPerso() {
           chip(r.statut,stClass(r.statut))+
         '</div>'+
         (r.desc?'<div style="font-size:12px;color:var(--tm);font-style:italic">'+r.desc+'</div>':'')+
+        (r.don>0?'<div style="font-size:11px;color:var(--gr)">💝 Don : '+(r.don||0).toLocaleString('fr-MA')+' MAD</div>':'')+
         '<div class="r-card-row3">'+
           '<span class="r-card-net" style="color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</span>'+
           (r.rec&&r.rec!=='Ponctuel'?'<span style="font-size:11px;color:var(--td)">'+r.rec+'</span>':'')+
@@ -4364,7 +4370,7 @@ function renderPerso() {
       return '<tr>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
-        '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
+        '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+(r.don>0?' <span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">💝 +'+( r.don||0).toLocaleString('fr-MA')+' MAD</span>':'')+'</td>'+
         '<td class="hm" style="font-size:12px;color:var(--td)">'+(r.rec||'Ponctuel')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
@@ -4958,6 +4964,16 @@ function buildForm(type, editId) {
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_P.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Détail de la dépense')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
+      '<div class="ff" style="background:rgba(76,175,125,.07);border:1.5px solid rgba(76,175,125,.3);border-radius:8px;padding:10px 13px">'+
+        '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'+
+          '<input type="checkbox" id="fi-don-chk" onchange="toggleDonField()" style="width:16px;height:16px;accent-color:var(--gr);flex-shrink:0" '+(v('don',0)>0?'checked':'')+'>'+
+          '<div style="font-size:13px;font-weight:600;color:var(--gr)">💝 Don / pourboire inclus dans cette dépense</div>'+
+        '</label>'+
+        '<div id="fi-don-wrap" style="margin-top:8px;display:'+(v('don',0)>0?'block':'none')+'">'+
+          '<label class="fl">Montant don / pourboire (MAD)</label>'+
+          '<input type="number" class="fi" id="fi-don" value="'+(v('don',0)||0)+'" min="0">'+
+        '</div>'+
+      '</div>'+
       field2('Récurrence','fi-rec','select',v('rec','Ponctuel'),['Ponctuel','Hebdomadaire','Mensuel','Annuel'])+
       field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
       fieldFull('Bénéficiaire','fi-prest','text',v('prest',''),'Nom')+
@@ -4977,6 +4993,12 @@ function fieldFull(lbl,id,type,val,ph) {
 }
 
 function toggleChip(el) { el.classList.toggle('sel'); }
+
+function toggleDonField() {
+  var chk = document.getElementById('fi-don-chk');
+  var wrap = document.getElementById('fi-don-wrap');
+  if (wrap) wrap.style.display = (chk && chk.checked) ? 'block' : 'none';
+}
 
 function setBizScope(scope) {
   var fi = document.getElementById('fi-scope');
@@ -5143,7 +5165,9 @@ async function saveServ() {
 async function savePerso() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
-  await upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest')});
+  var donChk=document.getElementById('fi-don-chk');
+  var don=(donChk&&donChk.checked)?(parseFloat(gv('fi-don'))||0):0;
+  await upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest'),don:don});
   closeModal(); renderPerso();
 }
 

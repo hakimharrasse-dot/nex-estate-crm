@@ -123,7 +123,9 @@ Le CRM dispose d'une section **Logements** permettant d'activer/archiver des bie
 - `profiles` — utilisateurs CRM (lié à `auth.users`)
 - `team_members` — équipe (ménage, maintenance)
 - `recurring_charges` — charges récurrentes (loyers, abonnements)
-- `resa_backup_20260426` — snapshot figé du 26 avril 2026
+- `logements` — appartements actifs/archivés (RLS activé 2026-05-06) — colonnes : id, nom, nom_smoobu, ville, actif, date_debut, date_fin, notes, created_at
+- `resa_backup_20260426` — snapshot figé du 26 avril 2026 (RLS admin-only 2026-05-06)
+- `resa_backup_20260430` — snapshot figé du 30 avril 2026 (RLS admin-only 2026-05-06)
 
 ---
 
@@ -220,15 +222,18 @@ POLL_WINDOW_HOURS         → 25 (par défaut)
 
 ## 7. Sécurité et RLS
 
-- RLS activé sur toutes les tables métier
+- RLS activé sur toutes les tables métier (y compris `logements`, `resa_backup_20260426`, `resa_backup_20260430` — ajouté 2026-05-06)
 - Fonction `get_my_role()` (SECURITY DEFINER) : retourne le rôle de l'utilisateur connecté
+  - EXECUTE révoqué de PUBLIC et du rôle `anon` (2026-05-06) — uniquement `authenticated`
 - Rôles : `admin` > `manager` > `user`
   - `user` : lecture `resa` uniquement
-  - `manager` : lecture/écriture sur `resa`, `business`, `taxe`, `serv`, `team_members`, `recurring_charges`
-  - `admin` : tout + suppression + `perso` + gestion utilisateurs
+  - `manager` : lecture/écriture sur `resa`, `business`, `taxe`, `serv`, `team_members`, `recurring_charges`, `logements`
+  - `admin` : tout + suppression + `perso` + gestion utilisateurs + lecture `resa_backup_*`
 - `profiles` : INSERT/UPDATE/DELETE uniquement via `/api/admin-users.js` (service_role, bypass RLS)
-- Côté client JS : Supabase JS SDK avec clé `anon` (respecte RLS)
-- Côté serveur (API Vercel) : `SUPABASE_SERVICE_ROLE_KEY` (bypass RLS)
+- `resa_backup_*` : SELECT admin uniquement, aucune écriture possible
+- Vue `v_logements_actifs_par_mois` : recrée avec `security_invoker=true` (2026-05-06) — respecte le RLS de `logements`
+- Côté client JS : Supabase JS SDK avec clé `anon`/publishable `sb_publishable_...` (respecte RLS)
+- Côté serveur (API Vercel) : `SUPABASE_SERVICE_ROLE_KEY` (bypass RLS) — jamais exposée côté frontend
 
 ---
 
@@ -373,6 +378,14 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-04 | Feat: b-fmen "Toute l'équipe" (tous membres actifs) ; gains ménage période indépendante (clé 'gn') ; WK_MODE='cumul' "📋 En cours" par défaut (`ac692b1`) |
 | 2026-05-04 | Fix: `paid_by` affiché comme badge bleu 💳 dans les cartes Business mobiles (`384e40f`) |
 | 2026-05-04 | Backup `nex-estate-crm-backup-2026-05-04` produit — suppression ancien backup 2026-05-02 |
+| 2026-05-05 | Fix: override_manual guards F1–F3 — softDeleteResa bloqué, downgrade ANNULATION_*/AIRCOVER→RESERVATION bloqué côté webhook et poll (`4e9e8fe`) |
+| 2026-05-05 | Fix: formulaire réservation — buildForm lit rec.com_pct, guard ZERO_COM_TYPES=['AIRCOVER','AJUSTEMENT'] dans saveResa (`c181acd`) |
+| 2026-05-05 | Fix: commissions — ignorer commission-included Smoobu dans les 3 chemins (normalizer, parseSmoobuRow, mapSmoobuBooking) ; toujours COM[src] (`9ccc3fb`, `94aab26`) |
+| 2026-05-05 | Fix: classifyFinRow — Booking.com/VRBO/ANNULATION_PAYEE → 'review' (pas 'risky') si écart ≤ 100 EUR |
+| 2026-05-06 | Audit ANNULATION_NON_PAYEE — confirmé exclu de tous KPIs (CA, cash, résultat, occupation, ADR, RevPAN, Audit finances) |
+| 2026-05-06 | Backup `nex-estate-crm-backup-2026-05-06` produit — suppression ancien backup 2026-05-04 |
+| 2026-05-06 | Sécurité : RLS activé sur `logements`, `resa_backup_20260426`, `resa_backup_20260430` — vue `v_logements_actifs_par_mois` recrée en `security_invoker=true` — EXECUTE `get_my_role()` révoqué de PUBLIC/anon |
+| 2026-05-06 | Feat: Don / pourboire dans Dépenses Perso — colonne `don` ajoutée à `perso`, checkbox dans le formulaire, badge 💝 dans l'affichage, cumul dans "Dons / Aides" du récap |
 
 ---
 
