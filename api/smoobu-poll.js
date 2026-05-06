@@ -178,16 +178,11 @@ function mapSmoobuBooking(b) {
   const nuitsFact  = (typeNorm === 'RESERVATION' || typeNorm === 'ANNULATION_PAYEE') ? nuits : 0;
   const nuitsSejou = typeNorm === 'RESERVATION' ? nuits : 0;
 
-  // Commission — Smoobu renvoie 'commission-included' en POURCENTAGE (22.0 = 22%)
-  let comPct, comEurFinal;
-  const comRaw = parseFloat(b['commission-included'] || b.commission || 0);
-  if (comRaw > 0 && comRaw <= 100) {
-    comPct      = comRaw / 100;
-    comEurFinal = prixEur * comPct;
-  } else {
-    comPct      = COM[src] || 0;
-    comEurFinal = prixEur * comPct;
-  }
+  // Commission — toujours taux standard CRM (COM[src]).
+  // commission-included ignoré : Smoobu peut envoyer un montant EUR (ex: 10.85 €)
+  // interprété à tort comme un % (10.85%), ou un taux négocié non conforme aux règles CRM.
+  let comPct      = COM[src] || 0;
+  let comEurFinal = prixEur * comPct;
   let netEur = prixEur - comEurFinal;
   if (typeNorm === 'ANNULATION_NON_PAYEE') {
     netEur = 0; comEurFinal = 0; comPct = 0;
