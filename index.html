@@ -4844,6 +4844,8 @@ function openModal(type, id) {
       if(el) el.addEventListener('change', resetComForSrcType);
     });
     autoCalcResa();
+    var dcEl = document.getElementById('fi-dc');
+    if (dcEl) dcEl.addEventListener('change', autoCalcDP);
 
     // Manager éditant une réservation existante : verrouiller les champs financiers
     if (id && ROLE === 'manager') {
@@ -5075,6 +5077,31 @@ function autoCalcResa() {
       taxeEl.value=0;
     }
   }
+  autoCalcDP();
+}
+
+// Recalcule date_paiement et statut depuis les règles CRM.
+// Appelé à chaque changement de source, type_norm, checkin, checkout ou date_creation.
+function autoCalcDP() {
+  var src   = gv('fi-src');
+  var typeN = gv('fi-type') || 'RESERVATION';
+  var ci    = gv('fi-ci');
+  var co    = gv('fi-co');
+  var dc    = gv('fi-dc');
+  var newDp = calcDatePaiement(src, typeN, ci, co, dc);
+  var dpEl  = document.getElementById('fi-dp');
+  if (dpEl) dpEl.value = newDp || '';
+  var t = today();
+  var newStatut;
+  if (typeN === 'ANNULATION_NON_PAYEE') {
+    newStatut = 'Annulé';
+  } else if (typeN !== 'AJUSTEMENT' && newDp) {
+    newStatut = (t >= newDp) ? 'Payé' : 'En attente';
+  }
+  if (newStatut) {
+    var stEl = document.getElementById('fi-st');
+    if (stEl) stEl.value = newStatut;
+  }
 }
 
 // Reset commission vers le taux standard quand source OU type change
@@ -5109,7 +5136,9 @@ async function saveResa() {
   // Règle absolue — indépendante de la source et de ce qui est affiché dans fi-com
   var ZERO_COM_TYPES=['AIRCOVER','AJUSTEMENT'];
   if(ZERO_COM_TYPES.indexOf(typeNorm)>=0) comPct=0;
-  var co=gv('fi-co'), dp=gv('fi-dp');
+  var co=gv('fi-co');
+  var dc=gv('fi-dc')||null;
+  var dp = calcDatePaiement(src, typeNorm, ci, co, dc);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
   var comEur = brutEur * comPct;
@@ -5132,8 +5161,11 @@ async function saveResa() {
     taxe_sejour: Math.round(taxeEur*100)/100,
     type_norm:gv('fi-type')||'RESERVATION',
     mode_paiement:gv('fi-mode')||'Virement plateforme',
-    statut:gv('fi-st')||'Payé', date_paiement:dp,
-    date_creation:gv('fi-dc')||null,
+    statut: typeNorm==='ANNULATION_NON_PAYEE' ? 'Annulé'
+           : typeNorm!=='AJUSTEMENT'&&dp      ? (today()>=dp?'Payé':'En attente')
+           :                                    (gv('fi-st')||'Payé'),
+    date_paiement:dp,
+    date_creation:dc,
     mois_kpi:(dp||ci).slice(0,7), notes:gv('fi-notes'),
     nuits_business:(function(){var el=document.getElementById('fi-nuits-biz');if(!el||el.value==='')return null;var v=parseInt(el.value);return isNaN(v)?null:Math.max(0,v);})(),
     // override_manual : protège les champs financiers contre l'écrasement Smoobu
