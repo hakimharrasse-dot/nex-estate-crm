@@ -6974,8 +6974,8 @@ function detectForResa(r, allAppartNoms) {
   if (!co || co.trim()==='') {
     if (isTrueResa)      add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
     else if (isAnnulPaye) add('attention','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
-    else if (isSpecial)   add('info','date','CHECKOUT_EMPTY','Check-out vide sur '+tn+' — ligne technique','Pas d\'action requise');
-    else if (!isAnnulNP) add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
+    // isSpecial (AIRCOVER/AJUSTEMENT) sans checkout : normal — pas un séjour
+    else if (!isAnnulNP && !isSpecial) add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
   }
   if (ci && co && /^\d{4}-\d{2}-\d{2}/.test(ci) && /^\d{4}-\d{2}-\d{2}/.test(co) && ci.slice(0,10) >= co.slice(0,10))
     add('critique','date','CHECKOUT_BEFORE_CHECKIN','Checkout ('+co+') antérieur au checkin ('+ci+')','Corriger les dates — probablement inversées');
@@ -7029,18 +7029,21 @@ function detectForResa(r, allAppartNoms) {
   // Direct : jamais signalé pour absence de smoobu_id
   if (isOTA && !r.smoobu_id) {
     if (isSpecial) {
-      add('info','sync','OTA_NO_SMOOBU_ID',tn+' sans smoobu_id — ligne technique Smoobu','Pas d\'action requise');
+      // AIRCOVER/AJUSTEMENT sans smoobu_id : ligne technique, pas de sync attendue
     } else if (isAnnulNP) {
-      if (isLocked) add('info','sync','OTA_NO_SMOOBU_ID','Annulation non payée verrouillée sans smoobu_id','Données protégées — pas d\'action requise');
-      else          add('attention','sync','OTA_NO_SMOOBU_ID','ANNULATION_NON_PAYEE sans smoobu_id','Vérifier si la synchronisation est attendue');
+      // isLocked → verrouillée volontairement, pas d\'action requise
+      if (!isLocked) add('attention','sync','OTA_NO_SMOOBU_ID','ANNULATION_NON_PAYEE sans smoobu_id','Vérifier si la synchronisation est attendue');
     } else if (isFinancialTn) {
-      if (isLocked)              add('info','sync','OTA_NO_SMOOBU_ID','Réservation verrouillée sans smoobu_id','Finances protégées — pas d\'action urgente');
-      else if (isActive&&isRecent) {
-        var hasLocalOtaRef = r.ref && /^(AIR|BKG|VRB|DRC)-/.test(r.ref);
-        if (hasLocalOtaRef) add('info','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (importée CSV — ref locale)','Aucune action si le logement n\'est pas dans Smoobu');
-        else                add('critique','sync','OTA_NO_SMOOBU_ID','Réservation OTA active récente sans smoobu_id','Resynchroniser via Sync API — données non liées à Smoobu');
+      // isLocked → finances protégées, smoobu_id absent acceptable
+      if (!isLocked) {
+        if (isActive&&isRecent) {
+          var hasLocalOtaRef = r.ref && /^(AIR|BKG|VRB|DRC)-/.test(r.ref);
+          // hasLocalOtaRef → importée CSV ou logement hors Smoobu (ex: Studio Ocean), pas d\'action
+          if (!hasLocalOtaRef) add('critique','sync','OTA_NO_SMOOBU_ID','Réservation OTA active récente sans smoobu_id','Resynchroniser via Sync API — données non liées à Smoobu');
+        } else {
+          add('attention','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (ancienne ou inactive)','Peut être ignorée si antérieure à la mise en service du webhook');
+        }
       }
-      else                       add('attention','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (ancienne ou inactive)','Peut être ignorée si antérieure à la mise en service du webhook');
     } else {
       add('attention','sync','OTA_NO_SMOOBU_ID',tn+' OTA sans smoobu_id','Vérifier si ce type doit être synchronisé');
     }
