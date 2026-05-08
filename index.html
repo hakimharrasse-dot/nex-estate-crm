@@ -6966,7 +6966,7 @@ function detectForResa(r, allAppartNoms) {
   if (!ci || ci.trim()==='') {
     if (isTrueResa)      add('critique','date','CHECKIN_EMPTY','Check-in vide sur '+tn,'Renseigner la date de check-in');
     else if (isAnnulPaye) add('attention','date','CHECKIN_EMPTY','Check-in vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
-    else if (!isSpecial)  add('attention','date','CHECKIN_EMPTY','Check-in vide (type '+tn+')','À compléter si ce n\'est pas une ligne technique');
+    else if (!isSpecial && !isAnnulNP)  add('attention','date','CHECKIN_EMPTY','Check-in vide (type '+tn+')','À compléter si ce n\'est pas une ligne technique');
     // AIRCOVER/AJUSTEMENT sans checkin : pas signalé
   }
   // Checkout vide
@@ -6975,7 +6975,7 @@ function detectForResa(r, allAppartNoms) {
     if (isTrueResa)      add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
     else if (isAnnulPaye) add('attention','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
     else if (isSpecial)   add('info','date','CHECKOUT_EMPTY','Check-out vide sur '+tn+' — ligne technique','Pas d\'action requise');
-    else add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
+    else if (!isAnnulNP) add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
   }
   if (ci && co && /^\d{4}-\d{2}-\d{2}/.test(ci) && /^\d{4}-\d{2}-\d{2}/.test(co) && ci.slice(0,10) >= co.slice(0,10))
     add('critique','date','CHECKOUT_BEFORE_CHECKIN','Checkout ('+co+') antérieur au checkin ('+ci+')','Corriger les dates — probablement inversées');
@@ -7000,7 +7000,7 @@ function detectForResa(r, allAppartNoms) {
     }
   }
   if (isOTA && isTrueResa && r.date_paiement && ci && r.date_paiement<ci)
-    add('attention','date','PAIEMENT_BEFORE_CHECKIN','Date paiement ('+r.date_paiement+') avant check-in ('+ci+')','Vérifier la règle de date_paiement pour cette source');
+    add('info','date','PAIEMENT_BEFORE_CHECKIN','Date paiement ('+r.date_paiement+') avant check-in ('+ci+')','Vérifier la règle de date_paiement pour cette source');
 
   // ── 4. Taxe de séjour ──
   // Booking.com vraie réservation sans taxe (sauf si verrouillée et déjà corrigée)
@@ -7037,7 +7037,7 @@ function detectForResa(r, allAppartNoms) {
       if (isLocked)              add('info','sync','OTA_NO_SMOOBU_ID','Réservation verrouillée sans smoobu_id','Finances protégées — pas d\'action urgente');
       else if (isActive&&isRecent) {
         var hasLocalOtaRef = r.ref && /^(AIR|BKG|VRB|DRC)-/.test(r.ref);
-        if (hasLocalOtaRef) add('attention','sync','OTA_NO_SMOOBU_ID','Réservation OTA active récente sans smoobu_id (ref locale)','Importée via CSV — resync si le smoobu_id est disponible');
+        if (hasLocalOtaRef) add('info','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (importée CSV — ref locale)','Aucune action si le logement n\'est pas dans Smoobu');
         else                add('critique','sync','OTA_NO_SMOOBU_ID','Réservation OTA active récente sans smoobu_id','Resynchroniser via Sync API — données non liées à Smoobu');
       }
       else                       add('attention','sync','OTA_NO_SMOOBU_ID','Réservation OTA sans smoobu_id (ancienne ou inactive)','Peut être ignorée si antérieure à la mise en service du webhook');
@@ -7045,16 +7045,7 @@ function detectForResa(r, allAppartNoms) {
       add('attention','sync','OTA_NO_SMOOBU_ID',tn+' OTA sans smoobu_id','Vérifier si ce type doit être synchronisé');
     }
   }
-  if (isLocked)
-    add('info','sync','OVERRIDE_MANUAL','Réservation verrouillée (override_manual=true) — finances protégées','Les mises à jour Smoobu ne remplaceront pas les données financières');
-
   // ── 7. Types métier ──
-  // ANNULATION_NON_PAYEE avec montant → Info seulement
-  // isRevRow() exclut déjà ANNULATION_NON_PAYEE du CA et des KPIs, donc le montant stocké est sans effet
-  if (isAnnulNP && (brut>0||net>0||commission>0))
-    add('info','type_metier','ANNUL_NON_PAYEE_MONTANT',
-      'Montant présent mais ignoré car annulation non payée (brut='+fmtE(brut)+', net='+fmtE(net)+')',
-      'Pas d\'action requise — ce type est exclu du CA et des KPIs par le CRM');
   // ANNULATION_PAYEE sans net → Attention (pas critique)
   if (isAnnulPaye && net===0 && brut===0)
     add('attention','type_metier','ANNUL_PAYEE_NET_ZERO',
