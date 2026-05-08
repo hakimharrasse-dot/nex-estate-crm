@@ -5138,6 +5138,13 @@ async function saveResa() {
   if(ZERO_COM_TYPES.indexOf(typeNorm)>=0) comPct=0;
   var co=gv('fi-co');
   var dc=gv('fi-dc')||null;
+  // ── Validation format dates ──
+  var BLOCK_TYPES=['RESERVATION','RELOCATION','ANNULATION_PAYEE'];
+  if(BLOCK_TYPES.indexOf(typeNorm)>=0){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(ci)){alert('Check-in invalide : "'+ci+'"\nFormat requis : YYYY-MM-DD (ex: 2026-01-15)');return;}
+    if(co&&!/^\d{4}-\d{2}-\d{2}$/.test(co)){alert('Check-out invalide : "'+co+'"\nFormat requis : YYYY-MM-DD (ex: 2026-01-15)');return;}
+    if(src==='Direct'&&!dc){alert('Date de création obligatoire pour une réservation directe.\nRenseigner le champ "Date de création" avant de sauvegarder.');return;}
+  }
   var dp = calcDatePaiement(src, typeNorm, ci, co, dc);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
@@ -6980,15 +6987,23 @@ function detectForResa(r, allAppartNoms) {
   if (ci && co && /^\d{4}-\d{2}-\d{2}/.test(ci) && /^\d{4}-\d{2}-\d{2}/.test(co) && ci.slice(0,10) >= co.slice(0,10))
     add('critique','date','CHECKOUT_BEFORE_CHECKIN','Checkout ('+co+') antérieur au checkin ('+ci+')','Corriger les dates — probablement inversées');
   // Dates avec heure : niveau selon contexte
-  if (ci && (ci.indexOf('T')>=0||ci.indexOf(':')>=0)) {
-    if (isOTA && isFinancialTn && hasAmount) add('critique','date','CHECKIN_HAS_TIME','Check-in contient une heure : "'+ci+'"','Normaliser au format YYYY-MM-DD — peut fausser le calcul des nuits');
-    else if (isSpecial)                      add('info','date','CHECKIN_HAS_TIME','Check-in avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
-    else                                     add('attention','date','CHECKIN_HAS_TIME','Check-in contient une heure : "'+ci+'"','Normaliser au format YYYY-MM-DD');
+  // Format invalide (ne commence pas par YYYY-MM-DD) : heure seule, texte libre, etc.
+  var ciIsDate = !!(ci && /^\d{4}-\d{2}-\d{2}/.test(ci));
+  var coIsDate = !!(co && /^\d{4}-\d{2}-\d{2}/.test(co));
+  if (ci && !ciIsDate) {
+    if (isFinancialTn) add('critique','date','CHECKIN_IS_TIME','Check-in invalide : "'+ci+'" (doit être YYYY-MM-DD)','Corriger manuellement — fausse mois_kpi et tous les KPIs');
+    else if (!isSpecial && !isAnnulNP) add('attention','date','CHECKIN_IS_TIME','Check-in invalide : "'+ci+'"','Normaliser au format YYYY-MM-DD');
+  } else if (ci && ci.indexOf('T')>=0) {
+    // Date correcte mais avec heure (ex : 2026-01-15T15:00:00)
+    if (isSpecial) add('info','date','CHECKIN_HAS_TIME','Check-in avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
+    else           add('attention','date','CHECKIN_HAS_TIME','Check-in contient une heure : "'+ci+'"','Normaliser au format YYYY-MM-DD');
   }
-  if (co && (co.indexOf('T')>=0||co.indexOf(':')>=0)) {
-    if (isOTA && isFinancialTn && hasAmount) add('critique','date','CHECKOUT_HAS_TIME','Check-out contient une heure : "'+co+'"','Normaliser au format YYYY-MM-DD — peut fausser le calcul des nuits');
-    else if (isSpecial)                      add('info','date','CHECKOUT_HAS_TIME','Check-out avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
-    else                                     add('attention','date','CHECKOUT_HAS_TIME','Check-out contient une heure : "'+co+'"','Normaliser au format YYYY-MM-DD');
+  if (co && !coIsDate) {
+    if (isFinancialTn) add('critique','date','CHECKOUT_IS_TIME','Check-out invalide : "'+co+'" (doit être YYYY-MM-DD)','Corriger manuellement — fausse le calcul des nuits');
+    else if (!isSpecial && !isAnnulNP) add('attention','date','CHECKOUT_IS_TIME','Check-out invalide : "'+co+'"','Normaliser au format YYYY-MM-DD');
+  } else if (co && co.indexOf('T')>=0) {
+    if (isSpecial) add('info','date','CHECKOUT_HAS_TIME','Check-out avec heure sur '+tn+' — ligne technique','Pas d\'action urgente');
+    else           add('attention','date','CHECKOUT_HAS_TIME','Check-out contient une heure : "'+co+'"','Normaliser au format YYYY-MM-DD');
   }
   // Cohérence nuits / diff dates (seulement vraies réservations avec dates propres)
   if (isTrueResa && ci && co && ci <= co && ci.length===10 && co.length===10) {
@@ -6999,8 +7014,35 @@ function detectForResa(r, allAppartNoms) {
         add('attention','date','NUITS_INCOHERENTES','Nuits séjour ('+nuitsSej+') ≠ diff dates ('+diffN+' nuits)','Vérifier les dates ou nuits_sejour dans Smoobu');
     }
   }
-  if (isOTA && isTrueResa && r.date_paiement && ci && r.date_paiement<ci)
+  // ── mois_kpi invalide → Critique (réservation invisible dans tous les KPIs mensuels) ──
+  var mk = r.mois_kpi||'';
+  if (isFinancialTn && (!mk || !/^\d{4}-\d{2}$/.test(mk)))
+    add('critique','kpi','MOIS_KPI_INVALIDE','mois_kpi invalide : "'+(mk||'vide')+'" — réservation invisible dans tous les KPIs mensuels','Corriger checkin/date_paiement pour que mois_kpi soit au format YYYY-MM');
+  // ── date_paiement vide ou invalide → Critique ──
+  if (isFinancialTn && (!r.date_paiement || !/^\d{4}-\d{2}/.test(r.date_paiement)))
+    add('critique','date','DATE_PAIEMENT_VIDE','Date de paiement invalide : "'+(r.date_paiement||'vide')+'" sur '+tn,'Corriger checkin, checkout et date_creation selon la source');
+  // ── Booking.com : date_paiement incohérente → Attention ──
+  if (src==='Booking.com' && isFinancialTn && co && coIsDate && r.date_paiement && /^\d{4}-\d{2}-\d{2}/.test(r.date_paiement)) {
+    if (r.date_paiement < co)
+      add('attention','date','BOOKING_DP_INCOHERENT','Booking.com : date_paiement ('+r.date_paiement+') avant checkout ('+co+')','Recalculer via le bouton "Recalculer" du module Réservations');
+    else if (!isLocked) {
+      var dpExpected = nextThursday(co);
+      if (dpExpected && r.date_paiement !== dpExpected)
+        add('attention','date','BOOKING_DP_INCOHERENT','Booking.com : date_paiement ('+r.date_paiement+') ≠ jeudi suivant (attendu : '+dpExpected+')','Recalculer via le bouton "Recalculer" du module Réservations');
+    }
+  }
+  // ── PAIEMENT_BEFORE_CHECKIN (hors Booking.com — couvert par BOOKING_DP_INCOHERENT) ──
+  if (isOTA && src!=='Booking.com' && isTrueResa && r.date_paiement && ci && r.date_paiement<ci)
     add('info','date','PAIEMENT_BEFORE_CHECKIN','Date paiement ('+r.date_paiement+') avant check-in ('+ci+')','Vérifier la règle de date_paiement pour cette source');
+  // ── Direct sans date_creation → Attention (hors verrouillée) ──
+  if (isDirect && isFinancialTn && !r.date_creation && !isLocked)
+    add('attention','date','DATE_CREATION_MANQUANTE','Direct sans date_creation','Sans date_creation, date_paiement = checkin — peut fausser le mois KPI');
+  // ── date_creation postérieure au checkin → Info (import rétroactif suspect) ──
+  if (isTrueResa && !isLocked && r.date_creation && ciIsDate) {
+    var dcStr = (r.date_creation||'').toString().slice(0,10);
+    if (/^\d{4}-\d{2}-\d{2}/.test(dcStr) && dcStr > ci)
+      add('info','date','DATE_CREATION_INCOHERENTE','date_creation ('+dcStr+') postérieure au checkin ('+ci+') — import rétroactif ?','Sans impact KPI pour OTA ; vérifier le mois de facturation sur les Directs');
+  }
 
   // ── 4. Taxe de séjour ──
   // Booking.com vraie réservation sans taxe (sauf si verrouillée et déjà corrigée)
