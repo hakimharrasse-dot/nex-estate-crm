@@ -6159,17 +6159,19 @@ async function recomputeAndSave() {
     var nChanged = dirty.length;
 
     if (nChanged > 0) {
-      // Sauvegarder uniquement les records dirty, par lots de 50
-      var BATCH = 50;
-      for (var i = 0; i < dirty.length; i += BATCH) {
-        var chunk = dirty.slice(i, i + BATCH);
+      // PATCH ciblé : uniquement date_paiement, mois_kpi, statut
+      // Jamais d'upsert complet — brut/net/commission/taxe/voyageur/appart/source/notes jamais touchés
+      for (var j = 0; j < dirty.length; j++) {
+        var dr = dirty[j];
         try {
-          var res = await SUPA.from(TABLE['resa']).upsert(chunk, { onConflict: 'id' });
+          var res = await SUPA.from(TABLE['resa'])
+            .update({ date_paiement: dr.date_paiement, mois_kpi: dr.mois_kpi, statut: dr.statut })
+            .eq('id', dr.id);
           if (res.error) throw res.error;
-          saved += chunk.length;
+          saved++;
         } catch(e) {
           errMsg = String(e.message || e);
-          console.error('[recompute] Erreur Supabase lot', i/BATCH+1, ':', e);
+          console.error('[recompute] Erreur PATCH', dr.id, ':', e);
         }
       }
     }
