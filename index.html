@@ -7241,7 +7241,7 @@ function renderQualiteCard(a) {
   var canEdit = ROLE==='admin'||ROLE==='manager';
   var btns =
     '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="qualiteGoToResa(\''+rId+'\')">Voir</button>'+
-    (canEdit?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="buildForm(\'resa\',\''+rId+'\')">Modifier</button>':'')+
+    (canEdit?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="openModal(\'resa\',\''+rId+'\')">Modifier</button>':'')+
     (a.status!=='ignored'
       ?'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--tm)" onclick="setQualiteStatus(\''+aId+'\',\'ignored\')">Ignorer</button>'
       :'<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--bl)" onclick="setQualiteStatus(\''+aId+'\',\'pending\')">Réactiver</button>')+
@@ -7431,7 +7431,7 @@ function finEditResa(id) {
   document.getElementById('fin-audit-ov').style.display = 'none';
   goTo('resa');
   setTimeout(function() {
-    if (typeof buildForm === 'function') buildForm('resa', id);
+    if (typeof openModal === 'function') openModal('resa', id);
   }, 120);
 }
 
