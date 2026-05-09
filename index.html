@@ -4846,6 +4846,14 @@ function openModal(type, id) {
     autoCalcResa();
     var dcEl = document.getElementById('fi-dc');
     if (dcEl) dcEl.addEventListener('change', autoCalcDP);
+    ['fi-adults','fi-children'].forEach(function(fid){
+      var el=document.getElementById(fid);
+      if(el) el.addEventListener('change', function(){
+        var a=parseInt(document.getElementById('fi-adults').value)||0;
+        var c=parseInt(document.getElementById('fi-children').value)||0;
+        if(a>0){var npEl=document.getElementById('fi-np');if(npEl)npEl.value=a+c;autoCalcResa();}
+      });
+    });
 
     // Manager éditant une réservation existante : verrouiller les champs financiers
     if (id && ROLE === 'manager') {
@@ -5518,7 +5526,7 @@ function parseSmoobuRow(row, idx) {
     checkout:       co,
     nuits_sejour:   nuitsSejou,
     nuits_fact:     nuitsFact,
-    nb_personnes:   adultes,
+    nb_personnes:   adultes + enfants,
     brut:           Math.round(prixEur * 100) / 100,
     com_pct:        Math.round(comPct * 100000) / 100000,
     commission:     Math.round(comEurFinal * 100) / 100,
