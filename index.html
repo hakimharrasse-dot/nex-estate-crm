@@ -6146,15 +6146,23 @@ function recomputeAllPaymentDates() {
         newStatut = (newDp && t >= newDp) ? 'Payé' : 'En attente';
       }
 
+      // nb_personnes = adults + children (champ dérivé, non financier)
+      // Corrigé pour tous les records y compris override_manual (même règle que la sync)
+      var adults   = parseInt(r.adults)   || 0;
+      var children = parseInt(r.children) || 0;
+      var newNbP   = (adults > 0) ? (adults + children) : r.nb_personnes;
+
       var isDirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
                  || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
-                 || (r.statut !== newStatut);
+                 || (r.statut !== newStatut)
+                 || (adults > 0 && r.nb_personnes !== newNbP);
       if (isDirty) {
         r.date_paiement = newDp;
         r.mois_kpi      = newMk;
         r.nuits_fact    = nuitsFact;
         r.nuits_sejour  = nuitsSej;
         r.statut        = newStatut;
+        if (adults > 0) r.nb_personnes = newNbP;
         dirty.push(r);
       }
     } catch(e) {
@@ -6182,13 +6190,13 @@ async function recomputeAndSave() {
     var nChanged = dirty.length;
 
     if (nChanged > 0) {
-      // PATCH ciblé : uniquement date_paiement, mois_kpi, statut
+      // PATCH ciblé : date_paiement, mois_kpi, statut, nb_personnes uniquement
       // Jamais d'upsert complet — brut/net/commission/taxe/voyageur/appart/source/notes jamais touchés
       for (var j = 0; j < dirty.length; j++) {
         var dr = dirty[j];
         try {
           var res = await SUPA.from(TABLE['resa'])
-            .update({ date_paiement: dr.date_paiement, mois_kpi: dr.mois_kpi, statut: dr.statut })
+            .update({ date_paiement: dr.date_paiement, mois_kpi: dr.mois_kpi, statut: dr.statut, nb_personnes: dr.nb_personnes })
             .eq('id', dr.id);
           if (res.error) throw res.error;
           saved++;
