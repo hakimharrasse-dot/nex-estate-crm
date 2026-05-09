@@ -226,7 +226,7 @@ function mapSmoobuBooking(b) {
     guest_language: b.language || null,
     adults:         adultes,
     children:       enfants,
-    nb_personnes:   adultes,
+    nb_personnes:   adultes + enfants,
     checkin:        ci,
     checkout:       co,
     nuits_sejour:   nuitsSejou,
