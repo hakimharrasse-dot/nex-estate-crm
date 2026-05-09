@@ -4887,11 +4887,24 @@ function buildForm(type, editId) {
     // Jamais écraser par COM[src] lors de l'édition — COM[src] sert uniquement à la création
     var comPct = rec ? (rec.com_pct||0) : (COM[src]||0.155);
     var np=v('nb_personnes',1);
-    var nf=v('nuits_fact',diffNuits(ci,co));
+    // Si ci/co invalides, diffNuits renverrait 0 — on les neutralise pour les calculs d'affichage uniquement
+    var ciDisp = /^\d{4}-\d{2}-\d{2}/.test(ci) ? ci : '';
+    var coDisp = /^\d{4}-\d{2}-\d{2}/.test(co) ? co : '';
+    var nf=v('nuits_fact',diffNuits(ciDisp,coDisp));
     var netMad=Math.round(brutMad-brutMad*comPct);
     var taxeMad = rec ? Math.round((rec.taxe_sejour||0)*EUR_MAD) : ((src==='Booking.com' && nf>0) ? Math.round(nf*np*tauxTaxe(ap)*EUR_MAD) : 0);
     var existingRef = rec ? (rec.ref||'') : '';
-    return '<div class="fg">'+
+    // Bannière d'alerte si le record contient des valeurs de date invalides
+    var badDateFields = [];
+    if (ci && !/^\d{4}-\d{2}-\d{2}/.test(ci)) badDateFields.push('check-in : "'+ci+'"');
+    if (co && !/^\d{4}-\d{2}-\d{2}/.test(co)) badDateFields.push('check-out : "'+co+'"');
+    var invalidDateBanner = badDateFields.length > 0
+      ? '<div style="background:rgba(220,53,69,.13);border:1.5px solid rgba(220,53,69,.55);border-radius:8px;padding:10px 14px;margin-bottom:6px">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--re)">⚠️ Valeurs de date invalides dans cette réservation</div>'+
+          '<div style="font-size:12px;color:var(--tx);margin-top:4px">'+badDateFields.join(' — ')+'. Ces valeurs ne s\'affichent pas dans les champs date du formulaire. Saisissez les dates correctes avant d\'enregistrer.</div>'+
+        '</div>'
+      : '';
+    return '<div class="fg">'+invalidDateBanner+
       fieldFull('Référence *','fi-ref','text',existingRef,'AIR-XXXX / BKG-XXXX / SMB-XXXX')+
       field2('Source','fi-src','select',src,['Airbnb','Booking.com','Direct','VRBO'])+
       field2('Appartement','fi-app','select',ap,getAppartsForForm(ap))+
@@ -5186,6 +5199,7 @@ async function saveResa() {
     })()
   };
   await upsert('resa',entry); closeModal(); renderResa();
+  if (QUALITE_ANOMALIES.length) runQualiteCheck();
 }
 
 async function saveBiz() {
@@ -6980,7 +6994,10 @@ function detectForResa(r, allAppartNoms) {
   // Critique uniquement pour RESERVATION/RELOCATION — les annulations et lignes techniques n'en ont pas toujours
   if (!co || co.trim()==='') {
     if (isTrueResa)      add('critique','date','CHECKOUT_EMPTY','Check-out vide sur '+tn,'Renseigner la date de check-out');
-    else if (isAnnulPaye) add('attention','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE','À compléter si disponible dans Smoobu');
+    else if (isAnnulPaye) {
+      if (src==='Booking.com') add('attention','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE Booking.com','Peut affecter date_paiement (règle jeudi suivant)');
+      else add('info','date','CHECKOUT_EMPTY','Check-out vide sur ANNULATION_PAYEE ('+src+')','Pas d\'impact KPI — date_paiement indépendante du checkout');
+    }
     // isSpecial (AIRCOVER/AJUSTEMENT) sans checkout : normal — pas un séjour
     else if (!isAnnulNP && !isSpecial) add('attention','date','CHECKOUT_EMPTY','Check-out vide (type '+tn+')','À compléter');
   }
