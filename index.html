@@ -5380,8 +5380,12 @@ var csvPending = [];
 // checkout jeu/ven/sam/dim → jeudi semaine suivante
 function nextThursday(dateStr) {
   if (!dateStr) return '';
-  var p = dateStr.split('-');
+  // Normalise : strip composant heure éventuel (ex: '2026-03-31T00:00:00' ou '2026-03-31 00:00:00')
+  var clean = String(dateStr).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return '';
+  var p = clean.split('-');
   var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+  if (isNaN(d.getTime())) return '';
   var day = d.getUTCDay(); // 0=dim, 1=lun, 2=mar, 3=mer, 4=jeu, 5=ven, 6=sam
   var daysToAdd;
   if (day === 0) daysToAdd = 4;           // dim → +4
@@ -6106,36 +6110,55 @@ function recomputeAllPaymentDates() {
   var dirty = [];
   var t = today();
   DB.resa.forEach(function(r) {
-    var src = r.source || '';
-    // override_manual protège uniquement brut/net/commission/notes.
-    // date_paiement, mois_kpi et statut suivent toujours les règles CRM.
-    // Règle CRM stricte — recalcule depuis source/ci/co pour tous les records
-    var newDp = calcDatePaiement(src, r.type_norm, r.checkin, r.checkout, r.date_creation);
-    var newMk = (newDp || r.checkin || t).slice(0, 7);
+    try {
+      var src = r.source || '';
+      // override_manual protège uniquement brut/net/commission/notes.
+      // date_paiement, mois_kpi et statut suivent toujours les règles CRM.
+      // Règle CRM stricte — recalcule depuis source/ci/co pour tous les records
+      // Normaliser checkout avant calcul (protège contre composants heure en base)
+      var coNorm = r.checkout ? String(r.checkout).slice(0, 10) : '';
+      var ciNorm = r.checkin  ? String(r.checkin).slice(0, 10)  : '';
+      var newDp = calcDatePaiement(src, r.type_norm, ciNorm, coNorm, r.date_creation);
 
-    // ANNULATION_NON_PAYEE → nuits forcées à 0
-    var nuitsFact = r.nuits_fact;
-    var nuitsSej  = r.nuits_sejour;
-    if (r.type_norm === 'ANNULATION_NON_PAYEE') { nuitsFact = 0; nuitsSej = 0; }
+      // ── Guard Booking.com (parité exacte avec QA BOOKING_DP_INCOHERENT) ──
+      // Si dp < checkout sur Booking.com financier → forcer nextThursday(checkout)
+      // Cette condition couvre les cas où calcDatePaiement retournerait une valeur
+      // erronée (fallback date_creation) malgré un checkout valide en base.
+      var isFinancialTn = (r.type_norm === 'RESERVATION' || r.type_norm === 'ANNULATION_PAYEE' || r.type_norm === 'RELOCATION');
+      if (src === 'Booking.com' && isFinancialTn && coNorm &&
+          /^\d{4}-\d{2}-\d{2}$/.test(coNorm) && r.date_paiement && r.date_paiement < coNorm) {
+        var betterDp = nextThursday(coNorm);
+        if (betterDp) newDp = betterDp;
+      }
 
-    // Recalcul statut selon date_paiement
-    var newStatut = r.statut;
-    if (r.type_norm === 'ANNULATION_NON_PAYEE') {
-      newStatut = 'Annulé';
-    } else if (r.type_norm !== 'AJUSTEMENT') {
-      newStatut = (newDp && t >= newDp) ? 'Payé' : 'En attente';
-    }
+      var newMk = (newDp || ciNorm || t).slice(0, 7);
 
-    var isDirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
-               || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
-               || (r.statut !== newStatut);
-    if (isDirty) {
-      r.date_paiement = newDp;
-      r.mois_kpi      = newMk;
-      r.nuits_fact    = nuitsFact;
-      r.nuits_sejour  = nuitsSej;
-      r.statut        = newStatut;
-      dirty.push(r);
+      // ANNULATION_NON_PAYEE → nuits forcées à 0
+      var nuitsFact = r.nuits_fact;
+      var nuitsSej  = r.nuits_sejour;
+      if (r.type_norm === 'ANNULATION_NON_PAYEE') { nuitsFact = 0; nuitsSej = 0; }
+
+      // Recalcul statut selon date_paiement
+      var newStatut = r.statut;
+      if (r.type_norm === 'ANNULATION_NON_PAYEE') {
+        newStatut = 'Annulé';
+      } else if (r.type_norm !== 'AJUSTEMENT') {
+        newStatut = (newDp && t >= newDp) ? 'Payé' : 'En attente';
+      }
+
+      var isDirty = (r.date_paiement !== newDp) || (r.mois_kpi !== newMk)
+                 || (r.nuits_fact !== nuitsFact) || (r.nuits_sejour !== nuitsSej)
+                 || (r.statut !== newStatut);
+      if (isDirty) {
+        r.date_paiement = newDp;
+        r.mois_kpi      = newMk;
+        r.nuits_fact    = nuitsFact;
+        r.nuits_sejour  = nuitsSej;
+        r.statut        = newStatut;
+        dirty.push(r);
+      }
+    } catch(e) {
+      console.warn('[recompute] Erreur sur record', r.id, r.ref, ':', e.message);
     }
   });
   if (dirty.length > 0) console.log('[recompute] ' + dirty.length + ' lignes recalculées en mémoire.');
@@ -6176,9 +6199,15 @@ async function recomputeAndSave() {
       }
     }
 
-    // Re-render toutes les vues avec les données corrigées en mémoire
+    // Si des records ont été sauvegardés, recharger DB.resa depuis Supabase
+    // pour que Contrôle qualité voie les données réelles (pas seulement la mémoire)
+    if (saved > 0) {
+      try { await loadAllDB(); } catch(e) { console.warn('[recompute] reload DB après save:', e); }
+    }
+
+    // Re-render toutes les vues
     renderResa();
-    renderDash(); // toujours rafraîchir les KPIs même si l'utilisateur est sur la page resa
+    renderDash();
 
     // Afficher résultat dans un overlay dans le CRM
     showRecomputeResult(total, nChanged, saved, errMsg);
