@@ -55,20 +55,30 @@ async function upsertResa(supabase, entry) {
     // RÈGLE ABSOLUE : si override_manual=true, seules les dates et le
     // nombre de personnes sont synchronisées. Tous les autres champs
     // (source, appart, voyageur, phone, email, nuits, finances, statut,
-    // date_paiement, mois_kpi, notes) sont préservés tels que saisis manuellement.
+    // notes) sont préservés tels que saisis manuellement.
+    // Exception Booking.com RESERVATION/ANNULATION_PAYEE : date_paiement et
+    // mois_kpi sont recalculés depuis le nouveau checkout (règle : jeudi suivant).
+    // Finances (brut/net/commission/taxe) jamais touchées.
+    const calendarPatch = {
+      checkin:      entry.checkin,
+      checkout:     entry.checkout,
+      adults:       entry.adults,
+      children:     entry.children,
+      nb_personnes: entry.nb_personnes,
+    };
+    const BOOKING_FIN_TYPES = ['RESERVATION', 'ANNULATION_PAYEE'];
+    if (entry.source === 'Booking.com' && BOOKING_FIN_TYPES.includes(existing.type_norm) && entry.date_paiement) {
+      calendarPatch.date_paiement = entry.date_paiement;
+      calendarPatch.mois_kpi     = entry.mois_kpi;
+    }
     const { error: patchErr } = await supabase
       .from('resa')
-      .update({
-        checkin:      entry.checkin,
-        checkout:     entry.checkout,
-        adults:       entry.adults,
-        children:     entry.children,
-        nb_personnes: entry.nb_personnes,
-      })
+      .update(calendarPatch)
       .eq('smoobu_id', sid);
 
     if (patchErr) throw patchErr;
-    console.log('[webhook] LOCKED (override_manual=true — calendaire uniquement):', sid, '| ref:', entry.ref);
+    const dpLog = calendarPatch.date_paiement ? ` + dp/mois_kpi Booking recalculés (${calendarPatch.date_paiement})` : ' uniquement';
+    console.log(`[webhook] LOCKED (override_manual=true — calendaire${dpLog}):`, sid, '| ref:', entry.ref);
     return { ok: true, ref: entry.ref, protected: true };
   }
 

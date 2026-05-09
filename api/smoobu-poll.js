@@ -481,16 +481,28 @@ export default async function handler(req, res) {
         // RÈGLE ABSOLUE : si override_manual=true, seules les dates et le
         // nombre de personnes sont synchronisées. Tous les autres champs
         // (source, appart, voyageur, phone, email, nuits, finances, statut,
-        // date_paiement, mois_kpi, notes) sont préservés tels que saisis manuellement.
-        await sbPatch('resa', rec.id, {
+        // notes) sont préservés tels que saisis manuellement.
+        // Exception Booking.com RESERVATION/ANNULATION_PAYEE : date_paiement et
+        // mois_kpi sont recalculés depuis le nouveau checkout (règle : jeudi suivant).
+        // Finances (brut/net/commission/taxe) jamais touchées.
+        const calendarPatch = {
           checkin:      mapped.checkin,
           checkout:     mapped.checkout,
           adults:       mapped.adults,
           children:     mapped.children,
           nb_personnes: mapped.nb_personnes,
-        });
+        };
+        const BOOKING_FIN_TYPES = ['RESERVATION', 'ANNULATION_PAYEE'];
+        if (mapped.source === 'Booking.com' && BOOKING_FIN_TYPES.includes(rec.type_norm) && mapped.checkout) {
+          const newDp = nextThursday(mapped.checkout);
+          if (newDp) {
+            calendarPatch.date_paiement = newDp;
+            calendarPatch.mois_kpi     = newDp.slice(0, 7);
+          }
+        }
+        await sbPatch('resa', rec.id, calendarPatch);
         stats.skipped++;
-        console.log(`[poll] LOCKED ${smoobuId} (override_manual=true — calendaire uniquement)`);
+        console.log(`[poll] LOCKED ${smoobuId} — calendaire${calendarPatch.date_paiement ? ' + dp/mois_kpi Booking recalculés' : ' uniquement'}`);
 
       } else {
         // ── C. Mise à jour → UPDATE (même id) ──

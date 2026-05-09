@@ -7048,7 +7048,7 @@ function detectForResa(r, allAppartNoms) {
     add('critique','date','DATE_PAIEMENT_VIDE','Date de paiement invalide : "'+(r.date_paiement||'vide')+'" sur '+tn,'Corriger checkin, checkout et date_creation selon la source');
   // ── Booking.com : date_paiement incohérente → Attention ──
   if (src==='Booking.com' && isFinancialTn && co && coIsDate && r.date_paiement && /^\d{4}-\d{2}-\d{2}/.test(r.date_paiement)) {
-    if (r.date_paiement < co)
+    if (!isLocked && r.date_paiement < co)
       add('attention','date','BOOKING_DP_INCOHERENT','Booking.com : date_paiement ('+r.date_paiement+') avant checkout ('+co+')','Recalculer via le bouton "Recalculer" du module Réservations');
     else if (!isLocked) {
       var dpExpected = nextThursday(co);
