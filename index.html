@@ -4463,34 +4463,32 @@ function detectDups() {
     if (found) grp.forEach(function(r) { sejourId2Key[r.id] = 'st:'+sk; });
   });
 
-  // Règle 4 : doublon probable métier — même appart + voyageur normalisé + checkin (isFinDup uniquement)
-  // Détecte les cas comme Ahmed Aabou : même séjour, sources différentes, montants très éloignés
+  // Règle 4 : doublon probable métier — même appart + voyageur normalisé + checkin + checkout
+  // Inclut type_norm DIRECT (réservations directes saisies manuellement) en plus de RESERVATION/ANNULATION_PAYEE
+  function isFinDupR4(r) {
+    return r.type_norm === 'RESERVATION' || r.type_norm === 'ANNULATION_PAYEE' || r.type_norm === 'DIRECT';
+  }
   var r4Groups = {}, r4Id2Key = {}, r4Id2Label = {};
   DB.resa.forEach(function(r) {
-    if (!isFinDup(r)) return;
+    if (!isFinDupR4(r)) return;
     if (!r.appart || !r.checkin || !r.voyageur) return;
     var normVoy = _normName(r.voyageur);
     if (!normVoy) return;
-    var r4key = 'r4:' + r.appart + '||' + normVoy + '||' + r.checkin;
+    var co = (r.checkout||'').slice(0,10);
+    var r4key = 'r4:' + r.appart + '||' + normVoy + '||' + r.checkin + '||' + co;
     if (!r4Groups[r4key]) r4Groups[r4key] = [];
     r4Groups[r4key].push(r);
   });
   Object.keys(r4Groups).forEach(function(r4key) {
     var grp = r4Groups[r4key];
     if (grp.length < 2) return;
-    var cos = grp.map(function(r) { return (r.checkout||'').slice(0,10); }).filter(Boolean);
-    var allHaveCo = cos.length === grp.length;
-    var hasMixedCo = cos.length >= 2 && cos.some(function(co) { return co !== cos[0]; });
-    // Tous ont un checkout différent → séjours réellement distincts, pas un doublon
-    if (allHaveCo && hasMixedCo) return;
-    // Paire RESERVATION + ANNULATION_PAYEE avec même checkout → paire légitime (relocation possible)
+    // Paire RESERVATION + ANNULATION_PAYEE → annulation d'une réservation réelle, pas un doublon
     if (grp.length === 2) {
       var types = grp.map(function(r) { return r.type_norm; });
-      var hasSameCo = cos.length >= 2 && !hasMixedCo;
-      if (types.indexOf('RESERVATION') >= 0 && types.indexOf('ANNULATION_PAYEE') >= 0 && hasSameCo) return;
+      if (types.indexOf('RESERVATION') >= 0 && types.indexOf('ANNULATION_PAYEE') >= 0) return;
     }
-    var hasSameCo2 = cos.length >= 2 && !hasMixedCo;
-    var label = hasSameCo2 ? 'Doublon probable — séjour identique' : 'Doublon probable — voyageur + appart + dates';
+    var hasCo = r4key.split('||')[3] !== '';
+    var label = hasCo ? 'Doublon probable — séjour identique' : 'Doublon probable — voyageur + appart + dates';
     grp.forEach(function(r) { r4Id2Key[r.id] = r4key; r4Id2Label[r.id] = label; });
   });
 
