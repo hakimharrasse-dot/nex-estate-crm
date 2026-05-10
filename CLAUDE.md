@@ -386,6 +386,11 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-06 | Backup `nex-estate-crm-backup-2026-05-06` produit — suppression ancien backup 2026-05-04 |
 | 2026-05-06 | Sécurité : RLS activé sur `logements`, `resa_backup_20260426`, `resa_backup_20260430` — vue `v_logements_actifs_par_mois` recrée en `security_invoker=true` — EXECUTE `get_my_role()` révoqué de PUBLIC/anon |
 | 2026-05-06 | Feat: Don / pourboire dans Dépenses Perso — colonne `don` ajoutée à `perso`, checkbox dans le formulaire, badge 💝 dans l'affichage, cumul dans "Dons / Aides" du récap |
+| 2026-05-10 | Fix(recompute): recomputeAndSave() PATCH ciblé (date_paiement/mois_kpi/statut/nb_personnes) au lieu d'upsert complet — commit `b43b075` |
+| 2026-05-10 | Fix(recompute): nextThursday() UTC-safe dans index.html + guard Booking.com dp — parité exacte Recalculer ↔ Contrôle qualité — commit `ad5e6fd` |
+| 2026-05-10 | Fix(recompute): nb_personnes = adults + children corrigé via bouton Recalculer — commit `2da4d7f` |
+| 2026-05-10 | Fix(poll): empêcher sync Smoobu de ré-introduire anomalies QA — nextThursday() UTC-safe dans poll + normalizer, calcDatePaiement Booking.com sans fallback dateCreation, guards checkout vide + dp dans tous les cas (B/C-NORMAL/C-DATESONLY/C-DOWNGRADE) — commit `2a84592` |
+| 2026-05-10 | Backup `nex-estate-crm-backup-2026-05-10` produit — suppression ancien backup 2026-05-06 |
 
 ---
 
