@@ -5109,9 +5109,16 @@ function autoCalcDP() {
   var ci    = gv('fi-ci');
   var co    = gv('fi-co');
   var dc    = gv('fi-dc');
-  var newDp = calcDatePaiement(src, typeN, ci, co, dc);
   var dpEl  = document.getElementById('fi-dp');
-  if (dpEl) dpEl.value = newDp || '';
+  // AIRCOVER et AJUSTEMENT Airbnb → ne pas écraser fi-dp (saisie manuelle)
+  var isManualDp = (src === 'Airbnb' && (typeN === 'AIRCOVER' || typeN === 'AJUSTEMENT'));
+  var newDp;
+  if (isManualDp) {
+    newDp = dpEl ? dpEl.value : '';
+  } else {
+    newDp = calcDatePaiement(src, typeN, ci, co, dc);
+    if (dpEl) dpEl.value = newDp || '';
+  }
   var t = today();
   var newStatut;
   if (typeN === 'ANNULATION_NON_PAYEE') {
@@ -5166,7 +5173,10 @@ async function saveResa() {
     if(co&&!/^\d{4}-\d{2}-\d{2}$/.test(co)){alert('Check-out invalide : "'+co+'"\nFormat requis : YYYY-MM-DD (ex: 2026-01-15)');return;}
     if(src==='Direct'&&!dc){alert('Date de création obligatoire pour une réservation directe.\nRenseigner le champ "Date de création" avant de sauvegarder.');return;}
   }
-  var dp = calcDatePaiement(src, typeNorm, ci, co, dc);
+  // AIRCOVER et AJUSTEMENT Airbnb → lire fi-dp (saisie manuelle), jamais recalculer
+  var dp = (src === 'Airbnb' && (typeNorm === 'AIRCOVER' || typeNorm === 'AJUSTEMENT'))
+    ? (gv('fi-dp') || null)
+    : calcDatePaiement(src, typeNorm, ci, co, dc);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
   var comEur = brutEur * comPct;
@@ -5400,6 +5410,8 @@ function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
   var t = today();
   // ANNULATION_NON_PAYEE → date_creation (pas de paiement attendu)
   if (typeNorm === 'ANNULATION_NON_PAYEE') return dateCreation || t;
+  // AIRCOVER et AJUSTEMENT Airbnb → date manuelle uniquement, jamais recalculée
+  if (src === 'Airbnb' && (typeNorm === 'AIRCOVER' || typeNorm === 'AJUSTEMENT')) return null;
   // Airbnb : checkin + 1j (RESERVATION et ANNULATION_PAYEE)
   if (src === 'Airbnb') {
     if (!ci) return dateCreation || t;
@@ -6119,6 +6131,11 @@ function recomputeAllPaymentDates() {
       var coNorm = r.checkout ? String(r.checkout).slice(0, 10) : '';
       var ciNorm = r.checkin  ? String(r.checkin).slice(0, 10)  : '';
       var newDp = calcDatePaiement(src, r.type_norm, ciNorm, coNorm, r.date_creation);
+
+      // AIRCOVER et AJUSTEMENT Airbnb → conserver la date manuelle existante, ne jamais recalculer
+      if (src === 'Airbnb' && (r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT')) {
+        newDp = r.date_paiement ? String(r.date_paiement).slice(0, 10) : '';
+      }
 
       // ── Guard Booking.com (parité exacte avec QA BOOKING_DP_INCOHERENT) ──
       // Si dp < checkout sur Booking.com financier → forcer nextThursday(checkout)

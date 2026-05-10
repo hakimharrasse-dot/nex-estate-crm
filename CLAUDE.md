@@ -140,12 +140,15 @@ Le CRM dispose d'une section **Logements** permettant d'activer/archiver des bie
 
 ### Règles de date_paiement par source
 ```
-Airbnb     → checkin + 1 jour
+Airbnb RESERVATION / ANNULATION_PAYEE / RELOCATION → checkin + 1 jour
+Airbnb AIRCOVER / AJUSTEMENT → saisie manuelle uniquement (jamais recalculée)
 Booking.com → prochain jeudi après checkout
 VRBO       → checkin + 7 jours
 Direct     → date_creation
 Annulation non payée → date_creation
 ```
+> AIRCOVER et AJUSTEMENT Airbnb peuvent être encaissés plusieurs jours après le séjour (remboursement AirCover tardif, demande d'argent acceptée, ajustement après coup).
+> `calcDatePaiement` retourne `null` pour ces types. `autoCalcDP()` ne touche pas `fi-dp`. `saveResa()` lit `fi-dp` directement. `recomputeAllPaymentDates()` conserve la date existante.
 
 ### Règles de statut
 ```
