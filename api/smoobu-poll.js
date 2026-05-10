@@ -72,10 +72,16 @@ function detectAp(raw) {
 
 function nextThursday(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const day = d.getDay();
+  // Normalise : strip composant heure éventuel, vérifie le format YYYY-MM-DD
+  const clean = String(dateStr).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return '';
+  const p = clean.split('-');
+  // Date.UTC évite tout décalage de fuseau horaire (Vercel tourne en UTC mais on blinde)
+  const d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  if (isNaN(d.getTime())) return '';
+  const day = d.getUTCDay(); // 0=dim, 1=lun … 6=sam
   const daysToAdd = day === 0 ? 4 : day <= 3 ? 4 - day : 4 + (7 - day);
-  d.setDate(d.getDate() + daysToAdd);
+  d.setUTCDate(d.getUTCDate() + daysToAdd);
   return d.toISOString().slice(0, 10);
 }
 
@@ -87,7 +93,13 @@ function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
     const d = new Date(ci); d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   }
-  if (src === 'Booking.com') return nextThursday(co) || dateCreation || t;
+  if (src === 'Booking.com') {
+    // Règle : dp = prochain jeudi après checkout.
+    // Si co est vide/invalide (Smoobu ne fournit pas departure), retourne '' —
+    // le guard dp en aval préservera la valeur existante en base plutôt que
+    // de tomber sur dateCreation (qui causerait BOOKING_DP_INCOHERENT).
+    return nextThursday(co) || '';
+  }
   if (src === 'VRBO') {
     if (!ci) return dateCreation || t;
     const d = new Date(ci); d.setDate(d.getDate() + 7);
@@ -448,7 +460,9 @@ export default async function handler(req, res) {
 
   // 2. Charger les enregistrements existants par smoobu_id
   const smoobuIds = bookings.map(b => String(b.id));
-  const existing = await sbGet(`resa?smoobu_id=in.(${smoobuIds.join(',')})&select=id,smoobu_id,override_manual,type_norm`);
+  // Charge aussi checkout + date_paiement pour les guards dp Booking.com
+  // (si Smoobu renvoie departure vide, on peut récupérer le checkout existant)
+  const existing = await sbGet(`resa?smoobu_id=in.(${smoobuIds.join(',')})&select=id,smoobu_id,override_manual,type_norm,checkout,date_paiement`);
   const existingMap = {};
   (existing || []).forEach(r => { existingMap[r.smoobu_id] = r; });
 
@@ -485,16 +499,18 @@ export default async function handler(req, res) {
         // Exception Booking.com RESERVATION/ANNULATION_PAYEE : date_paiement et
         // mois_kpi sont recalculés depuis le nouveau checkout (règle : jeudi suivant).
         // Finances (brut/net/commission/taxe) jamais touchées.
+        // Guard checkout vide : si Smoobu ne fournit pas departure, préserver le checkout Supabase
+        const coB = mapped.checkout || rec.checkout || '';
         const calendarPatch = {
           checkin:      mapped.checkin,
-          checkout:     mapped.checkout,
+          checkout:     coB || null,
           adults:       mapped.adults,
           children:     mapped.children,
           nb_personnes: mapped.nb_personnes,
         };
         const BOOKING_FIN_TYPES = ['RESERVATION', 'ANNULATION_PAYEE'];
-        if (mapped.source === 'Booking.com' && BOOKING_FIN_TYPES.includes(rec.type_norm) && mapped.checkout) {
-          const newDp = nextThursday(mapped.checkout);
+        if (mapped.source === 'Booking.com' && BOOKING_FIN_TYPES.includes(rec.type_norm) && coB) {
+          const newDp = nextThursday(coB);
           if (newDp) {
             calendarPatch.date_paiement = newDp;
             calendarPatch.mois_kpi     = newDp.slice(0, 7);
@@ -513,9 +529,35 @@ export default async function handler(req, res) {
           // et on recalcule date_paiement / mois_kpi / statut via les règles CRM.
           // Jamais touché : brut, net, commission, com_pct, taxe_sejour, type_norm,
           //                 override_manual, notes.
+          // Guard checkout vide : si Smoobu ne fournit pas departure, préserver le checkout Supabase
+          const coD = mapped.checkout || rec.checkout || '';
+
+          // Guard dp Booking.com : toujours nextThursday(checkout), jamais dateCreation
+          let dpD    = mapped.date_paiement;
+          let mkD    = mapped.mois_kpi;
+          let statutD = mapped.statut;
+          if (mapped.source === 'Booking.com') {
+            if (coD) {
+              const betterDp = nextThursday(coD);
+              if (betterDp) {
+                dpD = betterDp;
+                mkD = betterDp.slice(0, 7);
+                const todayD = new Date().toISOString().slice(0, 10);
+                if (mapped.type_norm !== 'ANNULATION_NON_PAYEE') {
+                  statutD = todayD >= betterDp ? 'Payé' : 'En attente';
+                }
+              }
+            } else if (rec.date_paiement) {
+              // Pas de checkout disponible → préserver date_paiement existante
+              dpD = rec.date_paiement;
+              mkD = rec.date_paiement.slice(0, 7);
+              // statut non touché : déjà dans les champs "non modifiés" du datesonly
+            }
+          }
+
           await sbPatch('resa', rec.id, {
             checkin:        mapped.checkin,
-            checkout:       mapped.checkout,
+            checkout:       coD || null,
             voyageur:       mapped.voyageur,
             adults:         mapped.adults,
             children:       mapped.children,
@@ -529,9 +571,9 @@ export default async function handler(req, res) {
             nuits_fact:     mapped.nuits_fact,
             date_creation:  mapped.date_creation,
             // Recalculés par les règles CRM depuis les vraies dates :
-            date_paiement:  mapped.date_paiement,
-            mois_kpi:       mapped.mois_kpi,
-            statut:         mapped.statut,
+            date_paiement:  dpD,
+            mois_kpi:       mkD,
+            statut:         statutD,
           });
           stats.upserted++;
           console.log(`[poll] DATESONLY ${smoobuId} (finances préservées)`);
@@ -545,9 +587,11 @@ export default async function handler(req, res) {
           // de poll — sans ce guard, le type_norm serait écrasé en RESERVATION.
           const DOWNGRADE_PROTECTED = ['ANNULATION_PAYEE', 'ANNULATION_NON_PAYEE', 'AIRCOVER'];
           if (DOWNGRADE_PROTECTED.includes(rec.type_norm) && mapped.type_norm === 'RESERVATION') {
+            // Guard checkout vide : si Smoobu ne fournit pas departure, préserver le checkout Supabase
+            const coDown = mapped.checkout || rec.checkout || '';
             await sbPatch('resa', rec.id, {
               checkin:        mapped.checkin,
-              checkout:       mapped.checkout,
+              checkout:       coDown || null,
               voyageur:       mapped.voyageur,
               adults:         mapped.adults,
               children:       mapped.children,
@@ -567,6 +611,37 @@ export default async function handler(req, res) {
             console.log(`[poll] DOWNGRADE BLOQUÉ ${smoobuId} (${rec.type_norm} → RESERVATION) — partial update`);
           } else {
             const { override_manual: _om, ...mappedData } = mapped;
+
+            // ── Guard checkout vide ────────────────────────────────────────────
+            // Si Smoobu ne fournit pas departure pour cette réservation, on préserve
+            // le checkout déjà en base plutôt que d'écraser avec une chaîne vide.
+            if (!mappedData.checkout && rec.checkout) {
+              mappedData.checkout = rec.checkout;
+            }
+
+            // ── Guard dp Booking.com ───────────────────────────────────────────
+            // dp = nextThursday(checkout) — jamais dateCreation comme fallback.
+            // Sans ce guard, une departure=null de Smoobu produisait dp=dateCreation
+            // (ex : '2026-03-01') → BOOKING_DP_INCOHERENT après chaque sync.
+            if (mappedData.source === 'Booking.com') {
+              const coN = mappedData.checkout || '';
+              if (coN) {
+                const betterDp = nextThursday(coN);
+                if (betterDp) {
+                  mappedData.date_paiement = betterDp;
+                  mappedData.mois_kpi      = betterDp.slice(0, 7);
+                  const todayN = new Date().toISOString().slice(0, 10);
+                  if (mappedData.type_norm !== 'ANNULATION_NON_PAYEE') {
+                    mappedData.statut = todayN >= betterDp ? 'Payé' : 'En attente';
+                  }
+                }
+              } else if (rec.date_paiement) {
+                // Aucun checkout disponible → préserver date_paiement existante en base
+                mappedData.date_paiement = rec.date_paiement;
+                mappedData.mois_kpi      = rec.date_paiement.slice(0, 7);
+              }
+            }
+
             await sbUpsert('resa', { ...mappedData, id: rec.id });
             stats.upserted++;
             console.log(`[poll] UPDATE ${smoobuId}`);
