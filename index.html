@@ -5115,8 +5115,12 @@ function autoCalcDP() {
   var newDp;
   if (isManualDp) {
     newDp = dpEl ? dpEl.value : '';
+    // [DIAG] Temporaire — supprimer après confirmation du fix
+    console.log('[autoCalcDP] MANUAL src=' + src + ' type=' + typeN + ' fi-dp conservé=' + newDp);
   } else {
     newDp = calcDatePaiement(src, typeN, ci, co, dc);
+    // [DIAG] Temporaire — supprimer après confirmation du fix
+    if (src === 'Airbnb') console.log('[autoCalcDP] AUTO src=' + src + ' type=' + typeN + ' fi-dp→' + newDp);
     if (dpEl) dpEl.value = newDp || '';
   }
   var t = today();
@@ -5177,6 +5181,8 @@ async function saveResa() {
   var dp = (src === 'Airbnb' && (typeNorm === 'AIRCOVER' || typeNorm === 'AJUSTEMENT'))
     ? (gv('fi-dp') || null)
     : calcDatePaiement(src, typeNorm, ci, co, dc);
+  // [DIAG] Temporaire — supprimer après confirmation du fix
+  console.log('[saveResa] src=' + src + ' type=' + typeNorm + ' fi-dp=' + gv('fi-dp') + ' dp=' + dp);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
   var brutEur = brutMad / EUR_MAD;
   var comEur = brutEur * comPct;
