@@ -424,6 +424,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .reconcil-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:10px;}
 .reconcil-card.anomaly{border-left:3px solid var(--or);}
 .reconcil-card.crit{border-left:3px solid var(--re);}
+.reconcil-card.info{border-left:3px solid var(--bl);opacity:.8;}
 .reconcil-card.ok{border-left:3px solid var(--gr);opacity:.65;}
 .reconcil-ref{font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--or);}
 .reconcil-guest{font-size:13px;font-weight:600;margin:3px 0;}
@@ -6767,8 +6768,14 @@ function renderAnomaliesList() {
   if (!el) return;
   var pending  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
   var ignored  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
+  var nbInfo   = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending' && a.level === 'info'; }).length;
   var cnt = document.getElementById('reconcil-queue-count');
-  if (cnt) cnt.textContent = '(' + pending + ' en attente' + (ignored ? ', ' + ignored + ' ignorée(s)' : '') + ')';
+  if (cnt) {
+    var parts = [pending + ' en attente'];
+    if (ignored)  parts.push(ignored + ' ignorée(s)');
+    if (nbInfo)   parts.push(nbInfo + ' info');
+    cnt.textContent = '(' + parts.join(', ') + ')';
+  }
   if (!pending && !ignored) {
     el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Toutes les anomalies ont été traitées.</div>';
     return;
@@ -6776,18 +6783,53 @@ function renderAnomaliesList() {
   var html = '';
   RECONCIL_ANOMALIES.forEach(function(a, i) {
     if (a.status === 'validated') return;
-    var bigEcart = Math.abs(a.ecart) > 5;
-    var cardCls = a.status === 'ignored' ? 'reconcil-card' : (bigEcart ? 'reconcil-card crit' : 'reconcil-card anomaly');
-    var ecartCls = Math.abs(a.ecart) < 0.01 ? 'zero' : 'neg';
+    var level   = a.level || (Math.abs(a.ecart||0) > 5 ? 'crit' : 'anomaly');
+    var cardCls = 'reconcil-card' + (a.status !== 'ignored' ? ' ' + level : '');
+
+    // ── Carte Versement résolution / AirCover (checkId D) ──
+    if (a.csvType === 'resolution') {
+      html +=
+        '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
+          '<div>' +
+            '<div class="reconcil-ref">' +
+              (a.isAircover ? '<span style="color:var(--or);font-weight:700">✈ AirCover</span> · ' : 'Versement résolution · ') +
+              escHtml(a.csv.code) +
+              (a.dossier ? ' <span style="color:var(--tm);font-size:11px;font-weight:400">(' + escHtml(a.dossier) + ')</span>' : '') +
+            '</div>' +
+            '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
+            (a.csv.checkin ? '<div style="font-size:11px;color:var(--tm)">Date : ' + escHtml(a.csv.checkin) + '</div>' : '') +
+          '</div>' +
+          '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:15px;color:var(--or)">' + (a.csv.net||0).toFixed(2) + ' EUR</span>' +
+        '</div>' +
+        '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
+        (a.crm ?
+          '<div style="font-size:11px;color:var(--tm);margin-top:4px">CRM : ' + escHtml(a.crm.ref||'?') + ' — ' + escHtml(a.crm.voyageur||'?') + ' <span style="color:var(--td)">(' + escHtml(a.crm.type_norm||'?') + ')</span></div>' :
+          '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
+        (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
+        '<div class="reconcil-acts">' +
+          (a.status!=='ignored' ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer une ligne AIRCOVER ou AJUSTEMENT">➕ Créer</button>' : '') +
+          (a.crm ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
+          (a.status!=='ignored' ?
+            '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>' :
+            '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>') +
+        '</div>' +
+        '</div>';
+      return;
+    }
+
+    // ── Carte réservation (défaut) ──────────────────────────
+    var ecartCls = Math.abs(a.ecart||0) < 0.01 ? 'zero' : 'neg';
+    var checkBadge = a.checkId ? ' <span style="color:var(--td);font-size:10px;font-weight:400">[' + escHtml(a.checkId) + ']</span>' : '';
     html +=
       '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
         '<div>' +
-          '<div class="reconcil-ref">' + escHtml(a.csv.code) + '</div>' +
+          '<div class="reconcil-ref">' + escHtml(a.csv.code) + checkBadge + '</div>' +
           '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
           '<div style="font-size:11px;color:var(--tm)">' + escHtml(a.csv.checkin||'—') + ' → ' + escHtml(a.csv.checkout||'—') + ' · ' + (a.csv.nuits||0) + ' nuits</div>' +
         '</div>' +
-        '<span class="reconcil-delta ' + ecartCls + '">Δ ' + (a.ecart>=0?'+':'') + a.ecart.toFixed(2) + ' EUR</span>' +
+        '<span class="reconcil-delta ' + ecartCls + '">Δ ' + ((a.ecart||0)>=0?'+':'') + (a.ecart||0).toFixed(2) + ' EUR</span>' +
       '</div>' +
       '<div style="margin-top:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
@@ -6797,10 +6839,10 @@ function renderAnomaliesList() {
         '</tr></thead>' +
         '<tbody>' +
           '<tr style="background:var(--s2)">' +
-            '<td style="padding:5px 8px;font-weight:600">CSV Airbnb' + (a.csv.devise!=='EUR'?' <span style="color:var(--or);font-size:10px">('+escHtml(a.csv.devise)+'→EUR)</span>':'') + '</td>' +
-            '<td style="text-align:right;font-family:monospace">' + a.csv.brut.toFixed(2) + '</td>' +
-            '<td style="text-align:right;font-family:monospace">' + a.csv.net.toFixed(2)  + '</td>' +
-            '<td style="text-align:right;font-family:monospace">' + a.csv.commission.toFixed(2) + '</td>' +
+            '<td style="padding:5px 8px;font-weight:600">CSV Airbnb' + ((a.csv.devise&&a.csv.devise!=='EUR')?' <span style="color:var(--or);font-size:10px">('+escHtml(a.csv.devise)+'→EUR)</span>':'') + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + (a.csv.brut||0).toFixed(2) + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + (a.csv.net||0).toFixed(2)  + '</td>' +
+            '<td style="text-align:right;font-family:monospace">' + (a.csv.commission||0).toFixed(2) + '</td>' +
             '<td style="padding:5px 8px">' + escHtml(a.csv.checkin||'—') + '</td>' +
             '<td style="padding:5px 8px">' + escHtml(a.csv.checkout||'—') + '</td>' +
           '</tr>' +
@@ -6815,12 +6857,20 @@ function renderAnomaliesList() {
             '</tr>' :
             '<tr><td colspan="6" style="padding:5px 8px;color:var(--re)">⚠️ Réservation absente du CRM</td></tr>'
           ) +
+          (a.hasRegul && a.regulAmt ?
+            '<tr style="background:rgba(200,119,58,.07)">' +
+              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--or)">Régularisation CSV : ' +
+                ((a.regulAmt||0)>=0?'+':'') + (a.regulAmt||0).toFixed(2) + ' EUR' +
+                (a.hasRegulResol ? ' · Résolution : ' + ((a.regulResolAmt||0)>=0?'+':'') + (a.regulResolAmt||0).toFixed(2) + ' EUR' : '') +
+              '</td>' +
+              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--tm)">Base CSV : ' + (a.csv.netBase||a.csv.net||0).toFixed(2) + ' EUR</td>' +
+            '</tr>' : '') +
         '</tbody></table></div>' +
       '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
       (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
       (a.crm && a.crm.override_manual ? '<div style="font-size:11px;color:var(--td);margin-top:3px">🔒 Verrouillé (override_manual=true)</div>' : '') +
       '<div class="reconcil-acts">' +
-        (a.crm && a.status!=='ignored' && !a.crm.override_manual ?
+        (a.crm && a.status!=='ignored' && !a.crm.override_manual && a.checkId !== 'F' ?
           '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Valider CSV</button>' : '') +
         (a.crm ?
           '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
@@ -6851,10 +6901,11 @@ function handleReconCSV(input) {
     var taux = parseFloat(document.getElementById('reconcil-taux').value) || 10.5;
     var status = document.getElementById('reconcil-status');
     try {
-      var csvRows = parseAirbnbCSV(text, taux);
-      if (!csvRows.length) { alert('Aucune réservation trouvée dans le CSV.'); return; }
-      if (status) status.textContent = 'CSV chargé : ' + csvRows.length + ' réservations · ' + new Date().toLocaleTimeString('fr-FR');
-      RECONCIL_ANOMALIES = runReconciliation(csvRows);
+      var parsed = parseAirbnbCSV(text, taux);
+      var total  = parsed.reservations.length + parsed.resolutions.length;
+      if (!total) { alert('Aucune ligne reconnue dans le CSV (réservations ou versements résolution).'); return; }
+      if (status) status.textContent = 'CSV chargé : ' + parsed.reservations.length + ' réservations, ' + parsed.resolutions.length + ' versements résolution · ' + new Date().toLocaleTimeString('fr-FR');
+      RECONCIL_ANOMALIES = runReconciliation(parsed);
       renderReconcil();
     } catch(err) {
       alert('Erreur lecture CSV : ' + err.message);
@@ -6864,11 +6915,13 @@ function handleReconCSV(input) {
   reader.readAsText(file, 'UTF-8');
 }
 
-// Parse le CSV Airbnb — retourne tableau de rows normalisées (Type=Réservation seulement)
+// Parse le CSV Airbnb — retourne { reservations[], resolutions[] }
+// Types traités : Réservation, Régularisation, Régularisation de la résolution,
+//                 Versement de résolution (→ resolutions[]), Payout (ignoré)
 function parseAirbnbCSV(text, taux) {
   taux = taux || 10.5;
   var lines = text.split(/\r?\n/);
-  if (!lines.length) return [];
+  if (!lines.length) return { reservations: [], resolutions: [] };
   var cols = csvSplitLine(lines[0]);
   function ci(needle) {
     var n = needle.toLowerCase().replace(/\s/g,'');
@@ -6879,40 +6932,129 @@ function parseAirbnbCSV(text, taux) {
   }
   var iType=ci('type'), iCode=ci('confirmation'), iDebut=ci('début'), iFin=ci('fin'),
       iNuits=ci('nuits'), iVoyag=ci('voyageur'), iLogem=ci('logement'),
-      iDevise=ci('devise'), iMontant=ci('montant'), iBrut=ci('bruts'), iFrais=ci('service');
-  var grouped = {};
+      iDevise=ci('devise'), iMontant=ci('montant'), iBrut=ci('bruts'), iFrais=ci('service'),
+      iDetails=ci('détail');
+
+  function toEur(amt, devise) {
+    if (devise === 'MAD') return amt / taux;
+    if (devise === 'USD') return amt / 1.10;
+    return amt;
+  }
+
+  var grouped    = {};   // code → reservation row
+  var pendingAdj = {};   // code → adjustments (Régularisation before Réservation)
+  var resolutions = [];
+
   for (var i = 1; i < lines.length; i++) {
     var line = lines[i].trim();
     if (!line) continue;
     var c = csvSplitLine(line);
-    if ((c[iType]||'').trim() !== 'Réservation') continue;
-    var code = (c[iCode]||'').trim();
+    var type    = (c[iType]||'').trim();
+    var code    = (c[iCode]||'').trim();
     if (!code) continue;
     var devise  = (c[iDevise]||'EUR').trim();
     var montant = parseFloat((c[iMontant]||'0').replace(',','.')) || 0;
     var brut    = parseFloat((iBrut>=0 ? c[iBrut]  : '0').replace(',','.')) || 0;
     var frais   = parseFloat((iFrais>=0? c[iFrais] : '0').replace(',','.')) || 0;
-    if (devise === 'MAD') { montant /= taux; brut /= taux; frais /= taux; }
-    if (grouped[code]) {
-      grouped[code].net        += montant;
-      grouped[code].brut       += brut;
-      grouped[code].commission += frais;
-    } else {
-      grouped[code] = {
+    var details = (iDetails>=0 ? c[iDetails]||'' : '').trim();
+    var mEur    = toEur(montant, devise);
+    var bEur    = toEur(brut,    devise);
+    var fEur    = toEur(frais,   devise);
+
+    if (type === 'Réservation') {
+      if (grouped[code]) {
+        grouped[code].net        += mEur;
+        grouped[code].netBase    += mEur;
+        grouped[code].brut       += bEur;
+        grouped[code].commission += fEur;
+      } else {
+        grouped[code] = {
+          code: code,
+          checkin:    normDateCSV(c[iDebut]||''),
+          checkout:   normDateCSV(c[iFin]||''),
+          nuits:      parseInt(c[iNuits]||'0')||0,
+          voyageur:   (c[iVoyag]||'').trim(),
+          logement:   (c[iLogem]||'').trim(),
+          devise:     devise,
+          netBase:    mEur,
+          net:        mEur,
+          brut:       bEur,
+          commission: fEur,
+          hasRegul:      false,
+          hasRegulResol: false,
+          regulAmt:      0,
+          regulResolAmt: 0,
+        };
+        // Apply any pending adjustments stored before this row
+        if (pendingAdj[code]) {
+          var adj = pendingAdj[code];
+          grouped[code].net          += adj.regulAmt + adj.regulResolAmt;
+          grouped[code].hasRegul      = adj.hasRegul;
+          grouped[code].regulAmt      = adj.regulAmt;
+          grouped[code].hasRegulResol = adj.hasRegulResol;
+          grouped[code].regulResolAmt = adj.regulResolAmt;
+          if (adj._hasUSD) grouped[code]._hasUSD = true;
+          delete pendingAdj[code];
+        }
+      }
+
+    } else if (type === 'Régularisation') {
+      if (grouped[code]) {
+        grouped[code].net      += mEur;
+        grouped[code].hasRegul  = true;
+        grouped[code].regulAmt += mEur;
+      } else {
+        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false };
+        pendingAdj[code].regulAmt += mEur;
+        pendingAdj[code].hasRegul  = true;
+      }
+
+    } else if (type === 'Régularisation de la résolution') {
+      var isUSD = (devise === 'USD');
+      if (grouped[code]) {
+        grouped[code].net             += mEur;
+        grouped[code].hasRegulResol    = true;
+        grouped[code].regulResolAmt   += mEur;
+        if (isUSD) grouped[code]._hasUSD = true;
+      } else {
+        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false };
+        pendingAdj[code].regulResolAmt += mEur;
+        pendingAdj[code].hasRegulResol  = true;
+        if (isUSD) pendingAdj[code]._hasUSD = true;
+      }
+
+    } else if (type === 'Versement de résolution') {
+      var dlw = details.toLowerCase();
+      var isAc = dlw.indexOf('clsf-') >= 0 || dlw.indexOf('aircover') >= 0;
+      var mDos = details.match(/CLSF-\w+/i);
+      resolutions.push({
         code: code,
-        checkin:    normDateCSV(c[iDebut]||''),
-        checkout:   normDateCSV(c[iFin]||''),
-        nuits:      parseInt(c[iNuits]||'0')||0,
-        voyageur:   (c[iVoyag]||'').trim(),
-        logement:   (c[iLogem]||'').trim(),
-        devise:     devise,
-        net:        Math.round(montant*100)/100,
-        brut:       Math.round(brut*100)/100,
-        commission: Math.round(frais*100)/100,
-      };
+        date:     normDateCSV(c[iDebut]||''),
+        voyageur: (c[iVoyag]||'').trim(),
+        logement: (c[iLogem]||'').trim(),
+        devise:   devise,
+        net:      Math.round(mEur*100)/100,
+        brut:     Math.round(bEur*100)/100,
+        isAircover: isAc,
+        dossier:    mDos ? mDos[0].toUpperCase() : '',
+        details:    details,
+        subtype:    isAc ? 'aircover' : 'resolution',
+      });
     }
+    // Payout → ignoré (1 virement peut grouper plusieurs réservations)
   }
-  return Object.values(grouped);
+
+  // Round final amounts on reservations
+  var reservations = Object.values(grouped);
+  reservations.forEach(function(r) {
+    r.net           = Math.round(r.net*100)/100;
+    r.netBase       = Math.round(r.netBase*100)/100;
+    r.brut          = Math.round(r.brut*100)/100;
+    r.commission    = Math.round(r.commission*100)/100;
+    r.regulAmt      = Math.round(r.regulAmt*100)/100;
+    r.regulResolAmt = Math.round(r.regulResolAmt*100)/100;
+  });
+  return { reservations: reservations, resolutions: resolutions };
 }
 
 function csvSplitLine(line) {
@@ -6936,32 +7078,149 @@ function normDateCSV(raw) {
   return s;
 }
 
-function runReconciliation(csvRows) {
+function runReconciliation(parsed) {
+  // Backward compat : tableau plat (ancien format) → wrapper
+  var reservations, resolutions;
+  if (Array.isArray(parsed)) {
+    reservations = parsed; resolutions = [];
+  } else {
+    reservations = parsed.reservations || [];
+    resolutions  = parsed.resolutions  || [];
+  }
+
   var results = [];
-  csvRows.forEach(function(csv) {
-    var crm = DB.resa.find(function(r) {
+
+  function findCrmByCode(code) {
+    return DB.resa.filter(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
-      var ref=r.ref.toUpperCase(), code=csv.code.toUpperCase();
-      return ref===code || ref==='AIR-'+code || ref.indexOf(code)>=0;
+      var ref = r.ref.toUpperCase(), c = code.toUpperCase();
+      return ref === c || ref === 'AIR-' + c || ref.indexOf(c) >= 0;
     });
-    var ecart = crm ? Math.round((csv.net-(crm.net||0))*100)/100 : csv.net;
-    var cause='';
-    if (!crm) {
-      cause = 'Réservation absente du CRM — à créer ou rattacher manuellement';
-    } else if (Math.abs(ecart)<0.01 && csv.checkin===crm.checkin && csv.checkout===crm.checkout) {
-      cause = 'Aucune anomalie';
-    } else if (Math.abs(ecart)>0.01 && (csv.checkin!==crm.checkin || csv.checkout!==crm.checkout)) {
-      cause = 'Montant ET dates différents — vérifier CSV vs Smoobu';
-    } else if (Math.abs(ecart)>0.01) {
-      if (csv.devise==='MAD') cause = 'Montant converti MAD→EUR — vérifier le taux';
-      else if (Math.abs(csv.brut-(crm.brut||0))<0.1) cause = 'Net différent (commission recalculée) — résolution / AirCover possible';
-      else cause = 'Montant différent CSV vs CRM';
-    } else {
-      cause = 'Dates incohérentes — Smoobu vs Airbnb';
+  }
+
+  // ── Checks A / B / C / F / G (réservations) ────────────────
+  reservations.forEach(function(csv) {
+    var matches = findCrmByCode(csv.code);
+
+    // G — doublon CRM
+    if (matches.length > 1) {
+      results.push({
+        csv: csv, crm: matches[0], ecart: 0,
+        cause: 'Doublon CRM — ' + matches.length + ' enregistrements avec la même référence Airbnb',
+        level: 'crit', checkId: 'G', csvType: 'reservation', status: 'pending',
+        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
+        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
+      });
+      return;
     }
-    if (cause === 'Aucune anomalie') return;
-    results.push({ csv:csv, crm:crm||null, ecart:ecart, cause:cause, status:'pending' });
+
+    var crm = matches[0] || null;
+
+    // A — absent du CRM
+    if (!crm) {
+      results.push({
+        csv: csv, crm: null, ecart: Math.round(csv.net*100)/100,
+        cause: 'Réservation absente du CRM — à créer ou rattacher manuellement',
+        level: 'crit', checkId: 'A', csvType: 'reservation', status: 'pending',
+        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
+        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
+      });
+      return;
+    }
+
+    var ecart    = Math.round((csv.net - (crm.net||0)) * 100) / 100;
+    var absEcart = Math.abs(ecart);
+
+    // C — Régularisation non reflétée dans CRM
+    // csv.netBase ≈ crm.net  mais  csv.net ≠ crm.net
+    if (csv.hasRegul && absEcart >= 1) {
+      var ecartBase = Math.round((csv.netBase - (crm.net||0)) * 100) / 100;
+      if (Math.abs(ecartBase) < 1) {
+        results.push({
+          csv: csv, crm: crm, ecart: ecart,
+          cause: 'Régularisation Airbnb non reflétée dans le CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — mettre à jour le montant net manuellement',
+          level: 'anomaly', checkId: 'C', csvType: 'reservation', status: 'pending',
+          hasRegul: true, regulAmt: csv.regulAmt,
+          hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
+        });
+        return;
+      }
+    }
+
+    // B — montant différent
+    if (absEcart >= 1) {
+      var bLevel = absEcart >= 10 ? 'crit' : 'anomaly';
+      var bCause;
+      if (csv.devise === 'MAD') {
+        bCause = 'Montant converti MAD→EUR — vérifier le taux de change (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+      } else if (csv._hasUSD) {
+        bCause = 'Régularisation résolution en USD convertie approximativement (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+      } else {
+        bCause = 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+      }
+      results.push({
+        csv: csv, crm: crm, ecart: ecart,
+        cause: bCause, level: bLevel, checkId: 'B', csvType: 'reservation', status: 'pending',
+        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
+        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
+      });
+      return;
+    }
+
+    // F — dates incohérentes mais montants OK (info uniquement)
+    var datesDiff = csv.checkin !== (crm.checkin||'') || csv.checkout !== (crm.checkout||'');
+    if (datesDiff) {
+      results.push({
+        csv: csv, crm: crm, ecart: 0,
+        cause: 'Montants OK — dates incohérentes CSV vs CRM (décalage Smoobu/Airbnb possible)',
+        level: 'info', checkId: 'F', csvType: 'reservation', status: 'pending',
+        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
+        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
+      });
+    }
+    // Tout OK → pas d'anomalie
   });
+
+  // ── Check D (versements de résolution / AirCover) ───────────
+  resolutions.forEach(function(res) {
+    // Cherche AIRCOVER ou AJUSTEMENT dans le CRM avec ce code
+    var crmAc = DB.resa.find(function(r) {
+      if (r.source !== 'Airbnb') return false;
+      if (r.type_norm !== 'AIRCOVER' && r.type_norm !== 'AJUSTEMENT') return false;
+      if (!r.ref) return false;
+      var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
+      return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
+    });
+    // Cherche aussi la réservation de base (pour affichage)
+    var crmBase = !crmAc ? DB.resa.find(function(r) {
+      if (r.source !== 'Airbnb' || !r.ref) return false;
+      var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
+      return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
+    }) : null;
+
+    if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK
+
+    var ecartD = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
+    var causeD;
+    if (!crmAc) {
+      causeD = res.isAircover
+        ? 'Versement AirCover absent du CRM' + (res.dossier ? ' (dossier ' + res.dossier + ')' : '') + ' — créer une ligne AIRCOVER manuellement'
+        : 'Versement de résolution absent du CRM — créer une ligne AJUSTEMENT manuellement';
+    } else {
+      causeD = 'Montant versement résolution différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
+    }
+    results.push({
+      csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+             checkin: res.date, checkout: '', nuits: 0,
+             net: res.net, brut: res.brut, commission: 0, devise: res.devise,
+             netBase: res.net },
+      crm: crmAc || crmBase || null, ecart: ecartD,
+      cause: causeD,
+      level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
+      isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype, details: res.details,
+    });
+  });
+
   return results;
 }
 
