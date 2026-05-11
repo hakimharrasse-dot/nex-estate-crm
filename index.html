@@ -432,6 +432,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .rlevel.crit{background:var(--res);color:var(--re);}
 .rlevel.info{background:rgba(90,159,212,.1);color:var(--bl);}
 .reconcil-delta.minor{background:rgba(90,159,212,.15);color:var(--bl);}
+.rcf-btn.rcf-active{background:var(--bl)!important;color:#fff!important;border-color:var(--bl)!important;}
 .reconcil-ref{font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--or);}
 .reconcil-guest{font-size:13px;font-weight:600;margin:3px 0;}
 .reconcil-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--br);font-size:12px;}
@@ -995,6 +996,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div id="reconcil-queue" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:16px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:10px">
       File d'attente anomalies <span id="reconcil-queue-count" style="color:var(--or)"></span>
+    </div>
+    <div id="reconcil-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--br)">
+      <button class="ba ba-ghost rcf-btn rcf-active" id="rcf-all"     onclick="setReconcilFilter('all')"     style="font-size:11px;padding:4px 10px">Tous</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-crit"    onclick="setReconcilFilter('crit')"    style="font-size:11px;padding:4px 10px;color:var(--re)">🔴 Critiques</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-anomaly" onclick="setReconcilFilter('anomaly')" style="font-size:11px;padding:4px 10px;color:var(--or)">🟡 À vérifier</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-minor"   onclick="setReconcilFilter('minor')"   style="font-size:11px;padding:4px 10px;color:var(--bl)">🔵 Mineurs</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-info"    onclick="setReconcilFilter('info')"    style="font-size:11px;padding:4px 10px">ℹ️ Infos</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-locked"  onclick="setReconcilFilter('locked')"  style="font-size:11px;padding:4px 10px">🔒 Verrouillés</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-ninfo"   onclick="setReconcilFilter('ninfo')"   style="font-size:11px;padding:4px 10px">− Infos</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-nlocked" onclick="setReconcilFilter('nlocked')" style="font-size:11px;padding:4px 10px">− Verrouillés</button>
     </div>
     <div id="reconcil-anomalies"></div>
     <div style="margin-top:12px;border-top:1px solid var(--br);padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
@@ -6766,6 +6777,17 @@ async function toggleLogementArchive(id) {
 // ============================================================
 
 var RECONCIL_ANOMALIES = [];
+var RECONCIL_FILTER = 'all';
+
+function setReconcilFilter(f) {
+  RECONCIL_FILTER = f;
+  var ids = ['all','crit','anomaly','minor','info','locked','ninfo','nlocked'];
+  ids.forEach(function(id) {
+    var btn = document.getElementById('rcf-' + id);
+    if (btn) btn.classList.toggle('rcf-active', id === f);
+  });
+  renderAnomaliesList();
+}
 
 function renderReconcil() {
   updateReconcilBadge();
@@ -6812,6 +6834,15 @@ function renderAnomaliesList() {
   var html = '';
   RECONCIL_ANOMALIES.forEach(function(a, i) {
     if (a.status === 'validated') return;
+    // Filtre actif
+    var f = RECONCIL_FILTER;
+    if (f === 'crit'    && a.level !== 'crit')                      return;
+    if (f === 'anomaly' && a.level !== 'anomaly')                    return;
+    if (f === 'minor'   && a.level !== 'minor')                      return;
+    if (f === 'info'    && a.level !== 'info')                       return;
+    if (f === 'locked'  && !(a.crm && a.crm.override_manual))        return;
+    if (f === 'ninfo'   && a.level === 'info')                       return;
+    if (f === 'nlocked' && (a.crm && a.crm.override_manual))         return;
     var level    = a.level || (Math.abs(a.ecart||0) > 5 ? 'crit' : 'anomaly');
     var cardCls  = 'reconcil-card' + (a.status !== 'ignored' ? ' ' + level : '');
     var isAmb    = a._deviseAmbigue;
@@ -6890,6 +6921,7 @@ function renderAnomaliesList() {
       '</div>' +
       (isAmb ? '<div style="margin-top:8px;padding:5px 10px;background:rgba(200,119,58,.1);border-radius:6px;font-size:11px;color:var(--or)">⚠️ Devise différente — conversion approximative · vérification manuelle requise</div>' : '') +
       (isLocked ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(224,82,82,.08);border-radius:6px;font-size:11px;color:var(--re)">🔒 Ligne corrigée manuellement — prudence</div>' : '') +
+      (a._hasLinkedAdj ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(90,159,212,.1);border-radius:6px;font-size:11px;color:var(--bl)">ℹ️ Réservation avec ajustement lié — ' + (a._linkedAdj||[]).map(function(r){ return escHtml(r.type_norm) + ' (' + (r.net||0).toFixed(2) + '€)'; }).join(', ') + '</div>' : '') +
       '<div style="margin-top:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
           '<th style="text-align:left;padding:5px 8px">Source</th>' +
@@ -7163,16 +7195,30 @@ function runReconciliation(parsed) {
     };
     var matches = findCrmByCode(csv.code);
 
-    // G — doublon CRM
+    // G — doublon CRM ou dossier lié (RESERVATION + AJUSTEMENT/AIRCOVER)
+    var crm;
     if (matches.length > 1) {
-      pushResult(Object.assign({}, baseFields, {
-        crm: matches[0], ecart: 0, csvType: 'reservation', status: 'pending',
-        cause: 'Doublon CRM — ' + matches.length + ' enregistrements avec la même référence Airbnb',
-        level: 'crit', checkId: 'G',
-      })); return;
+      var resaM = matches.filter(function(r) {
+        return r.type_norm === 'RESERVATION' || r.type_norm === 'ANNULATION_PAYEE' || r.type_norm === 'ANNULATION_NON_PAYEE';
+      });
+      var adjM = matches.filter(function(r) {
+        return r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT';
+      });
+      if (resaM.length === 1 && adjM.length >= 1) {
+        // Dossier lié : 1 réservation + au moins 1 ajustement/aircover — pas un doublon
+        crm = resaM[0];
+        baseFields._hasLinkedAdj = true;
+        baseFields._linkedAdj = adjM;
+      } else {
+        pushResult(Object.assign({}, baseFields, {
+          crm: matches[0], ecart: 0, csvType: 'reservation', status: 'pending',
+          cause: 'Doublon CRM — ' + matches.length + ' enregistrements avec la même référence Airbnb',
+          level: 'crit', checkId: 'G',
+        })); return;
+      }
+    } else {
+      crm = matches[0] || null;
     }
-
-    var crm = matches[0] || null;
 
     // A — absent du CRM
     if (!crm) {
