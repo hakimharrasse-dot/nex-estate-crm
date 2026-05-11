@@ -7186,6 +7186,21 @@ function runReconciliation(parsed) {
     var ecart    = Math.round(((csv.net||0) - (crm.net||0)) * 100) / 100;
     var absEcart = Math.abs(ecart);
 
+    // C2 — CRM déjà aligné sur montant final : régularisation USD déjà appliquée manuellement
+    // Détecte : admin a corrigé crm.net au montant post-remboursement → csv.net ≈ crm.net (±conversion)
+    // |csv.net - crm.net| est petit malgré |csv.netBase - crm.net| grand
+    if (csv.hasRegulResol && csv._hasUSD && absEcart >= 0.01) {
+      var c2Tol = Math.max(2.0, Math.abs(csv.regulResolAmt || 0) * 0.10);
+      if (absEcart < c2Tol) {
+        var c2TolDisp = Math.round(c2Tol * 10) / 10;
+        pushResult(Object.assign({}, baseFields, {
+          crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
+          cause: 'Écart expliqué par remboursement Airbnb (USD→EUR) — CRM déjà aligné sur le montant net final (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR, tolérance ±' + c2TolDisp + ' EUR)',
+          level: 'info', checkId: 'C2',
+        })); return;
+      }
+    }
+
     // C — Régularisation/Résolution non reflétée dans CRM
     // Condition : csv a une régularisation ET csv.netBase ≈ crm.net mais csv.net ≠ crm.net
     if ((csv.hasRegul || csv.hasRegulResol) && absEcart >= 0.01) {
