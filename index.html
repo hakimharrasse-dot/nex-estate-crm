@@ -424,8 +424,14 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .reconcil-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:10px;}
 .reconcil-card.anomaly{border-left:3px solid var(--or);}
 .reconcil-card.crit{border-left:3px solid var(--re);}
-.reconcil-card.info{border-left:3px solid var(--bl);opacity:.8;}
+.reconcil-card.minor,.reconcil-card.info{border-left:3px solid var(--bl);opacity:.85;}
 .reconcil-card.ok{border-left:3px solid var(--gr);opacity:.65;}
+.rlevel{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;text-transform:uppercase;letter-spacing:.06em;margin-left:5px;vertical-align:middle;}
+.rlevel.minor{background:rgba(90,159,212,.15);color:var(--bl);}
+.rlevel.anomaly{background:var(--ors);color:var(--or);}
+.rlevel.crit{background:var(--res);color:var(--re);}
+.rlevel.info{background:rgba(90,159,212,.1);color:var(--bl);}
+.reconcil-delta.minor{background:rgba(90,159,212,.15);color:var(--bl);}
 .reconcil-ref{font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--or);}
 .reconcil-guest{font-size:13px;font-weight:600;margin:3px 0;}
 .reconcil-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--br);font-size:12px;}
@@ -969,16 +975,21 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <input type="file" id="reconcil-csv-input" accept=".csv" style="display:none" onchange="handleReconCSV(this)">
     </div>
   </div>
-  <!-- Taux configurable -->
+  <!-- Taux configurable + seuil mineur -->
   <div class="fb" style="margin-bottom:14px">
-    <div class="fr" style="align-items:center;gap:12px">
+    <div class="fr" style="align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:12px;color:var(--tm)">Taux MAD → EUR :</span>
       <input type="number" id="reconcil-taux" value="10.50" step="0.01" min="1" max="20"
         style="width:80px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:6px 9px;font-size:13px;font-family:'DM Sans',sans-serif">
       <span style="font-size:11px;color:var(--td)">1 EUR = X MAD</span>
+      <span style="font-size:11px;color:var(--br)">|</span>
+      <span style="font-size:12px;color:var(--tm)">Seuil mineur :</span>
+      <input type="number" id="reconcil-seuil" value="1.00" step="0.10" min="0" max="5"
+        style="width:65px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:6px 9px;font-size:13px;font-family:'DM Sans',sans-serif">
+      <span style="font-size:11px;color:var(--td)">EUR</span>
       <span id="reconcil-status" style="font-size:12px;color:var(--tm);margin-left:auto"></span>
     </div>
-    <div style="font-size:11px;color:var(--td);font-style:italic;margin-top:4px">⚠️ Si vous changez le taux, réimportez le CSV pour recalculer les écarts.</div>
+    <div style="font-size:11px;color:var(--td);font-style:italic;margin-top:4px">⚠️ Si vous changez le taux ou le seuil, réimportez le CSV pour recalculer les écarts.</div>
   </div>
   <!-- File d'attente anomalies -->
   <div id="reconcil-queue" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:16px">
@@ -987,6 +998,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div id="reconcil-anomalies"></div>
     <div style="margin-top:12px;border-top:1px solid var(--br);padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ba ba-ghost admin-only" id="btn-align-minor" onclick="alignMinorEcarts()" style="display:none;color:var(--bl);font-size:12px">⚡ Aligner petits écarts</button>
       <button class="ba ba-ghost" style="font-size:12px" onclick="exportAnomaliesJSON()">⬇ Exporter JSON</button>
       <button class="ba ba-ghost" style="font-size:12px;color:var(--td)" onclick="clearIgnoredAnomalies()">🗑 Vider les ignorées</button>
     </div>
@@ -6766,27 +6778,47 @@ function renderReconcil() {
 function renderAnomaliesList() {
   var el = document.getElementById('reconcil-anomalies');
   if (!el) return;
-  var pending  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
-  var ignored  = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
-  var nbInfo   = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending' && a.level === 'info'; }).length;
+  var taux    = parseFloat((document.getElementById('reconcil-taux')||{}).value) || 10.5;
+  var pending = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
+  var ignored = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
+  var nMinor  = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='minor'; }).length;
   var cnt = document.getElementById('reconcil-queue-count');
   if (cnt) {
     var parts = [pending + ' en attente'];
-    if (ignored)  parts.push(ignored + ' ignorée(s)');
-    if (nbInfo)   parts.push(nbInfo + ' info');
+    if (ignored) parts.push(ignored + ' ignorée(s)');
+    if (nMinor)  parts.push(nMinor + ' mineur(s)');
     cnt.textContent = '(' + parts.join(', ') + ')';
+  }
+  // Bouton aligner — visible si des mineurs éligibles existent (admin uniquement)
+  var btnAlign = document.getElementById('btn-align-minor');
+  if (btnAlign) {
+    var nElig = RECONCIL_ANOMALIES.filter(function(a) {
+      return a.status === 'pending' && a.checkId === 'B' && a.level === 'minor'
+        && a.csvType === 'reservation' && !a._deviseAmbigue
+        && !a.csv.hasRegul && !a.csv.hasRegulResol
+        && a.crm && !a.crm.override_manual
+        && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT';
+    }).length;
+    btnAlign.textContent = '⚡ Aligner petits écarts' + (nElig > 0 ? ' (' + nElig + ')' : '');
+    btnAlign.style.display = (nElig > 0 && ROLE === 'admin') ? '' : 'none';
   }
   if (!pending && !ignored) {
     el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Toutes les anomalies ont été traitées.</div>';
     return;
   }
+  function levelLabel(lv) {
+    return lv==='minor'?'mineur':lv==='anomaly'?'à vérifier':lv==='crit'?'critique':lv==='info'?'info':lv;
+  }
   var html = '';
   RECONCIL_ANOMALIES.forEach(function(a, i) {
     if (a.status === 'validated') return;
-    var level   = a.level || (Math.abs(a.ecart||0) > 5 ? 'crit' : 'anomaly');
-    var cardCls = 'reconcil-card' + (a.status !== 'ignored' ? ' ' + level : '');
+    var level    = a.level || (Math.abs(a.ecart||0) > 5 ? 'crit' : 'anomaly');
+    var cardCls  = 'reconcil-card' + (a.status !== 'ignored' ? ' ' + level : '');
+    var isAmb    = a._deviseAmbigue;
+    var isLocked = a.crm && a.crm.override_manual;
+    var aTaux    = a._taux || taux;
 
-    // ── Carte Versement résolution / AirCover (checkId D) ──
+    // ── Carte résolution (checkId D) ─────────────────────────
     if (a.csvType === 'resolution') {
       html +=
         '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
@@ -6796,41 +6828,68 @@ function renderAnomaliesList() {
               (a.isAircover ? '<span style="color:var(--or);font-weight:700">✈ AirCover</span> · ' : 'Versement résolution · ') +
               escHtml(a.csv.code) +
               (a.dossier ? ' <span style="color:var(--tm);font-size:11px;font-weight:400">(' + escHtml(a.dossier) + ')</span>' : '') +
+              '<span class="rlevel anomaly">à vérifier</span>' +
             '</div>' +
             '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
             (a.csv.checkin ? '<div style="font-size:11px;color:var(--tm)">Date : ' + escHtml(a.csv.checkin) + '</div>' : '') +
           '</div>' +
           '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:15px;color:var(--or)">' + (a.csv.net||0).toFixed(2) + ' EUR</span>' +
         '</div>' +
+        (isAmb ? '<div style="margin-top:8px;padding:5px 10px;background:rgba(200,119,58,.1);border-radius:6px;font-size:11px;color:var(--or)">⚠️ Devise différente — vérification manuelle requise</div>' : '') +
         '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
-        (a.crm ?
-          '<div style="font-size:11px;color:var(--tm);margin-top:4px">CRM : ' + escHtml(a.crm.ref||'?') + ' — ' + escHtml(a.crm.voyageur||'?') + ' <span style="color:var(--td)">(' + escHtml(a.crm.type_norm||'?') + ')</span></div>' :
-          '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
+        (a.crm
+          ? '<div style="font-size:11px;color:var(--tm);margin-top:4px">CRM : ' + escHtml(a.crm.ref||'?') + ' — ' + escHtml(a.crm.voyageur||'?') + ' <span style="color:var(--td)">(' + escHtml(a.crm.type_norm||'?') + ')</span></div>'
+          : '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
         (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
         '<div class="reconcil-acts">' +
-          (a.status!=='ignored' ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer une ligne AIRCOVER ou AJUSTEMENT">➕ Créer</button>' : '') +
+          (a.status!=='ignored' ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer AIRCOVER ou AJUSTEMENT">➕ Créer</button>' : '') +
           (a.crm ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
-          (a.status!=='ignored' ?
-            '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>' :
-            '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>') +
-        '</div>' +
-        '</div>';
+          (a.status!=='ignored'
+            ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>'
+            : '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>') +
+        '</div></div>';
       return;
     }
 
-    // ── Carte réservation (défaut) ──────────────────────────
-    var ecartCls = Math.abs(a.ecart||0) < 0.01 ? 'zero' : 'neg';
+    // ── Carte réservation ────────────────────────────────────
+    var ecartVal = a.ecart || 0;
+    var absE     = Math.abs(ecartVal);
+    var ecartCls = absE < 0.01 ? 'zero' : (level === 'minor' ? 'minor' : 'neg');
+    var deltaMad = Math.round(absE * aTaux * 10) / 10;
+    var sens     = ecartVal > 0.005 ? 'CSV > CRM' : ecartVal < -0.005 ? 'CRM > CSV' : '';
+    var levelPill = '<span class="rlevel ' + level + '">' + levelLabel(level) + '</span>';
     var checkBadge = a.checkId ? ' <span style="color:var(--td);font-size:10px;font-weight:400">[' + escHtml(a.checkId) + ']</span>' : '';
+
+    // Boutons action selon niveau × devise × verrou
+    var btns = '';
+    if (a.status === 'ignored') {
+      btns = '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>';
+    } else {
+      var canAlign = a.crm && level === 'minor' && !isAmb
+        && !a.csv.hasRegul && !a.csv.hasRegulResol
+        && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT';
+      var canApply = a.crm && level === 'anomaly' && !isAmb && a.checkId !== 'F';
+      if (canAlign) btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="validateAnomaly('+i+')">⚡ Aligner</button>';
+      if (canApply) btns += '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Appliquer CSV</button>';
+      if (a.crm)   btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>';
+      btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>';
+    }
+
     html +=
       '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
         '<div>' +
-          '<div class="reconcil-ref">' + escHtml(a.csv.code) + checkBadge + '</div>' +
+          '<div class="reconcil-ref">' + escHtml(a.csv.code) + checkBadge + levelPill + '</div>' +
           '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
           '<div style="font-size:11px;color:var(--tm)">' + escHtml(a.csv.checkin||'—') + ' → ' + escHtml(a.csv.checkout||'—') + ' · ' + (a.csv.nuits||0) + ' nuits</div>' +
         '</div>' +
-        '<span class="reconcil-delta ' + ecartCls + '">Δ ' + ((a.ecart||0)>=0?'+':'') + (a.ecart||0).toFixed(2) + ' EUR</span>' +
+        '<div style="text-align:right">' +
+          '<span class="reconcil-delta ' + ecartCls + '">Δ ' + (ecartVal>=0?'+':'') + ecartVal.toFixed(2) + ' EUR</span>' +
+          (absE >= 0.01 && sens ? '<div style="font-size:11px;color:var(--td);margin-top:3px">' + escHtml(sens) + ' · ≈ ' + (ecartVal>=0?'+':'-') + deltaMad.toFixed(1) + ' MAD</div>' : '') +
+        '</div>' +
       '</div>' +
+      (isAmb ? '<div style="margin-top:8px;padding:5px 10px;background:rgba(200,119,58,.1);border-radius:6px;font-size:11px;color:var(--or)">⚠️ Devise différente — conversion approximative · vérification manuelle requise</div>' : '') +
+      (isLocked ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(224,82,82,.08);border-radius:6px;font-size:11px;color:var(--re)">🔒 Ligne corrigée manuellement — prudence</div>' : '') +
       '<div style="margin-top:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
           '<th style="text-align:left;padding:5px 8px">Source</th>' +
@@ -6839,7 +6898,7 @@ function renderAnomaliesList() {
         '</tr></thead>' +
         '<tbody>' +
           '<tr style="background:var(--s2)">' +
-            '<td style="padding:5px 8px;font-weight:600">CSV Airbnb' + ((a.csv.devise&&a.csv.devise!=='EUR')?' <span style="color:var(--or);font-size:10px">('+escHtml(a.csv.devise)+'→EUR)</span>':'') + '</td>' +
+            '<td style="padding:5px 8px;font-weight:600">CSV Airbnb' + (isAmb?' <span style="color:var(--or);font-size:10px">('+escHtml(a.csv.devise||'?')+'→EUR)</span>':'') + '</td>' +
             '<td style="text-align:right;font-family:monospace">' + (a.csv.brut||0).toFixed(2) + '</td>' +
             '<td style="text-align:right;font-family:monospace">' + (a.csv.net||0).toFixed(2)  + '</td>' +
             '<td style="text-align:right;font-family:monospace">' + (a.csv.commission||0).toFixed(2) + '</td>' +
@@ -6855,29 +6914,17 @@ function renderAnomaliesList() {
               '<td style="padding:5px 8px">' + escHtml(a.crm.checkin||'—') + '</td>' +
               '<td style="padding:5px 8px">' + escHtml(a.crm.checkout||'—') + '</td>' +
             '</tr>' :
-            '<tr><td colspan="6" style="padding:5px 8px;color:var(--re)">⚠️ Réservation absente du CRM</td></tr>'
-          ) +
+            '<tr><td colspan="6" style="padding:5px 8px;color:var(--re)">⚠️ Réservation absente du CRM</td></tr>') +
           (a.hasRegul && a.regulAmt ?
             '<tr style="background:rgba(200,119,58,.07)">' +
-              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--or)">Régularisation CSV : ' +
-                ((a.regulAmt||0)>=0?'+':'') + (a.regulAmt||0).toFixed(2) + ' EUR' +
-                (a.hasRegulResol ? ' · Résolution : ' + ((a.regulResolAmt||0)>=0?'+':'') + (a.regulResolAmt||0).toFixed(2) + ' EUR' : '') +
-              '</td>' +
-              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--tm)">Base CSV : ' + (a.csv.netBase||a.csv.net||0).toFixed(2) + ' EUR</td>' +
+              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--or)">Régularisation CSV : ' + ((a.regulAmt||0)>=0?'+':'') + (a.regulAmt||0).toFixed(2) + ' EUR' +
+                (a.hasRegulResol?' · Résolution : '+((a.regulResolAmt||0)>=0?'+':'')+((a.regulResolAmt||0)).toFixed(2)+' EUR':'') + '</td>' +
+              '<td colspan="3" style="padding:5px 8px;font-size:11px;color:var(--tm)">Base CSV : ' + ((a.csv.netBase||a.csv.net)||0).toFixed(2) + ' EUR</td>' +
             '</tr>' : '') +
         '</tbody></table></div>' +
       '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
       (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
-      (a.crm && a.crm.override_manual ? '<div style="font-size:11px;color:var(--td);margin-top:3px">🔒 Verrouillé (override_manual=true)</div>' : '') +
-      '<div class="reconcil-acts">' +
-        (a.crm && a.status!=='ignored' && !a.crm.override_manual && a.checkId !== 'F' ?
-          '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Valider CSV</button>' : '') +
-        (a.crm ?
-          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
-        (a.status!=='ignored' ?
-          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>' :
-          '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly('+i+')">↩ Remettre</button>') +
-      '</div>' +
+      '<div class="reconcil-acts">' + btns + '</div>' +
       '</div>';
   });
   el.innerHTML = html;
@@ -7088,6 +7135,8 @@ function runReconciliation(parsed) {
     resolutions  = parsed.resolutions  || [];
   }
 
+  var seuil = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
+  var taux  = parseFloat((document.getElementById('reconcil-taux')||{}).value)  || 10.5;
   var results = [];
 
   function findCrmByCode(code) {
@@ -7098,92 +7147,98 @@ function runReconciliation(parsed) {
     });
   }
 
+  function pushResult(obj) {
+    // Toujours stocker le taux pour affichage Δ MAD dans renderAnomaliesList
+    obj._taux = taux;
+    results.push(obj);
+  }
+
   // ── Checks A / B / C / F / G (réservations) ────────────────
   reservations.forEach(function(csv) {
+    var isDevAmb = csv._hasUSD || csv.devise !== 'EUR';
+    var baseFields = {
+      csv: csv, _deviseAmbigue: isDevAmb,
+      hasRegul: csv.hasRegul||false, regulAmt: csv.regulAmt||0,
+      hasRegulResol: csv.hasRegulResol||false, regulResolAmt: csv.regulResolAmt||0,
+    };
     var matches = findCrmByCode(csv.code);
 
     // G — doublon CRM
     if (matches.length > 1) {
-      results.push({
-        csv: csv, crm: matches[0], ecart: 0,
+      pushResult(Object.assign({}, baseFields, {
+        crm: matches[0], ecart: 0, csvType: 'reservation', status: 'pending',
         cause: 'Doublon CRM — ' + matches.length + ' enregistrements avec la même référence Airbnb',
-        level: 'crit', checkId: 'G', csvType: 'reservation', status: 'pending',
-        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
-        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
-      });
-      return;
+        level: 'crit', checkId: 'G',
+      })); return;
     }
 
     var crm = matches[0] || null;
 
     // A — absent du CRM
     if (!crm) {
-      results.push({
-        csv: csv, crm: null, ecart: Math.round(csv.net*100)/100,
+      pushResult(Object.assign({}, baseFields, {
+        crm: null, ecart: Math.round((csv.net||0)*100)/100, csvType: 'reservation', status: 'pending',
         cause: 'Réservation absente du CRM — à créer ou rattacher manuellement',
-        level: 'crit', checkId: 'A', csvType: 'reservation', status: 'pending',
-        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
-        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
-      });
-      return;
+        level: 'crit', checkId: 'A',
+      })); return;
     }
 
-    var ecart    = Math.round((csv.net - (crm.net||0)) * 100) / 100;
+    var ecart    = Math.round(((csv.net||0) - (crm.net||0)) * 100) / 100;
     var absEcart = Math.abs(ecart);
 
-    // C — Régularisation non reflétée dans CRM
-    // csv.netBase ≈ crm.net  mais  csv.net ≠ crm.net
-    if (csv.hasRegul && absEcart >= 1) {
-      var ecartBase = Math.round((csv.netBase - (crm.net||0)) * 100) / 100;
-      if (Math.abs(ecartBase) < 1) {
-        results.push({
-          csv: csv, crm: crm, ecart: ecart,
-          cause: 'Régularisation Airbnb non reflétée dans le CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — mettre à jour le montant net manuellement',
-          level: 'anomaly', checkId: 'C', csvType: 'reservation', status: 'pending',
-          hasRegul: true, regulAmt: csv.regulAmt,
-          hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
-        });
-        return;
+    // C — Régularisation/Résolution non reflétée dans CRM
+    // Condition : csv a une régularisation ET csv.netBase ≈ crm.net mais csv.net ≠ crm.net
+    if ((csv.hasRegul || csv.hasRegulResol) && absEcart >= 0.01) {
+      var ecartBase = Math.round(((csv.netBase||0) - (crm.net||0)) * 100) / 100;
+      // Tolérance élargie si USD impliqué (conversion approximative ≈ ±8%)
+      var cTol = csv._hasUSD ? Math.max(1.5, Math.abs(csv.regulResolAmt||0) * 0.08) : 1.0;
+      if (Math.abs(ecartBase) < cTol) {
+        var cCause = (csv._hasUSD && csv.hasRegulResol)
+          ? 'Régularisation résolution en USD rattachée à ce code (conversion approx. 1 USD ≈ 1.10 EUR) — vérifier le montant exact avant toute correction'
+          : 'Régularisation Airbnb non reflétée dans le CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — mettre à jour le net manuellement';
+        pushResult(Object.assign({}, baseFields, {
+          crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
+          cause: cCause, level: 'anomaly', checkId: 'C',
+        })); return;
       }
     }
 
-    // B — montant différent
-    if (absEcart >= 1) {
-      var bLevel = absEcart >= 10 ? 'crit' : 'anomaly';
+    // B — montant différent (détecté dès 0.01 EUR)
+    if (absEcart >= 0.01) {
+      // Niveau selon seuil et devise
+      var bLevel;
+      if      (absEcart >= 10)              bLevel = 'crit';
+      else if (absEcart >= seuil || isDevAmb) bLevel = 'anomaly';
+      else                                  bLevel = 'minor';
+
       var bCause;
-      if (csv.devise === 'MAD') {
+      if (csv._hasUSD) {
+        bCause = 'Remboursement en devise différente (USD→EUR estimé) — vérification manuelle requise';
+      } else if (csv.devise === 'MAD') {
         bCause = 'Montant converti MAD→EUR — vérifier le taux de change (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
-      } else if (csv._hasUSD) {
-        bCause = 'Régularisation résolution en USD convertie approximativement (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
       } else {
         bCause = 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
       }
-      results.push({
-        csv: csv, crm: crm, ecart: ecart,
-        cause: bCause, level: bLevel, checkId: 'B', csvType: 'reservation', status: 'pending',
-        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
-        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
-      });
-      return;
+      pushResult(Object.assign({}, baseFields, {
+        crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
+        cause: bCause, level: bLevel, checkId: 'B',
+      })); return;
     }
 
-    // F — dates incohérentes mais montants OK (info uniquement)
+    // F — montants OK mais dates incohérentes (info uniquement)
     var datesDiff = csv.checkin !== (crm.checkin||'') || csv.checkout !== (crm.checkout||'');
     if (datesDiff) {
-      results.push({
-        csv: csv, crm: crm, ecart: 0,
+      pushResult(Object.assign({}, baseFields, {
+        crm: crm, ecart: 0, csvType: 'reservation', status: 'pending',
         cause: 'Montants OK — dates incohérentes CSV vs CRM (décalage Smoobu/Airbnb possible)',
-        level: 'info', checkId: 'F', csvType: 'reservation', status: 'pending',
-        hasRegul: csv.hasRegul, regulAmt: csv.regulAmt,
-        hasRegulResol: csv.hasRegulResol, regulResolAmt: csv.regulResolAmt,
-      });
+        level: 'info', checkId: 'F',
+      }));
     }
     // Tout OK → pas d'anomalie
   });
 
   // ── Check D (versements de résolution / AirCover) ───────────
   resolutions.forEach(function(res) {
-    // Cherche AIRCOVER ou AJUSTEMENT dans le CRM avec ce code
     var crmAc = DB.resa.find(function(r) {
       if (r.source !== 'Airbnb') return false;
       if (r.type_norm !== 'AIRCOVER' && r.type_norm !== 'AJUSTEMENT') return false;
@@ -7191,7 +7246,6 @@ function runReconciliation(parsed) {
       var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     });
-    // Cherche aussi la réservation de base (pour affichage)
     var crmBase = !crmAc ? DB.resa.find(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
       var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
@@ -7201,23 +7255,20 @@ function runReconciliation(parsed) {
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK
 
     var ecartD = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
-    var causeD;
-    if (!crmAc) {
-      causeD = res.isAircover
-        ? 'Versement AirCover absent du CRM' + (res.dossier ? ' (dossier ' + res.dossier + ')' : '') + ' — créer une ligne AIRCOVER manuellement'
-        : 'Versement de résolution absent du CRM — créer une ligne AJUSTEMENT manuellement';
-    } else {
-      causeD = 'Montant versement résolution différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
-    }
-    results.push({
+    var causeD = !crmAc
+      ? (res.isAircover
+          ? 'Versement AirCover absent du CRM' + (res.dossier ? ' (dossier ' + res.dossier + ')' : '') + ' — créer une ligne AIRCOVER manuellement'
+          : 'Versement de résolution absent du CRM — créer une ligne AJUSTEMENT manuellement')
+      : 'Montant versement résolution différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
+
+    pushResult({
       csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
              checkin: res.date, checkout: '', nuits: 0,
-             net: res.net, brut: res.brut, commission: 0, devise: res.devise,
-             netBase: res.net },
+             net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
       crm: crmAc || crmBase || null, ecart: ecartD,
-      cause: causeD,
-      level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
-      isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype, details: res.details,
+      cause: causeD, level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
+      _deviseAmbigue: res.devise !== 'EUR',
+      isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
     });
   });
 
@@ -7227,20 +7278,57 @@ function runReconciliation(parsed) {
 async function validateAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
   if (!a || !a.crm) return;
-  if (a.crm.override_manual) { alert('⛔ Réservation verrouillée — déverrouillez-la d\'abord via le formulaire.'); return; }
-  var msg = 'Confirmer la correction ?\n\n' +
-    'Réservation : ' + (a.crm.ref||a.crm.id) + ' — ' + (a.crm.voyageur||'') + '\n\n' +
-    'CRM brut=' + (a.crm.brut||0).toFixed(2) + '€  net=' + (a.crm.net||0).toFixed(2) + '€\n' +
-    'CSV brut=' + a.csv.brut.toFixed(2) + '€  net=' + a.csv.net.toFixed(2) + '€\n\n' +
-    'Les valeurs CSV remplaceront le CRM.\noverride_manual sera mis à true.\nUn log sera ajouté dans Notes.';
+  var level    = a.level || 'anomaly';
+  var isMinor  = (level === 'minor');
+  var isLocked = a.crm.override_manual;
+  var isAmb    = a._deviseAmbigue;
+
+  // Construire le message de confirmation
+  var ident = (a.crm.ref||a.crm.id) + ' — ' + (a.crm.voyageur||'');
+  var msg;
+  if (isLocked) {
+    msg = '⚠️ LIGNE CORRIGÉE MANUELLEMENT\n\n' +
+      'Cette réservation a override_manual=true.\n' +
+      (isMinor
+        ? 'Seul le net sera ajusté. Le verrou reste actif.'
+        : 'Les montants CSV remplaceront le CRM. Le verrou reste actif.') + '\n\n' +
+      'Réservation : ' + ident + '\n' +
+      'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
+      'Confirmer malgré le verrou ?';
+  } else if (isMinor) {
+    msg = 'Aligner le petit écart ?\n\n' +
+      'Réservation : ' + ident + '\n' +
+      'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
+      'Seul le net sera ajusté (arrondi / taux de change).\n' +
+      'Brut et commission restent inchangés.\n' +
+      'override_manual sera mis à true.' +
+      (isAmb ? '\n\n⚠️ Devise différente — montant converti approximativement.' : '');
+  } else {
+    msg = 'Appliquer les valeurs CSV ?\n\n' +
+      'Réservation : ' + ident + '\n' +
+      'CRM  brut=' + (a.crm.brut||0).toFixed(2) + '€  net=' + (a.crm.net||0).toFixed(2) + '€\n' +
+      'CSV  brut=' + (a.csv.brut||0).toFixed(2) + '€  net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
+      'Brut, net et commission CSV remplaceront le CRM.\n' +
+      'override_manual sera mis à true. Un log sera ajouté dans Notes.' +
+      (isAmb ? '\n\n⚠️ Devise différente — montant converti approximativement.' : '');
+  }
   if (!confirm(msg)) return;
+  // Double confirmation pour les lignes verrouillées
+  if (isLocked && !confirm('⚠️ Confirmation finale : la réservation est verrouillée manuellement. Continuer quand même ?')) return;
+
+  var dateTag = new Date().toISOString().slice(0,10);
+  var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + (a.csv.net||0).toFixed(2) + '€' + (isMinor?' net-only':'') + ']';
   var patch = {
-    brut:            Math.round(a.csv.brut*100)/100,
-    net:             Math.round(a.csv.net*100)/100,
-    commission:      Math.round(a.csv.commission*100)/100,
+    net:             Math.round((a.csv.net||0)*100)/100,
     override_manual: true,
-    notes: ((a.crm.notes||'') + ' | [Réconcil ' + new Date().toISOString().slice(0,10) + ' CSV=' + a.csv.code + ' net=' + a.csv.net.toFixed(2) + '€]').replace(/^\s*\|\s*/,''),
+    notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/,''),
   };
+  // Pour anomaly/crit : aussi brut et commission
+  if (!isMinor) {
+    patch.brut       = Math.round((a.csv.brut||0)*100)/100;
+    patch.commission = Math.round((a.csv.commission||0)*100)/100;
+  }
+
   try {
     var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
     if (res.error) throw res.error;
@@ -7252,6 +7340,63 @@ async function validateAnomaly(i) {
     renderAnomaliesList();
     showToast('✅ Correction validée');
   } catch(e) { alert('Erreur Supabase : ' + (e.message||e)); }
+}
+
+// Alignement groupé des petits écarts EUR simples (sans régularisation, sans verrou, sans AIRCOVER)
+async function alignMinorEcarts() {
+  var seuil = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
+  var eligibles = RECONCIL_ANOMALIES.filter(function(a) {
+    return a.status === 'pending'
+      && a.checkId === 'B'
+      && a.level === 'minor'
+      && a.csvType === 'reservation'
+      && !a._deviseAmbigue
+      && !a.csv.hasRegul
+      && !a.csv.hasRegulResol
+      && a.crm
+      && !a.crm.override_manual
+      && a.crm.type_norm !== 'AIRCOVER'
+      && a.crm.type_norm !== 'AJUSTEMENT';
+  });
+  if (!eligibles.length) {
+    alert('Aucun petit écart éligible.\n\nCritères : EUR simple, sans régularisation, sans verrou manuel, sans AIRCOVER/AJUSTEMENT, écart < ' + seuil.toFixed(2) + ' EUR.');
+    return;
+  }
+  var maxE = Math.max.apply(null, eligibles.map(function(a) { return Math.abs(a.ecart||0); }));
+  var msg = 'Aligner ' + eligibles.length + ' petit(s) écart(s) ≤ ' + seuil.toFixed(2) + ' EUR ?\n\n' +
+    'Écart max : ' + maxE.toFixed(2) + ' EUR\n\n' +
+    'Seul le net sera ajusté sur chaque ligne.\n' +
+    'Brut, commission, date_paiement, mois_kpi, statut et commissions restent inchangés.\n' +
+    'override_manual sera mis à true sur chaque réservation.';
+  if (!confirm(msg)) return;
+
+  var ok = 0, errors = [];
+  var dateTag = new Date().toISOString().slice(0,10);
+  for (var j = 0; j < eligibles.length; j++) {
+    var a = eligibles[j];
+    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + (a.csv.net||0).toFixed(2) + '€ net-only mineur]';
+    var patch = {
+      net:             Math.round((a.csv.net||0)*100)/100,
+      override_manual: true,
+      notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/,''),
+    };
+    try {
+      var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+      if (res.error) throw new Error(res.error.message || 'Supabase error');
+      Object.assign(a.crm, patch);
+      var dbRow = DB.resa.find(function(r) { return r.id===a.crm.id; });
+      if (dbRow) Object.assign(dbRow, patch);
+      a.status = 'validated';
+      ok++;
+    } catch(e) { errors.push((a.csv.code||'?') + ' : ' + e.message); }
+  }
+  updateReconcilBadge();
+  renderAnomaliesList();
+  if (errors.length) {
+    alert('✅ ' + ok + ' aligné(s).\n\nErreurs (' + errors.length + ') :\n' + errors.join('\n'));
+  } else {
+    showToast('✅ ' + ok + ' petit(s) écart(s) aligné(s)');
+  }
 }
 
 function ignoreAnomaly(i) {
