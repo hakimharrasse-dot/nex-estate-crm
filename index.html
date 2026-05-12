@@ -1013,7 +1013,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div id="reconcil-anomalies"></div>
     <div style="margin-top:12px;border-top:1px solid var(--br);padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="ba ba-ghost admin-only" id="btn-align-minor" onclick="alignMinorEcarts()" style="display:none;color:var(--bl);font-size:12px">⚡ Aligner petits écarts</button>
+      <button class="ba ba-ghost admin-only" id="btn-align-minor"  onclick="alignMinorEcarts()"       style="display:none;color:var(--bl);font-size:12px">⚡ Aligner petits écarts</button>
+      <button class="ba ba-ghost admin-only" id="btn-align-locked" onclick="alignLockedMinorEcarts()" style="display:none;color:#9b6dff;font-size:12px">🔒⚡ Aligner petits écarts verrouillés</button>
       <button class="ba ba-ghost" style="font-size:12px" onclick="exportAnomaliesJSON()">⬇ Exporter JSON</button>
       <button class="ba ba-ghost" style="font-size:12px;color:var(--td)" onclick="clearIgnoredAnomalies()">🗑 Vider les ignorées</button>
     </div>
@@ -6804,7 +6805,8 @@ function renderReconcil() {
 function renderAnomaliesList() {
   var el = document.getElementById('reconcil-anomalies');
   if (!el) return;
-  var taux    = parseFloat((document.getElementById('reconcil-taux')||{}).value) || 10.5;
+  var taux    = parseFloat((document.getElementById('reconcil-taux')||{}).value)  || 10.5;
+  var seuil   = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
   var pending = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
   var ignored = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
   var nMinor  = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='minor'; }).length;
@@ -6827,6 +6829,21 @@ function renderAnomaliesList() {
     }).length;
     btnAlign.textContent = '⚡ Aligner petits écarts' + (nElig > 0 ? ' (' + nElig + ')' : '');
     btnAlign.style.display = (nElig > 0 && ROLE === 'admin') ? '' : 'none';
+  }
+  // Bouton aligner verrouillés — visible si des éligibles existent (admin uniquement)
+  var btnLocked = document.getElementById('btn-align-locked');
+  if (btnLocked) {
+    var nEligLocked = RECONCIL_ANOMALIES.filter(function(a) {
+      return a.status === 'pending' && a.checkId === 'B' && a.level === 'info'
+        && a.csvType === 'reservation' && !a._deviseAmbigue
+        && a.csv && a.csv.devise === 'EUR'
+        && !a.csv.hasRegul && !a.csv.hasRegulResol
+        && a.crm && a.crm.override_manual
+        && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT'
+        && Math.abs(a.ecart||0) >= 0.01 && Math.abs(a.ecart||0) < seuil;
+    }).length;
+    btnLocked.textContent = '🔒⚡ Aligner petits écarts verrouillés' + (nEligLocked > 0 ? ' (' + nEligLocked + ')' : '');
+    btnLocked.style.display = (nEligLocked > 0 && ROLE === 'admin') ? '' : 'none';
   }
   if (!pending && !ignored) {
     el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Toutes les anomalies ont été traitées.</div>';
@@ -6914,8 +6931,15 @@ function renderAnomaliesList() {
         && !a.csv.hasRegul && !a.csv.hasRegulResol
         && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT';
       var canApply = a.crm && level === 'anomaly' && !isAmb && a.checkId !== 'F';
-      if (canAlign) btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="validateAnomaly('+i+')">⚡ Aligner</button>';
-      if (canApply) btns += '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Appliquer CSV</button>';
+      // Cas verrouillé : petit écart EUR simple → bouton dédié (patch net uniquement, garde override_manual)
+      var canAlignLocked = a.crm && a.crm.override_manual && level === 'info' && a.checkId === 'B'
+        && !isAmb && a.csv && a.csv.devise === 'EUR'
+        && !a.csv.hasRegul && !a.csv.hasRegulResol
+        && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT'
+        && absE >= 0.01 && absE < seuil;
+      if (canAlign)       btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="validateAnomaly('+i+')">⚡ Aligner</button>';
+      if (canApply)       btns += '<button class="ba bar" style="font-size:12px;padding:6px 12px" onclick="validateAnomaly('+i+')">✅ Appliquer CSV</button>';
+      if (canAlignLocked) btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:#9b6dff" onclick="alignLockedAnomaly('+i+')">🔒⚡ Aligner</button>';
       if (a.crm)   btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>';
       btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>';
     }
@@ -7459,6 +7483,83 @@ async function validateAnomaly(i) {
     renderAnomaliesList();
     showToast('✅ Correction validée');
   } catch(e) { alert('Erreur Supabase : ' + (e.message||e)); }
+}
+
+// Alignement individuel d'un petit écart sur ligne verrouillée (patch net uniquement)
+async function alignLockedAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (!a || !a.crm) return;
+  var ident = (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '');
+  var msg = '🔒 Aligner l\'écart sur ligne verrouillée ?\n\n' +
+    'Réservation : ' + ident + '\n' +
+    'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
+    'Seul le net sera ajusté.\n' +
+    'override_manual reste actif. Brut, commission, date_paiement, mois_kpi inchangés.';
+  if (!confirm(msg)) return;
+  var dateTag = new Date().toISOString().slice(0, 10);
+  var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + (a.csv.net||0).toFixed(2) + '€ locked-net-only]';
+  var patch = {
+    net:   Math.round((a.csv.net||0) * 100) / 100,
+    notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+  };
+  try {
+    var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+    if (res.error) throw res.error;
+    Object.assign(a.crm, patch);
+    var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+    if (dbRow) Object.assign(dbRow, patch);
+    a.status = 'validated';
+    updateReconcilBadge();
+    renderAnomaliesList();
+    showToast('✅ Net aligné (ligne verrouillée conservée)');
+  } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
+}
+
+// Alignement groupé des petits écarts sur lignes verrouillées (EUR simple, sans régularisation)
+async function alignLockedMinorEcarts() {
+  var seuil = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
+  var eligibles = RECONCIL_ANOMALIES.filter(function(a) {
+    return a.status === 'pending' && a.checkId === 'B' && a.level === 'info'
+      && a.csvType === 'reservation' && !a._deviseAmbigue
+      && a.csv && a.csv.devise === 'EUR'
+      && !a.csv.hasRegul && !a.csv.hasRegulResol
+      && a.crm && a.crm.override_manual
+      && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT'
+      && Math.abs(a.ecart||0) >= 0.01 && Math.abs(a.ecart||0) < seuil;
+  });
+  if (!eligibles.length) {
+    alert('Aucun petit écart verrouillé éligible.\n\nCritères : EUR simple, sans régularisation, sans AIRCOVER/AJUSTEMENT, écart < ' + seuil.toFixed(2) + ' EUR.');
+    return;
+  }
+  var maxE = Math.max.apply(null, eligibles.map(function(a) { return Math.abs(a.ecart||0); }));
+  var msg = 'Aligner ' + eligibles.length + ' petit(s) écart(s) sur lignes verrouillées ?\n\n' +
+    'Écart max : ' + maxE.toFixed(2) + ' EUR\n\n' +
+    'Seul le net sera ajusté sur chaque ligne.\n' +
+    'override_manual reste actif sur toutes. Brut, commission, date_paiement, mois_kpi inchangés.';
+  if (!confirm(msg)) return;
+  var ok = 0, errors = [];
+  var dateTag = new Date().toISOString().slice(0, 10);
+  for (var j = 0; j < eligibles.length; j++) {
+    var a = eligibles[j];
+    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + (a.csv.net||0).toFixed(2) + '€ locked-net-only]';
+    var patch = {
+      net:   Math.round((a.csv.net||0) * 100) / 100,
+      notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+    };
+    try {
+      var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+      if (res.error) throw res.error;
+      Object.assign(a.crm, patch);
+      var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+      if (dbRow) Object.assign(dbRow, patch);
+      a.status = 'validated';
+      ok++;
+    } catch(e) { errors.push((a.crm.ref||a.crm.id) + ': ' + (e.message||e)); }
+  }
+  updateReconcilBadge();
+  renderAnomaliesList();
+  if (errors.length) alert('⚠️ ' + ok + ' aligné(s), ' + errors.length + ' erreur(s) :\n' + errors.join('\n'));
+  else showToast('✅ ' + ok + ' petit(s) écart(s) verrouillé(s) aligné(s)');
 }
 
 // Alignement groupé des petits écarts EUR simples (sans régularisation, sans verrou, sans AIRCOVER)
