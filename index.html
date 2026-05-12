@@ -7233,10 +7233,15 @@ function runReconciliation(parsed) {
   var results = [];
 
   function findCrmByCode(code) {
+    var c = code.toUpperCase();
     return DB.resa.filter(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
-      var ref = r.ref.toUpperCase(), c = code.toUpperCase();
-      return ref === c || ref === 'AIR-' + c || ref.indexOf(c) >= 0;
+      var ref = r.ref.toUpperCase();
+      // Correspondances légitimes uniquement — indexOf trop large, startsWith précis
+      return ref === c                        // HMTPNJSM exact
+          || ref === 'AIR-' + c              // AIR-HMTPNJSM exact
+          || ref.startsWith(c + '_')         // HMTPNJSM_q1, HMTPNJSM_V2…
+          || ref.startsWith('AIR-' + c + '_'); // AIR-HMTPNJSM_q1…
     });
   }
 
@@ -7267,19 +7272,43 @@ function runReconciliation(parsed) {
       var auxM = matches.filter(function(r) { return FIN_TYPES.indexOf(r.type_norm) < 0; });
 
       if (finM.length > 1) {
-        // Plusieurs lignes financières avec la même ref = vrai doublon probable
-        pushResult(Object.assign({}, baseFields, {
-          crm: finM[0], ecart: 0, csvType: 'reservation', status: 'pending',
-          cause: 'Doublon probable — ' + finM.length + ' réservations/annulations payées avec la même référence Airbnb',
-          level: 'crit', checkId: 'G',
-        })); return;
-      }
+        // Vérification : vrai doublon ou dossier Airbnb multi-lignes ?
+        // Vrai doublon = même checkin + checkout non vide sur toutes + montant proche (< 20%)
+        var fHasEmpty = finM.some(function(r) { return !r.checkout; });
+        var fCi0      = finM[0].checkin  || '';
+        var fCo0      = finM[0].checkout || '';
+        var fSameDates = !fHasEmpty && !!fCo0 && finM.every(function(r) {
+          return r.checkin === fCi0 && r.checkout === fCo0;
+        });
+        var fNets   = finM.map(function(r) { return Math.abs(r.net || 0); });
+        var fNetMax = Math.max.apply(null, fNets);
+        var fNetMin = Math.min.apply(null, fNets);
+        var fAmtOk  = fNetMax > 0 ? ((fNetMax - fNetMin) / fNetMax) < 0.20 : true;
 
-      // 0 ou 1 ligne financière → dossier lié (AIRCOVER, AJUSTEMENT, RELOCATION…)
-      crm = finM[0] || null;
-      if (auxM.length > 0) {
+        if (fSameDates && fAmtOk) {
+          // Vrai doublon : mêmes dates + montant similaire
+          pushResult(Object.assign({}, baseFields, {
+            crm: finM[0], ecart: 0, csvType: 'reservation', status: 'pending',
+            cause: 'Doublon probable — ' + finM.length + ' réservations/annulations payées avec la même référence Airbnb, mêmes dates, montant similaire',
+            level: 'crit', checkId: 'G',
+          })); return;
+        }
+        // Pas un vrai doublon (checkout vide ou dates/montants différents) → dossier multi-lignes
+        // Ligne principale = checkout présent + net le plus élevé
+        var fMain   = finM.filter(function(r) { return !!r.checkout; })
+                         .sort(function(a, b) { return Math.abs(b.net||0) - Math.abs(a.net||0); })[0]
+                      || finM[0];
+        var fOthers = finM.filter(function(r) { return r !== fMain; });
+        crm = fMain;
         baseFields._hasLinkedAdj = true;
-        baseFields._linkedAdj = auxM;
+        baseFields._linkedAdj    = fOthers.concat(auxM);
+      } else {
+        // 0 ou 1 ligne financière → dossier lié (AIRCOVER, AJUSTEMENT, RELOCATION…)
+        crm = finM[0] || null;
+        if (auxM.length > 0) {
+          baseFields._hasLinkedAdj = true;
+          baseFields._linkedAdj    = auxM;
+        }
       }
       // Si aucune ligne financière → vérifier si les types complémentaires sont eux-mêmes en doublon
       if (!crm) {
