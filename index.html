@@ -425,11 +425,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .reconcil-card.anomaly{border-left:3px solid var(--or);}
 .reconcil-card.crit{border-left:3px solid var(--re);}
 .reconcil-card.minor,.reconcil-card.info{border-left:3px solid var(--bl);opacity:.85;}
+.reconcil-card.complex{border-left:3px solid #9b6dff;}
 .reconcil-card.ok{border-left:3px solid var(--gr);opacity:.65;}
 .rlevel{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;text-transform:uppercase;letter-spacing:.06em;margin-left:5px;vertical-align:middle;}
 .rlevel.minor{background:rgba(90,159,212,.15);color:var(--bl);}
 .rlevel.anomaly{background:var(--ors);color:var(--or);}
 .rlevel.crit{background:var(--res);color:var(--re);}
+.rlevel.complex{background:rgba(155,109,255,.15);color:#9b6dff;}
 .rlevel.info{background:rgba(90,159,212,.1);color:var(--bl);}
 .reconcil-delta.minor{background:rgba(90,159,212,.15);color:var(--bl);}
 .rcf-btn.rcf-active{background:var(--bl)!important;color:#fff!important;border-color:var(--bl)!important;}
@@ -1002,6 +1004,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="ba ba-ghost rcf-btn"             id="rcf-crit"    onclick="setReconcilFilter('crit')"    style="font-size:11px;padding:4px 10px;color:var(--re)">🔴 Critiques</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-anomaly" onclick="setReconcilFilter('anomaly')" style="font-size:11px;padding:4px 10px;color:var(--or)">🟡 À vérifier</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-minor"   onclick="setReconcilFilter('minor')"   style="font-size:11px;padding:4px 10px;color:var(--bl)">🔵 Mineurs</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-complex" onclick="setReconcilFilter('complex')" style="font-size:11px;padding:4px 10px;color:#9b6dff">🟣 Complexes</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-info"    onclick="setReconcilFilter('info')"    style="font-size:11px;padding:4px 10px">ℹ️ Infos</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-locked"  onclick="setReconcilFilter('locked')"  style="font-size:11px;padding:4px 10px">🔒 Verrouillés</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-ninfo"   onclick="setReconcilFilter('ninfo')"   style="font-size:11px;padding:4px 10px">− Infos</button>
@@ -6781,7 +6784,7 @@ var RECONCIL_FILTER = 'all';
 
 function setReconcilFilter(f) {
   RECONCIL_FILTER = f;
-  var ids = ['all','crit','anomaly','minor','info','locked','ninfo','nlocked'];
+  var ids = ['all','crit','anomaly','complex','minor','info','locked','ninfo','nlocked'];
   ids.forEach(function(id) {
     var btn = document.getElementById('rcf-' + id);
     if (btn) btn.classList.toggle('rcf-active', id === f);
@@ -6829,7 +6832,7 @@ function renderAnomaliesList() {
     return;
   }
   function levelLabel(lv) {
-    return lv==='minor'?'mineur':lv==='anomaly'?'à vérifier':lv==='crit'?'critique':lv==='info'?'info':lv;
+    return lv==='minor'?'mineur':lv==='anomaly'?'à vérifier':lv==='crit'?'critique':lv==='complex'?'cas complexe':lv==='info'?'info':lv;
   }
   var html = '';
   RECONCIL_ANOMALIES.forEach(function(a, i) {
@@ -6839,6 +6842,7 @@ function renderAnomaliesList() {
     if (f === 'crit'    && a.level !== 'crit')                      return;
     if (f === 'anomaly' && a.level !== 'anomaly')                    return;
     if (f === 'minor'   && a.level !== 'minor')                      return;
+    if (f === 'complex' && a.level !== 'complex')                     return;
     if (f === 'info'    && a.level !== 'info')                       return;
     if (f === 'locked'  && !(a.crm && a.crm.override_manual))        return;
     if (f === 'ninfo'   && a.level === 'info')                       return;
@@ -7220,11 +7224,23 @@ function runReconciliation(parsed) {
         baseFields._hasLinkedAdj = true;
         baseFields._linkedAdj = auxM;
       }
-      // Si aucune ligne financière et uniquement des types complémentaires → info
+      // Si aucune ligne financière → vérifier si les types complémentaires sont eux-mêmes en doublon
       if (!crm) {
+        var auxTypes = auxM.map(function(r) { return r.type_norm; });
+        var allSameType = auxTypes.length > 1 && auxTypes.every(function(t) { return t === auxTypes[0]; });
+        var auxNets = auxM.map(function(r) { return Math.abs(r.net||0); });
+        var amountsSimilar = allSameType && auxNets.length > 1 &&
+          Math.abs(auxNets[0] - auxNets[1]) < Math.max(1, auxNets[0] * 0.05);
+        if (allSameType && amountsSimilar) {
+          pushResult(Object.assign({}, baseFields, {
+            crm: auxM[0], ecart: 0, csvType: 'reservation', status: 'pending',
+            cause: 'Doublon probable — ' + auxM.length + ' enregistrements ' + auxTypes[0] + ' avec la même référence et montant similaire',
+            level: 'crit', checkId: 'G',
+          })); return;
+        }
         pushResult(Object.assign({}, baseFields, {
           crm: auxM[0] || null, ecart: 0, csvType: 'reservation', status: 'pending',
-          cause: 'Dossier Airbnb lié — aucune RESERVATION standard en CRM pour ce code (' + auxM.map(function(r){ return r.type_norm; }).join(', ') + ')',
+          cause: 'Dossier Airbnb lié — aucune RESERVATION standard en CRM pour ce code (' + auxTypes.join(', ') + ')',
           level: 'info', checkId: 'G2',
         })); return;
       }
@@ -7263,34 +7279,53 @@ function runReconciliation(parsed) {
     // Condition : csv a une régularisation ET csv.netBase ≈ crm.net mais csv.net ≠ crm.net
     if ((csv.hasRegul || csv.hasRegulResol) && absEcart >= 0.01) {
       var ecartBase = Math.round(((csv.netBase||0) - (crm.net||0)) * 100) / 100;
-      // Tolérance élargie si USD impliqué (conversion approximative ≈ ±8%)
       var cTol = csv._hasUSD ? Math.max(1.5, Math.abs(csv.regulResolAmt||0) * 0.08) : 1.0;
       if (Math.abs(ecartBase) < cTol) {
+        var isComplexC = (csv._hasUSD && csv.hasRegulResol) || (csv.hasRegul && csv.hasRegulResol);
         var cCause = (csv._hasUSD && csv.hasRegulResol)
-          ? 'Régularisation résolution en USD rattachée à ce code (conversion approx. 1 USD ≈ 1.10 EUR) — vérifier le montant exact avant toute correction'
-          : 'Régularisation Airbnb non reflétée dans le CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — mettre à jour le net manuellement';
+          ? 'Dossier complexe — régularisation résolution en USD (1 USD ≈ 1.10 EUR approx.) · vérifier le montant exact avant toute correction'
+          : (csv.hasRegul && csv.hasRegulResol)
+            ? 'Dossier complexe — régularisation + résolution liées (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · mettre à jour manuellement'
+            : 'Régularisation Airbnb non reflétée dans le CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — mettre à jour le net manuellement';
         pushResult(Object.assign({}, baseFields, {
           crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
-          cause: cCause, level: 'anomaly', checkId: 'C',
+          cause: cCause, level: isComplexC ? 'complex' : 'anomaly', checkId: 'C',
         })); return;
       }
     }
 
     // B — montant différent (détecté dès 0.01 EUR)
     if (absEcart >= 0.01) {
-      // Niveau selon seuil et devise
-      var bLevel;
-      if      (absEcart >= 10)              bLevel = 'crit';
-      else if (absEcart >= seuil || isDevAmb) bLevel = 'anomaly';
-      else                                  bLevel = 'minor';
+      var isMad     = csv.devise === 'MAD';
+      var isUsdMvt  = csv._hasUSD && (csv.hasRegul || csv.hasRegulResol);
+      var isMultiMv = csv.hasRegul && csv.hasRegulResol;
+      var bIsLocked = crm && crm.override_manual;
 
-      var bCause;
-      if (csv._hasUSD) {
-        bCause = 'Remboursement en devise différente (USD→EUR estimé) — vérification manuelle requise';
-      } else if (csv.devise === 'MAD') {
-        bCause = 'Montant converti MAD→EUR — vérifier le taux de change (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+      var bLevel, bCause;
+      if (bIsLocked) {
+        // Ligne déjà corrigée manuellement → écart résiduel attendu, classer info
+        bLevel = 'info';
+        bCause = 'Ligne déjà corrigée manuellement — écart résiduel (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · vérification manuelle si besoin';
+      } else if (isMad) {
+        bLevel = 'complex';
+        bCause = 'Devise historique MAD — conversion approx. (1 EUR ≈ ' + taux.toFixed(2) + ' MAD) · vérification manuelle requise';
+      } else if (isUsdMvt) {
+        bLevel = 'complex';
+        bCause = 'Dossier complexe — remboursement USD + régularisations liées · vérification manuelle requise';
+      } else if (isMultiMv) {
+        bLevel = 'complex';
+        bCause = 'Dossier complexe — plusieurs régularisations liées (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · vérification manuelle';
+      } else if (absEcart >= 10) {
+        bLevel = 'crit';
+        bCause = 'Montant très différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+      } else if (absEcart >= seuil || isDevAmb) {
+        bLevel = 'anomaly';
+        bCause = csv._hasUSD
+          ? 'Montant différent — devise USD (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR estimé) · vérifier avant correction'
+          : 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
       } else {
-        bCause = 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+        bLevel = 'minor';
+        bCause = 'Petit écart CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — arrondi / taux de change';
       }
       pushResult(Object.assign({}, baseFields, {
         crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
