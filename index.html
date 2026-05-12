@@ -7436,7 +7436,7 @@ async function validateAnomaly(i) {
       (isMinor
         ? (isZeroCom
             ? 'Brut, net et commission seront ajustés (AIRCOVER/AJUSTEMENT). Le verrou reste actif.'
-            : 'Net et commission seront ajustés. Le verrou reste actif.')
+            : 'Net, brut et commission recalculés (net=CSV, brut=net/0,845, com=15,5%). Le verrou reste actif.')
         : 'Les montants CSV remplaceront le CRM. Le verrou reste actif.') + '\n\n' +
       'Réservation : ' + ident + '\n' +
       'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
@@ -7447,7 +7447,7 @@ async function validateAnomaly(i) {
       'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + (a.csv.net||0).toFixed(2) + '€\n\n' +
       (isZeroCom
         ? 'Brut, net et commission seront ajustés (brut=net=CSV, commission=0).\n'
-        : 'Net et commission seront ajustés. Brut reste inchangé.\n') +
+        : 'Net, brut et commission recalculés (net=CSV, brut=net/0,845, com=15,5%).\n') +
       'override_manual sera mis à true.' +
       (isAmb ? '\n\n⚠️ Devise différente — montant converti approximativement.' : '');
   } else {
@@ -7479,9 +7479,12 @@ async function validateAnomaly(i) {
     patch.commission = 0;
     patch.com_pct    = 0;
   } else if (isMinor) {
-    // Règle 1 mineur : brut inchangé, commission = brut_CRM − net_CSV
+    // Règle 1 mineur : net=CSV, brut et commission recalculés à taux fixe 15,5%
+    var airRate = 0.155;
     patch.net        = csvNet;
-    patch.commission = Math.round(((a.crm.brut||0) - csvNet) * 100) / 100;
+    patch.brut       = Math.round(csvNet / (1 - airRate) * 100) / 100;
+    patch.commission = Math.round(patch.brut * airRate * 100) / 100;
+    patch.com_pct    = airRate;
   } else {
     // Règle 1 anomaly/crit : valeurs CSV complètes
     patch.brut       = Math.round((a.csv.brut||0)*100)/100;
@@ -7507,19 +7510,23 @@ async function alignLockedAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
   if (!a || !a.crm) return;
   var ident = (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '');
-  var csvNet2 = Math.round((a.csv.net||0) * 100) / 100;
-  var newCom2 = Math.round(((a.crm.brut||0) - csvNet2) * 100) / 100;
+  var csvNet2  = Math.round((a.csv.net||0) * 100) / 100;
+  var airRate2 = 0.155;
+  var newBrut2 = Math.round(csvNet2 / (1 - airRate2) * 100) / 100;
+  var newCom2  = Math.round(newBrut2 * airRate2 * 100) / 100;
   var msg = '🔒 Aligner l\'écart sur ligne verrouillée ?\n\n' +
     'Réservation : ' + ident + '\n' +
     'CRM net=' + (a.crm.net||0).toFixed(2) + '€  →  CSV net=' + csvNet2.toFixed(2) + '€\n\n' +
-    'Net et commission seront ajustés (brut inchangé).\n' +
-    'override_manual reste actif. Brut, date_paiement, mois_kpi inchangés.';
+    'Net, brut et commission recalculés (net=CSV, brut=net/0,845, com=15,5%).\n' +
+    'override_manual reste actif. Date_paiement, mois_kpi inchangés.';
   if (!confirm(msg)) return;
   var dateTag = new Date().toISOString().slice(0, 10);
-  var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet2.toFixed(2) + '€ locked-net+com]';
+  var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet2.toFixed(2) + '€ locked-recalc-15.5%]';
   var patch = {
+    brut:       newBrut2,
     net:        csvNet2,
     commission: newCom2,
+    com_pct:    airRate2,
     notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
   };
   try {
@@ -7554,19 +7561,23 @@ async function alignLockedMinorEcarts() {
   var maxE = Math.max.apply(null, eligibles.map(function(a) { return Math.abs(a.ecart||0); }));
   var msg = 'Aligner ' + eligibles.length + ' petit(s) écart(s) sur lignes verrouillées ?\n\n' +
     'Écart max : ' + maxE.toFixed(2) + ' EUR\n\n' +
-    'Net et commission seront ajustés sur chaque ligne (brut inchangé).\n' +
-    'override_manual reste actif sur toutes. Brut, date_paiement, mois_kpi inchangés.';
+    'Net, brut et commission recalculés sur chaque ligne (net=CSV, brut=net/0,845, com=15,5%).\n' +
+    'override_manual reste actif sur toutes. Date_paiement, mois_kpi inchangés.';
   if (!confirm(msg)) return;
   var ok = 0, errors = [];
   var dateTag = new Date().toISOString().slice(0, 10);
   for (var j = 0; j < eligibles.length; j++) {
     var a = eligibles[j];
-    var csvNet3 = Math.round((a.csv.net||0) * 100) / 100;
-    var newCom3 = Math.round(((a.crm.brut||0) - csvNet3) * 100) / 100;
-    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet3.toFixed(2) + '€ locked-net+com]';
+    var csvNet3  = Math.round((a.csv.net||0) * 100) / 100;
+    var airRate3 = 0.155;
+    var newBrut3 = Math.round(csvNet3 / (1 - airRate3) * 100) / 100;
+    var newCom3  = Math.round(newBrut3 * airRate3 * 100) / 100;
+    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet3.toFixed(2) + '€ locked-recalc-15.5%]';
     var patch = {
+      brut:       newBrut3,
       net:        csvNet3,
       commission: newCom3,
+      com_pct:    airRate3,
       notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
     };
     try {
@@ -7608,8 +7619,8 @@ async function alignMinorEcarts() {
   var maxE = Math.max.apply(null, eligibles.map(function(a) { return Math.abs(a.ecart||0); }));
   var msg = 'Aligner ' + eligibles.length + ' petit(s) écart(s) ≤ ' + seuil.toFixed(2) + ' EUR ?\n\n' +
     'Écart max : ' + maxE.toFixed(2) + ' EUR\n\n' +
-    'Net et commission seront ajustés sur chaque ligne (brut inchangé).\n' +
-    'Brut, date_paiement, mois_kpi, statut restent inchangés.\n' +
+    'Net, brut et commission recalculés sur chaque ligne (net=CSV, brut=net/0,845, com=15,5%).\n' +
+    'Date_paiement, mois_kpi, statut restent inchangés.\n' +
     'override_manual sera mis à true sur chaque réservation.';
   if (!confirm(msg)) return;
 
@@ -7617,12 +7628,16 @@ async function alignMinorEcarts() {
   var dateTag = new Date().toISOString().slice(0,10);
   for (var j = 0; j < eligibles.length; j++) {
     var a = eligibles[j];
-    var csvNet4 = Math.round((a.csv.net||0)*100)/100;
-    var newCom4 = Math.round(((a.crm.brut||0) - csvNet4) * 100) / 100;
-    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet4.toFixed(2) + '€ net+com mineur]';
+    var csvNet4  = Math.round((a.csv.net||0)*100)/100;
+    var airRate4 = 0.155;
+    var newBrut4 = Math.round(csvNet4 / (1 - airRate4) * 100) / 100;
+    var newCom4  = Math.round(newBrut4 * airRate4 * 100) / 100;
+    var noteTag = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code||'?') + ' net=' + csvNet4.toFixed(2) + '€ recalc-15.5%]';
     var patch = {
+      brut:            newBrut4,
       net:             csvNet4,
       commission:      newCom4,
+      com_pct:         airRate4,
       override_manual: true,
       notes: ((a.crm.notes||'') + ' | ' + noteTag).replace(/^\s*\|\s*/,''),
     };
