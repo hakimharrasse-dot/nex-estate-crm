@@ -6921,7 +6921,7 @@ function renderAnomaliesList() {
       '</div>' +
       (isAmb ? '<div style="margin-top:8px;padding:5px 10px;background:rgba(200,119,58,.1);border-radius:6px;font-size:11px;color:var(--or)">⚠️ Devise différente — conversion approximative · vérification manuelle requise</div>' : '') +
       (isLocked ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(224,82,82,.08);border-radius:6px;font-size:11px;color:var(--re)">🔒 Ligne corrigée manuellement — prudence</div>' : '') +
-      (a._hasLinkedAdj ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(90,159,212,.1);border-radius:6px;font-size:11px;color:var(--bl)">ℹ️ Réservation avec ajustement lié — ' + (a._linkedAdj||[]).map(function(r){ return escHtml(r.type_norm) + ' (' + (r.net||0).toFixed(2) + '€)'; }).join(', ') + '</div>' : '') +
+      (a._hasLinkedAdj ? '<div style="margin-top:6px;padding:4px 10px;background:rgba(90,159,212,.1);border-radius:6px;font-size:11px;color:var(--bl)">ℹ️ Dossier Airbnb lié — ' + (a._linkedAdj||[]).map(function(r){ return escHtml(r.type_norm) + (r.net ? ' (' + (r.net||0).toFixed(2) + '€)' : ''); }).join(', ') + ' · comparaison faite sur la réservation principale uniquement</div>' : '') +
       '<div style="margin-top:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">' +
           '<th style="text-align:left;padding:5px 8px">Source</th>' +
@@ -7195,25 +7195,37 @@ function runReconciliation(parsed) {
     };
     var matches = findCrmByCode(csv.code);
 
-    // G — doublon CRM ou dossier lié (RESERVATION + AJUSTEMENT/AIRCOVER)
+    // G — doublon CRM ou dossier lié
+    // Règle calquée sur detectDups() : seuls RESERVATION et ANNULATION_PAYEE sont des types
+    // financiers duplicables. Tout le reste (AIRCOVER, AJUSTEMENT, RELOCATION,
+    // ANNULATION_NON_PAYEE...) est un mouvement complémentaire — jamais un doublon.
+    var FIN_TYPES = ['RESERVATION', 'ANNULATION_PAYEE'];
     var crm;
     if (matches.length > 1) {
-      var resaM = matches.filter(function(r) {
-        return r.type_norm === 'RESERVATION' || r.type_norm === 'ANNULATION_PAYEE' || r.type_norm === 'ANNULATION_NON_PAYEE';
-      });
-      var adjM = matches.filter(function(r) {
-        return r.type_norm === 'AIRCOVER' || r.type_norm === 'AJUSTEMENT';
-      });
-      if (resaM.length === 1 && adjM.length >= 1) {
-        // Dossier lié : 1 réservation + au moins 1 ajustement/aircover — pas un doublon
-        crm = resaM[0];
-        baseFields._hasLinkedAdj = true;
-        baseFields._linkedAdj = adjM;
-      } else {
+      var finM = matches.filter(function(r) { return FIN_TYPES.indexOf(r.type_norm) >= 0; });
+      var auxM = matches.filter(function(r) { return FIN_TYPES.indexOf(r.type_norm) < 0; });
+
+      if (finM.length > 1) {
+        // Plusieurs lignes financières avec la même ref = vrai doublon probable
         pushResult(Object.assign({}, baseFields, {
-          crm: matches[0], ecart: 0, csvType: 'reservation', status: 'pending',
-          cause: 'Doublon CRM — ' + matches.length + ' enregistrements avec la même référence Airbnb',
+          crm: finM[0], ecart: 0, csvType: 'reservation', status: 'pending',
+          cause: 'Doublon probable — ' + finM.length + ' réservations/annulations payées avec la même référence Airbnb',
           level: 'crit', checkId: 'G',
+        })); return;
+      }
+
+      // 0 ou 1 ligne financière → dossier lié (AIRCOVER, AJUSTEMENT, RELOCATION…)
+      crm = finM[0] || null;
+      if (auxM.length > 0) {
+        baseFields._hasLinkedAdj = true;
+        baseFields._linkedAdj = auxM;
+      }
+      // Si aucune ligne financière et uniquement des types complémentaires → info
+      if (!crm) {
+        pushResult(Object.assign({}, baseFields, {
+          crm: auxM[0] || null, ecart: 0, csvType: 'reservation', status: 'pending',
+          cause: 'Dossier Airbnb lié — aucune RESERVATION standard en CRM pour ce code (' + auxM.map(function(r){ return r.type_norm; }).join(', ') + ')',
+          level: 'info', checkId: 'G2',
         })); return;
       }
     } else {
