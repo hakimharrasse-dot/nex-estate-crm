@@ -1015,6 +1015,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="margin-top:12px;border-top:1px solid var(--br);padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" id="btn-align-minor"  onclick="alignMinorEcarts()"       style="display:none;color:var(--bl);font-size:12px">⚡ Aligner petits écarts</button>
       <button class="ba ba-ghost admin-only" id="btn-align-locked" onclick="alignLockedMinorEcarts()" style="display:none;color:#9b6dff;font-size:12px">🔒⚡ Aligner petits écarts verrouillés</button>
+      <button class="ba ba-ghost admin-only" id="btn-select-all"    onclick="selectAllEligible()"     style="display:none;font-size:12px">☑ Tout sélectionner</button>
+      <button class="ba ba-ghost admin-only" id="btn-align-selection" onclick="alignSelectedEcarts()" style="display:none;color:#2a9d60;font-size:12px">⚡ Aligner sélection (<span id="sel-count">0</span>)</button>
       <button class="ba ba-ghost" style="font-size:12px" onclick="exportAnomaliesJSON()">⬇ Exporter JSON</button>
       <button class="ba ba-ghost" style="font-size:12px;color:var(--td)" onclick="clearIgnoredAnomalies()">🗑 Vider les ignorées</button>
     </div>
@@ -6783,6 +6785,7 @@ async function toggleLogementArchive(id) {
 
 var RECONCIL_ANOMALIES = [];
 var RECONCIL_FILTER = 'all';
+var RECONCIL_SELECTED = {};   // index → true pour les anomalies cochées
 
 function setReconcilFilter(f) {
   RECONCIL_FILTER = f;
@@ -6816,6 +6819,12 @@ function renderAnomaliesList() {
     if (ignored) parts.push(ignored + ' ignorée(s)');
     if (nMinor)  parts.push(nMinor + ' mineur(s)');
     cnt.textContent = '(' + parts.join(', ') + ')';
+  }
+  // Bouton Tout sélectionner — visible si des anomalies éligibles existent
+  var btnSelAll = document.getElementById('btn-select-all');
+  if (btnSelAll) {
+    var nSelectable = RECONCIL_ANOMALIES.filter(function(a) { return isSelectableAnomaly(a, seuil); }).length;
+    btnSelAll.style.display = (nSelectable > 0 && ROLE === 'admin') ? '' : 'none';
   }
   // Bouton aligner — visible si des mineurs éligibles existent (admin uniquement)
   var btnAlign = document.getElementById('btn-align-minor');
@@ -6922,6 +6931,9 @@ function renderAnomaliesList() {
     var levelPill = '<span class="rlevel ' + level + '">' + levelLabel(level) + '</span>';
     var checkBadge = a.checkId ? ' <span style="color:var(--td);font-size:10px;font-weight:400">[' + escHtml(a.checkId) + ']</span>' : '';
 
+    // Éligibilité sélection groupée
+    var canSelect = isSelectableAnomaly(a, seuil);
+
     // Boutons action selon niveau × devise × verrou
     var btns = '';
     if (a.status === 'ignored') {
@@ -6944,8 +6956,16 @@ function renderAnomaliesList() {
       btns += '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly('+i+')">🙈 Ignorer</button>';
     }
 
+    var selHtml = canSelect
+      ? '<div style="margin-bottom:5px;display:flex;align-items:center;gap:7px">' +
+          '<input type="checkbox" id="sel-' + i + '" ' + (RECONCIL_SELECTED[i] ? 'checked ' : '') +
+          'onchange="toggleSelectAnomaly(' + i + ')" style="cursor:pointer;width:14px;height:14px;accent-color:var(--bl)">' +
+          '<label for="sel-' + i + '" style="font-size:11px;color:var(--tm);cursor:pointer;user-select:none">Sélectionner pour alignement groupé</label>' +
+        '</div>'
+      : '';
     html +=
       '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
+      selHtml +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
         '<div>' +
           '<div class="reconcil-ref">' + escHtml(a.csv.code) + checkBadge + levelPill + '</div>' +
@@ -6998,6 +7018,7 @@ function renderAnomaliesList() {
       '</div>';
   });
   el.innerHTML = html;
+  updateAlignSelBtn();
 }
 
 function updateReconcilBadge() {
@@ -7024,6 +7045,7 @@ function handleReconCSV(input) {
       if (status) status.textContent = 'CSV chargé : ' + parsed.reservations.length + ' réservations, ' + parsed.resolutions.length + ' versements résolution · ' + new Date().toLocaleTimeString('fr-FR');
       RECONCIL_ANOMALIES = runReconciliation(parsed);
       applyPersistedIgnores(RECONCIL_ANOMALIES);
+      RECONCIL_SELECTED = {};
       renderReconcil();
     } catch(err) {
       alert('Erreur lecture CSV : ' + err.message);
@@ -7658,6 +7680,127 @@ async function alignMinorEcarts() {
   } else {
     showToast('✅ ' + ok + ' petit(s) écart(s) aligné(s)');
   }
+}
+
+// ── Sélection groupée ────────────────────────────────────────
+
+// Éligibilité pour la sélection groupée
+// - checkId=B, EUR/EUR, pas hasRegul/hasRegulResol, pas devise ambiguë
+// - level=minor (toutes types) OU level=info verrouillé (RESERVATION/ANNULATION_PAYEE uniquement)
+function isSelectableAnomaly(a, seuil) {
+  if (a.status !== 'pending') return false;
+  if (a.checkId !== 'B') return false;
+  if (a.csvType !== 'reservation') return false;
+  if (a._deviseAmbigue) return false;
+  if (!a.csv || a.csv.devise !== 'EUR') return false;
+  if (a.csv.hasRegul || a.csv.hasRegulResol) return false;
+  if (!a.crm) return false;
+  var absE = Math.abs(a.ecart || 0);
+  if (absE < 0.01 || absE >= seuil) return false;
+  if (a.level === 'minor') return true;
+  if (a.level === 'info' && a.crm.override_manual
+      && a.crm.type_norm !== 'AIRCOVER' && a.crm.type_norm !== 'AJUSTEMENT') return true;
+  return false;
+}
+
+function toggleSelectAnomaly(i) {
+  if (RECONCIL_SELECTED[i]) delete RECONCIL_SELECTED[i];
+  else RECONCIL_SELECTED[i] = true;
+  updateAlignSelBtn();
+}
+
+function updateAlignSelBtn() {
+  var n = Object.keys(RECONCIL_SELECTED).length;
+  var btn = document.getElementById('btn-align-selection');
+  if (btn) {
+    btn.style.display = (n > 0 && ROLE === 'admin') ? '' : 'none';
+    var span = document.getElementById('sel-count');
+    if (span) span.textContent = n;
+  }
+}
+
+function selectAllEligible() {
+  var seuil = parseFloat((document.getElementById('reconcil-seuil') || {}).value) || 1.0;
+  var candidates = [];
+  RECONCIL_ANOMALIES.forEach(function(a, i) {
+    if (isSelectableAnomaly(a, seuil)) candidates.push(i);
+  });
+  var allSel = candidates.length > 0 && candidates.every(function(i) { return RECONCIL_SELECTED[i]; });
+  if (allSel) {
+    candidates.forEach(function(i) { delete RECONCIL_SELECTED[i]; });
+  } else {
+    candidates.forEach(function(i) { RECONCIL_SELECTED[i] = true; });
+  }
+  renderAnomaliesList();
+}
+
+async function alignSelectedEcarts() {
+  var seuil = parseFloat((document.getElementById('reconcil-seuil') || {}).value) || 1.0;
+  var taux  = parseFloat((document.getElementById('reconcil-taux')  || {}).value) || 10.5;
+  var idxs  = Object.keys(RECONCIL_SELECTED).map(Number);
+  var items = idxs
+    .map(function(i) { return { idx: i, a: RECONCIL_ANOMALIES[i] }; })
+    .filter(function(x) { return x.a && isSelectableAnomaly(x.a, seuil); });
+  if (!items.length) {
+    alert('Aucune ligne sélectionnée éligible.\nVérifiez que les lignes sont EUR, sans régularisation, et que l\'écart est inférieur au seuil.');
+    return;
+  }
+  var nZeroCom  = items.filter(function(x) {
+    return x.a.crm.type_norm === 'AIRCOVER' || x.a.crm.type_norm === 'AJUSTEMENT';
+  }).length;
+  var nResaType = items.length - nZeroCom;
+  var ecarts    = items.map(function(x) { return Math.abs(x.a.ecart || 0); });
+  var totalEur  = ecarts.reduce(function(s, e) { return s + e; }, 0);
+  var maxEur    = Math.max.apply(null, ecarts);
+  var totalMad  = Math.round(totalEur * taux * 10) / 10;
+  var msg = 'Aligner ' + items.length + ' ligne(s) sélectionnée(s) ?\n\n' +
+    'Résumé :\n' +
+    (nResaType > 0 ? '  · ' + nResaType + ' réservation(s) — recalcul net=CSV, brut=net/0,845, com=15,5%\n' : '') +
+    (nZeroCom  > 0 ? '  · ' + nZeroCom  + ' AIRCOVER/AJUSTEMENT — brut=net=CSV, commission=0\n' : '') +
+    '  Écart total absolu : ' + totalEur.toFixed(2) + ' EUR (≈ ' + totalMad.toFixed(1) + ' MAD)\n' +
+    '  Écart max : ' + maxEur.toFixed(2) + ' EUR\n\n' +
+    'override_manual=true après correction.\n' +
+    'date_paiement, mois_kpi, statut, type_norm inchangés.';
+  if (!confirm(msg)) return;
+
+  var ok = 0, errors = [];
+  var dateTag = new Date().toISOString().slice(0, 10);
+  for (var j = 0; j < items.length; j++) {
+    var a   = items[j].a;
+    var idx = items[j].idx;
+    var csvNet   = Math.round((a.csv.net || 0) * 100) / 100;
+    var isZeroCom = (a.crm.type_norm === 'AIRCOVER' || a.crm.type_norm === 'AJUSTEMENT');
+    var noteTag  = '[Réconcil ' + dateTag + ' CSV=' + (a.csv.code || '?') + ' net=' + csvNet.toFixed(2) +
+                   (isZeroCom ? '€ sel-brut=net' : '€ sel-recalc-15.5%') + ']';
+    var patch = {
+      override_manual: true,
+      notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+    };
+    if (isZeroCom) {
+      patch.brut = csvNet; patch.net = csvNet; patch.commission = 0; patch.com_pct = 0;
+    } else {
+      var rate = 0.155;
+      patch.net        = csvNet;
+      patch.brut       = Math.round(csvNet / (1 - rate) * 100) / 100;
+      patch.commission = Math.round(patch.brut * rate * 100) / 100;
+      patch.com_pct    = rate;
+    }
+    try {
+      var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+      if (res.error) throw res.error;
+      Object.assign(a.crm, patch);
+      var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+      if (dbRow) Object.assign(dbRow, patch);
+      a.status = 'validated';
+      delete RECONCIL_SELECTED[idx];
+      ok++;
+    } catch(e) { errors.push((a.crm.ref || a.crm.id) + ': ' + (e.message || e)); }
+  }
+  updateReconcilBadge();
+  updateAlignSelBtn();
+  renderAnomaliesList();
+  if (errors.length) alert('✅ ' + ok + ' aligné(s). Erreurs (' + errors.length + ') :\n' + errors.join('\n'));
+  else showToast('✅ ' + ok + ' ligne(s) alignée(s)');
 }
 
 // ── Ignore persistant (localStorage) ────────────────────────
