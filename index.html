@@ -1007,6 +1007,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="ba ba-ghost rcf-btn"             id="rcf-complex" onclick="setReconcilFilter('complex')" style="font-size:11px;padding:4px 10px;color:#9b6dff">🟣 Complexes</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-info"    onclick="setReconcilFilter('info')"    style="font-size:11px;padding:4px 10px">ℹ️ Infos</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-locked"  onclick="setReconcilFilter('locked')"  style="font-size:11px;padding:4px 10px">🔒 Verrouillés</button>
+      <button class="ba ba-ghost rcf-btn"             id="rcf-ignored" onclick="setReconcilFilter('ignored')" style="font-size:11px;padding:4px 10px;color:var(--td)">🙈 Ignorées</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-ninfo"   onclick="setReconcilFilter('ninfo')"   style="font-size:11px;padding:4px 10px">− Infos</button>
       <button class="ba ba-ghost rcf-btn"             id="rcf-nlocked" onclick="setReconcilFilter('nlocked')" style="font-size:11px;padding:4px 10px">− Verrouillés</button>
     </div>
@@ -6784,7 +6785,7 @@ var RECONCIL_FILTER = 'all';
 
 function setReconcilFilter(f) {
   RECONCIL_FILTER = f;
-  var ids = ['all','crit','anomaly','complex','minor','info','locked','ninfo','nlocked'];
+  var ids = ['all','crit','anomaly','complex','minor','info','locked','ignored','ninfo','nlocked'];
   ids.forEach(function(id) {
     var btn = document.getElementById('rcf-' + id);
     if (btn) btn.classList.toggle('rcf-active', id === f);
@@ -6831,6 +6832,12 @@ function renderAnomaliesList() {
     el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Toutes les anomalies ont été traitées.</div>';
     return;
   }
+  if (!pending && ignored > 0 && RECONCIL_FILTER !== 'ignored') {
+    el.innerHTML = '<div style="color:var(--gr);padding:8px 0;font-size:13px">✅ Aucune anomalie en attente · ' +
+      '<span style="color:var(--td)">' + ignored + ' ignorée(s)</span> · ' +
+      '<button class="ba ba-ghost" style="font-size:11px;padding:3px 9px" onclick="setReconcilFilter(\'ignored\')">🙈 Voir les ignorées</button></div>';
+    return;
+  }
   function levelLabel(lv) {
     return lv==='minor'?'mineur':lv==='anomaly'?'à vérifier':lv==='crit'?'critique':lv==='complex'?'cas complexe':lv==='info'?'info':lv;
   }
@@ -6839,10 +6846,13 @@ function renderAnomaliesList() {
     if (a.status === 'validated') return;
     // Filtre actif
     var f = RECONCIL_FILTER;
+    // Ignorées : masquées par défaut, visibles uniquement dans le filtre 'ignored'
+    if (a.status === 'ignored' && f !== 'ignored') return;
+    if (f === 'ignored' && a.status !== 'ignored') return;
     if (f === 'crit'    && a.level !== 'crit')                      return;
     if (f === 'anomaly' && a.level !== 'anomaly')                    return;
     if (f === 'minor'   && a.level !== 'minor')                      return;
-    if (f === 'complex' && a.level !== 'complex')                     return;
+    if (f === 'complex' && a.level !== 'complex')                    return;
     if (f === 'info'    && a.level !== 'info')                       return;
     if (f === 'locked'  && !(a.crm && a.crm.override_manual))        return;
     if (f === 'ninfo'   && a.level === 'info')                       return;
