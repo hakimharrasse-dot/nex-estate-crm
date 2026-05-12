@@ -6989,6 +6989,7 @@ function handleReconCSV(input) {
       if (!total) { alert('Aucune ligne reconnue dans le CSV (réservations ou versements résolution).'); return; }
       if (status) status.textContent = 'CSV chargé : ' + parsed.reservations.length + ' réservations, ' + parsed.resolutions.length + ' versements résolution · ' + new Date().toLocaleTimeString('fr-FR');
       RECONCIL_ANOMALIES = runReconciliation(parsed);
+      applyPersistedIgnores(RECONCIL_ANOMALIES);
       renderReconcil();
     } catch(err) {
       alert('Erreur lecture CSV : ' + err.message);
@@ -7507,14 +7508,55 @@ async function alignMinorEcarts() {
   }
 }
 
+// ── Ignore persistant (localStorage) ────────────────────────
+// Clé stable : checkId + code CSV + net CSV arrondi + net CRM arrondi
+// Résiste au refresh, réimport CSV et Ctrl+F5.
+var RECONCIL_LS_KEY = 'nex_reconcil_ignored_v1';
+
+function reconcilIgnoreKey(a) {
+  var code    = (a.csv && a.csv.code) || '';
+  var netCsv  = Math.round(((a.csv && a.csv.net) || 0) * 100);
+  var netCrm  = Math.round(((a.crm && a.crm.net) || 0) * 100);
+  var checkId = a.checkId || '';
+  return checkId + ':' + code + ':' + netCsv + ':' + netCrm;
+}
+
+function reconcilIgnoreLoad() {
+  try { return JSON.parse(localStorage.getItem(RECONCIL_LS_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function reconcilIgnoreSave(keys) {
+  try { localStorage.setItem(RECONCIL_LS_KEY, JSON.stringify(keys)); } catch(e) {}
+}
+
+// Applique les ignores persistés à un tableau d'anomalies (après runReconciliation)
+function applyPersistedIgnores(anomalies) {
+  var ignored = reconcilIgnoreLoad();
+  if (!ignored.length) return;
+  anomalies.forEach(function(a) {
+    if (ignored.indexOf(reconcilIgnoreKey(a)) >= 0) a.status = 'ignored';
+  });
+}
+
 function ignoreAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
-  if (a) { a.status='ignored'; updateReconcilBadge(); renderAnomaliesList(); }
+  if (!a) return;
+  a.status = 'ignored';
+  var keys = reconcilIgnoreLoad();
+  var k = reconcilIgnoreKey(a);
+  if (keys.indexOf(k) < 0) { keys.push(k); reconcilIgnoreSave(keys); }
+  updateReconcilBadge();
+  renderAnomaliesList();
 }
 
 function unignoreAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
-  if (a) { a.status='pending'; updateReconcilBadge(); renderAnomaliesList(); }
+  if (!a) return;
+  a.status = 'pending';
+  var k = reconcilIgnoreKey(a);
+  reconcilIgnoreSave(reconcilIgnoreLoad().filter(function(x) { return x !== k; }));
+  updateReconcilBadge();
+  renderAnomaliesList();
 }
 
 function exportAnomaliesJSON() {
@@ -7528,6 +7570,7 @@ function exportAnomaliesJSON() {
 
 function clearIgnoredAnomalies() {
   RECONCIL_ANOMALIES = RECONCIL_ANOMALIES.filter(function(a) { return a.status!=='ignored'; });
+  reconcilIgnoreSave([]);
   updateReconcilBadge();
   renderAnomaliesList();
   showToast('🗑 Ignorées supprimées');
