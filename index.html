@@ -7073,13 +7073,56 @@ function parseAirbnbCSV(text, taux) {
   var iType=ci('type'), iCode=ci('confirmation'), iDebut=ci('début'), iFin=ci('fin'),
       iNuits=ci('nuits'), iVoyag=ci('voyageur'), iLogem=ci('logement'),
       iDevise=ci('devise'), iMontant=ci('montant'), iBrut=ci('bruts'), iFrais=ci('service'),
-      iDetails=ci('détail');
+      iDetails=ci('détail'), iVerse=ci('versé');
 
   function toEur(amt, devise) {
     if (devise === 'MAD') return amt / taux;
     if (devise === 'USD') return amt / 1.10;
     return amt;
   }
+
+  // ── Pré-passe : lier chaque Payout MAD aux transactions du batch ──────────
+  // Structure CSV : ligne Payout immédiatement suivie des transactions couvertes.
+  // taux réel = payout_MAD / Σ(EUR positifs du batch).
+  // Transactions MAD natives : _payoutMAD = leur propre montant (déjà en MAD).
+  // Batches à Σ négatif (régularisations) : ignorés → fallback taux fixe.
+  var payoutByCode = {};
+  var _pMad = 0, _pEUR = [], _pMADtx = [];
+  function _flushP() {
+    var _j, _it;
+    if (_pMad > 0 && _pEUR.length) {
+      var _sumE = 0;
+      for (_j = 0; _j < _pEUR.length; _j++) _sumE += _pEUR[_j].amt;
+      if (_sumE > 0.01) {
+        var _rate = _pMad / _sumE;
+        for (_j = 0; _j < _pEUR.length; _j++) {
+          _it = _pEUR[_j];
+          payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+        }
+      }
+    }
+    for (_j = 0; _j < _pMADtx.length; _j++) {
+      _it = _pMADtx[_j];
+      payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt) * 100) / 100;
+    }
+    _pMad = 0; _pEUR = []; _pMADtx = [];
+  }
+  for (var _pi = 1; _pi < lines.length; _pi++) {
+    var _pl = lines[_pi].trim(); if (!_pl) continue;
+    var _pc = csvSplitLine(_pl);
+    var _ptyp = (_pc[iType]  || '').trim();
+    var _pdev = (_pc[iDevise] || 'EUR').trim();
+    var _pcod = (_pc[iCode]  || '').trim();
+    var _pamt = parseFloat((_pc[iMontant] || '0').replace(',', '.')) || 0;
+    var _pvrs = iVerse >= 0 ? parseFloat((_pc[iVerse] || '0').replace(',', '.')) || 0 : 0;
+    if (_ptyp === 'Payout' && _pdev === 'MAD' && _pvrs > 0) {
+      _flushP(); _pMad = _pvrs;
+    } else if (_pcod && _pamt > 0) {
+      if (_pdev === 'MAD')      _pMADtx.push({ code: _pcod, amt: _pamt });
+      else if (_pdev === 'EUR') _pEUR.push({ code: _pcod, amt: _pamt });
+    }
+  }
+  _flushP();
 
   var grouped    = {};   // code → reservation row
   var pendingAdj = {};   // code → adjustments (Régularisation before Réservation)
@@ -7179,6 +7222,7 @@ function parseAirbnbCSV(text, taux) {
         dossier:    mDos ? mDos[0].toUpperCase() : '',
         details:    details,
         subtype:    isAc ? 'aircover' : 'resolution',
+        _payoutMAD: payoutByCode[code] || null,
       });
     }
     // Payout → ignoré (1 virement peut grouper plusieurs réservations)
@@ -7193,6 +7237,7 @@ function parseAirbnbCSV(text, taux) {
     r.commission    = Math.round(r.commission*100)/100;
     r.regulAmt      = Math.round(r.regulAmt*100)/100;
     r.regulResolAmt = Math.round(r.regulResolAmt*100)/100;
+    if (payoutByCode[r.code]) r._payoutMAD = payoutByCode[r.code];
   });
   return { reservations: reservations, resolutions: resolutions };
 }
@@ -7379,6 +7424,22 @@ function runReconciliation(parsed) {
         pushResult(Object.assign({}, baseFields, {
           crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
           cause: cCause, level: isComplexC ? 'complex' : 'anomaly', checkId: 'C',
+        })); return;
+      }
+    }
+
+    // B-MAD : si le virement Payout MAD Airbnb est connu, comparer CRM ↔ MAD réel.
+    // Évite les fausses alertes quand taux fixe 10.50 ≠ taux réel Airbnb
+    // (ex : crm.net = 948 MAD, csv.net = 87.50 EUR, payout réel = 947.92 MAD → conforme).
+    if (csv._payoutMAD && absEcart >= 0.01) {
+      var crmVsPayMAD = Math.abs((crm.net || 0) - csv._payoutMAD);
+      if (crmVsPayMAD <= 1) {
+        var bRealRate = csv.net > 0.01 ? Math.round(csv._payoutMAD / csv.net * 100) / 100 : null;
+        pushResult(Object.assign({}, baseFields, {
+          crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
+          cause: 'MAD conforme — CRM ' + (crm.net || 0).toFixed(2) + ' MAD correspond au virement Airbnb réel'
+                 + (bRealRate ? ' (taux réel : ' + bRealRate.toFixed(2) + ' MAD/EUR)' : ''),
+          level: 'info', checkId: 'B',
         })); return;
       }
     }
