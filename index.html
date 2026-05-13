@@ -972,7 +972,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: RÉCONCILIATION ═══ -->
 <div class="vw" id="vw-reconcil">
   <div class="vh">
-    <div><div class="vt" style="color:var(--te)">Réconciliation</div><div class="vsub">Comparaison CRM ↔ CSV financier · Airbnb · Booking</div></div>
+    <div><div class="vt" style="color:var(--te)">Réconciliation</div><div class="vsub">Comparaison CRM ↔ CSV financier · Airbnb · Booking <span style="color:var(--td);font-size:10px;font-weight:400;font-family:monospace">[ba223ba · MAD-payout-D]</span></div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba bat" onclick="document.getElementById('reconcil-csv-input').click()">📥 Importer CSV Airbnb</button>
       <input type="file" id="reconcil-csv-input" accept=".csv" style="display:none" onchange="handleReconCSV(this)">
@@ -7224,6 +7224,7 @@ function parseAirbnbCSV(text, taux) {
         subtype:    isAc ? 'aircover' : 'resolution',
         _payoutMAD: payoutByCode[code] || null,
       });
+      console.log('[DIAG-D] resolution push:', code, '| _payoutMAD=', payoutByCode[code]||null, '| net(EUR)=', Math.round(mEur*100)/100);
     }
     // Payout → ignoré (1 virement peut grouper plusieurs réservations)
   }
@@ -7510,6 +7511,7 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     }) : null;
 
+    console.log('[DIAG-D] Check D:', res.code, '| crmAc=', crmAc ? (crmAc.ref+'/'+crmAc.type_norm+'/net='+crmAc.net) : 'null', '| res._payoutMAD=', res._payoutMAD, '| res.net(EUR)=', res.net);
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
     // D-MAD : si payout MAD réel connu, comparer CRM ↔ MAD réel
