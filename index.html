@@ -6899,7 +6899,7 @@ function renderAnomaliesList() {
               (a.isAircover ? '<span style="color:var(--or);font-weight:700">✈ AirCover</span> · ' : 'Versement résolution · ') +
               escHtml(a.csv.code) +
               (a.dossier ? ' <span style="color:var(--tm);font-size:11px;font-weight:400">(' + escHtml(a.dossier) + ')</span>' : '') +
-              '<span class="rlevel anomaly">à vérifier</span>' +
+              '<span class="rlevel ' + (a.level||'anomaly') + '">' + levelLabel(a.level||'anomaly') + '</span>' +
             '</div>' +
             '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
             (a.csv.checkin ? '<div style="font-size:11px;color:var(--tm)">Date : ' + escHtml(a.csv.checkin) + '</div>' : '') +
@@ -7510,7 +7510,27 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     }) : null;
 
-    if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK
+    if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
+
+    // D-MAD : si payout MAD réel connu, comparer CRM ↔ MAD réel
+    if (crmAc && res._payoutMAD) {
+      var crmVsPayD = Math.abs((crmAc.net||0) - res._payoutMAD);
+      if (crmVsPayD <= 1) {
+        var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
+        pushResult({
+          csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+                 checkin: res.date, checkout: '', nuits: 0,
+                 net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+          crm: crmAc, ecart: Math.round((res.net - (crmAc.net||0))*100)/100,
+          cause: 'MAD conforme — CRM ' + (crmAc.net||0).toFixed(2) + ' MAD correspond au virement Airbnb réel'
+                 + (dRealRate ? ' (taux réel : ' + dRealRate.toFixed(2) + ' MAD/EUR)' : ''),
+          level: 'info', checkId: 'D', csvType: 'resolution', status: 'pending',
+          _deviseAmbigue: false,
+          isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+        });
+        return;
+      }
+    }
 
     var ecartD = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
     var causeD = !crmAc
