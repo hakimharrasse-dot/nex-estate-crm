@@ -972,7 +972,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: RÉCONCILIATION ═══ -->
 <div class="vw" id="vw-reconcil">
   <div class="vh">
-    <div><div class="vt" style="color:var(--te)">Réconciliation</div><div class="vsub">Comparaison CRM ↔ CSV financier · Airbnb · Booking <span style="color:var(--td);font-size:10px;font-weight:400;font-family:monospace">[ba223ba · MAD-payout-D]</span></div></div>
+    <div><div class="vt" style="color:var(--te)">Réconciliation</div><div class="vsub">Comparaison CRM ↔ CSV financier · Airbnb · Booking</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba bat" onclick="document.getElementById('reconcil-csv-input').click()">📥 Importer CSV Airbnb</button>
       <input type="file" id="reconcil-csv-input" accept=".csv" style="display:none" onchange="handleReconCSV(this)">
@@ -7083,21 +7083,28 @@ function parseAirbnbCSV(text, taux) {
 
   // ── Pré-passe : lier chaque Payout MAD aux transactions du batch ──────────
   // Structure CSV : ligne Payout immédiatement suivie des transactions couvertes.
-  // taux réel = payout_MAD / Σ(EUR positifs du batch).
-  // Transactions MAD natives : _payoutMAD = leur propre montant (déjà en MAD).
-  // Batches à Σ négatif (régularisations) : ignorés → fallback taux fixe.
-  var payoutByCode = {};
-  var _pMad = 0, _pEUR = [], _pMADtx = [];
+  // taux réel = payout_MAD / Σ(EUR positifs du batch, réservations + résolutions).
+  // _pEUR     → réservations/régularisations positives → payoutByCode
+  // _pResolEUR → "Versement de résolution" EUR → payoutByCodeResol (map séparé)
+  // Même taux de change par batch, but destinations distinctes pour éviter la
+  // contamination entre la réservation principale et sa résolution (même code).
+  var payoutByCode = {}, payoutByCodeResol = {};
+  var _pMad = 0, _pEUR = [], _pResolEUR = [], _pMADtx = [];
   function _flushP() {
     var _j, _it;
-    if (_pMad > 0 && _pEUR.length) {
+    if (_pMad > 0 && (_pEUR.length || _pResolEUR.length)) {
       var _sumE = 0;
-      for (_j = 0; _j < _pEUR.length; _j++) _sumE += _pEUR[_j].amt;
+      for (_j = 0; _j < _pEUR.length;     _j++) _sumE += _pEUR[_j].amt;
+      for (_j = 0; _j < _pResolEUR.length; _j++) _sumE += _pResolEUR[_j].amt;
       if (_sumE > 0.01) {
         var _rate = _pMad / _sumE;
         for (_j = 0; _j < _pEUR.length; _j++) {
           _it = _pEUR[_j];
           payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+        }
+        for (_j = 0; _j < _pResolEUR.length; _j++) {
+          _it = _pResolEUR[_j];
+          payoutByCodeResol[_it.code] = Math.round(((payoutByCodeResol[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
         }
       }
     }
@@ -7105,7 +7112,7 @@ function parseAirbnbCSV(text, taux) {
       _it = _pMADtx[_j];
       payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt) * 100) / 100;
     }
-    _pMad = 0; _pEUR = []; _pMADtx = [];
+    _pMad = 0; _pEUR = []; _pResolEUR = []; _pMADtx = [];
   }
   for (var _pi = 1; _pi < lines.length; _pi++) {
     var _pl = lines[_pi].trim(); if (!_pl) continue;
@@ -7118,8 +7125,12 @@ function parseAirbnbCSV(text, taux) {
     if (_ptyp === 'Payout' && _pdev === 'MAD' && _pvrs > 0) {
       _flushP(); _pMad = _pvrs;
     } else if (_pcod && _pamt > 0) {
-      if (_pdev === 'MAD')      _pMADtx.push({ code: _pcod, amt: _pamt });
-      else if (_pdev === 'EUR') _pEUR.push({ code: _pcod, amt: _pamt });
+      if (_pdev === 'MAD') {
+        _pMADtx.push({ code: _pcod, amt: _pamt });
+      } else if (_pdev === 'EUR') {
+        if (_ptyp === 'Versement de résolution') _pResolEUR.push({ code: _pcod, amt: _pamt });
+        else                                     _pEUR.push({ code: _pcod, amt: _pamt });
+      }
     }
   }
   _flushP();
@@ -7222,9 +7233,8 @@ function parseAirbnbCSV(text, taux) {
         dossier:    mDos ? mDos[0].toUpperCase() : '',
         details:    details,
         subtype:    isAc ? 'aircover' : 'resolution',
-        _payoutMAD: payoutByCode[code] || null,
+        _payoutMAD: payoutByCodeResol[code] || null,
       });
-      console.log('[DIAG-D] resolution push:', code, '| _payoutMAD=', payoutByCode[code]||null, '| net(EUR)=', Math.round(mEur*100)/100);
     }
     // Payout → ignoré (1 virement peut grouper plusieurs réservations)
   }
@@ -7511,7 +7521,6 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     }) : null;
 
-    console.log('[DIAG-D] Check D:', res.code, '| crmAc=', crmAc ? (crmAc.ref+'/'+crmAc.type_norm+'/net='+crmAc.net) : 'null', '| res._payoutMAD=', res._payoutMAD, '| res.net(EUR)=', res.net);
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
     // D-MAD : si payout MAD réel connu, comparer CRM ↔ MAD réel
