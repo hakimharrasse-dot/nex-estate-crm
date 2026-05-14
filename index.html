@@ -1024,6 +1024,19 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div id="reconcil-empty" style="color:var(--td);font-size:13px;padding:32px;text-align:center">
     Aucun CSV importé — cliquez sur <strong style="color:var(--tx)">Importer CSV Airbnb</strong> pour démarrer la réconciliation.
   </div>
+  <!-- ── MAD réel Airbnb à appliquer ── -->
+  <div id="mad-reel-section" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-top:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm)">MAD réel Airbnb à appliquer</span>
+      <span id="mad-reel-count" style="font-size:11px;background:rgba(42,157,96,.12);color:#2a9d60;border-radius:10px;padding:2px 8px;font-weight:600"></span>
+      <span style="font-size:11px;color:var(--td);font-style:italic">Encaissements avec taux réel connu mais non encore enregistré (écart &gt; 5 DH)</span>
+    </div>
+    <div id="mad-reel-table"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="ba ba-ghost admin-only" id="btn-mad-reel-all" onclick="madReelSelectAll()" style="font-size:12px">☑ Tout sélectionner</button>
+      <button class="ba bat admin-only"      id="btn-mad-reel-apply" onclick="applyMadReal()" style="font-size:12px;display:none">⚡ Appliquer la sélection (<span id="mad-reel-sel-count">0</span>)</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ VIEW: CONTRÔLE QUALITÉ ═══ -->
@@ -6786,6 +6799,8 @@ async function toggleLogementArchive(id) {
 var RECONCIL_ANOMALIES = [];
 var RECONCIL_FILTER = 'all';
 var RECONCIL_SELECTED = {};   // index → true pour les anomalies cochées
+var MAD_REEL_ROWS = [];
+var MAD_REEL_SELECTED = {};   // crm.id → true pour les lignes cochées
 
 function setReconcilFilter(f) {
   RECONCIL_FILTER = f;
@@ -6803,6 +6818,147 @@ function renderReconcil() {
   document.getElementById('reconcil-queue').style.display = has ? 'block' : 'none';
   document.getElementById('reconcil-empty').style.display = has ? 'none'  : 'block';
   if (has) renderAnomaliesList();
+  renderMadRealSection();
+}
+
+function buildMadRealRows(parsed, taux) {
+  taux = taux || 10.5;
+  var rows = [];
+  var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'AIRCOVER', 'AJUSTEMENT'];
+  function findByCode(code) {
+    var c = code.toUpperCase();
+    return DB.resa.filter(function(r) {
+      if (r.source !== 'Airbnb' || !r.ref) return false;
+      var ref = r.ref.toUpperCase();
+      return ref === c
+          || ref === 'AIR-' + c
+          || ref.startsWith(c + '_')
+          || ref.startsWith(c + '-')
+          || ref.startsWith('AIR-' + c + '_')
+          || ref.startsWith('AIR-' + c + '-');
+    });
+  }
+  var seen = {};  // éviter les doublons crm.id
+  function addRow(csvRow, payoutMAD) {
+    var matches = findByCode(csvRow.code);
+    matches.forEach(function(crm) {
+      if (TYPES_OK.indexOf(crm.type_norm) < 0) return;
+      if (crm.mad_reel != null) return;
+      if (seen[crm.id]) return;
+      var madEstime = Math.round((crm.net || 0) * taux * 100) / 100;
+      var ecart = Math.abs(payoutMAD - madEstime);
+      if (ecart <= 5) return;
+      seen[crm.id] = true;
+      rows.push({
+        csv: csvRow,
+        crm: crm,
+        payoutMAD: payoutMAD,
+        madEstime: madEstime,
+        ecart: Math.round((payoutMAD - madEstime) * 100) / 100,
+        tauxReel: (crm.net || 0) > 0.01 ? Math.round(payoutMAD / crm.net * 100) / 100 : null,
+      });
+    });
+  }
+  (parsed.reservations || []).forEach(function(r) { if (r._payoutMAD) addRow(r, r._payoutMAD); });
+  (parsed.resolutions  || []).forEach(function(r) { if (r._payoutMAD) addRow(r, r._payoutMAD); });
+  return rows;
+}
+
+function renderMadRealSection() {
+  var sec = document.getElementById('mad-reel-section');
+  if (!sec) return;
+  if (!MAD_REEL_ROWS.length) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  var cnt = document.getElementById('mad-reel-count');
+  if (cnt) cnt.textContent = MAD_REEL_ROWS.length + ' ligne(s)';
+  var selCount = Object.keys(MAD_REEL_SELECTED).filter(function(k){ return MAD_REEL_SELECTED[k]; }).length;
+  var btnApply = document.getElementById('btn-mad-reel-apply');
+  if (btnApply) {
+    btnApply.style.display = selCount > 0 && ROLE === 'admin' ? '' : 'none';
+    var sc = document.getElementById('mad-reel-sel-count');
+    if (sc) sc.textContent = selCount;
+  }
+  var btnAll = document.getElementById('btn-mad-reel-all');
+  if (btnAll) btnAll.style.display = ROLE === 'admin' ? '' : 'none';
+  var tbl = document.getElementById('mad-reel-table');
+  if (!tbl) return;
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">'
+    + '<th style="width:28px;padding:4px"></th>'
+    + '<th style="padding:4px 6px;text-align:left">Voyageur</th>'
+    + '<th style="padding:4px 6px;text-align:left">Référence</th>'
+    + '<th style="padding:4px 6px;text-align:left">Type</th>'
+    + '<th style="padding:4px 6px;text-align:right">Net EUR</th>'
+    + '<th style="padding:4px 6px;text-align:right">MAD estimé</th>'
+    + '<th style="padding:4px 6px;text-align:right">MAD réel Airbnb</th>'
+    + '<th style="padding:4px 6px;text-align:right">Écart DH</th>'
+    + '<th style="padding:4px 6px;text-align:right">Taux réel</th>'
+    + '</tr></thead><tbody>';
+  MAD_REEL_ROWS.forEach(function(row, idx) {
+    var checked = MAD_REEL_SELECTED[row.crm.id] ? ' checked' : '';
+    var ecartColor = Math.abs(row.ecart) > 20 ? 'var(--or)' : 'var(--tm)';
+    html += '<tr style="border-bottom:1px solid var(--br)">'
+      + '<td style="padding:4px;text-align:center"><input type="checkbox"' + checked + ' onchange="madReelToggle(' + idx + ',this.checked)"></td>'
+      + '<td style="padding:4px 6px">' + escHtml(row.crm.voyageur || '—') + '</td>'
+      + '<td style="padding:4px 6px;font-family:monospace;color:var(--bl)">' + escHtml(row.csv.code || '') + '</td>'
+      + '<td style="padding:4px 6px;color:var(--tm)">' + escHtml(row.crm.type_norm || '') + '</td>'
+      + '<td style="padding:4px 6px;text-align:right">' + (row.crm.net || 0).toFixed(2) + ' €</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:var(--td)">' + row.madEstime.toFixed(2) + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;font-weight:600;color:#2a9d60">' + row.payoutMAD.toFixed(2) + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:' + ecartColor + '">' + (row.ecart > 0 ? '+' : '') + row.ecart.toFixed(2) + ' DH</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:var(--tm)">' + (row.tauxReel ? row.tauxReel.toFixed(4) : '—') + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  tbl.innerHTML = html;
+}
+
+function madReelToggle(idx, checked) {
+  var row = MAD_REEL_ROWS[idx];
+  if (!row) return;
+  MAD_REEL_SELECTED[row.crm.id] = checked;
+  renderMadRealSection();
+}
+
+function madReelSelectAll() {
+  MAD_REEL_ROWS.forEach(function(row) { MAD_REEL_SELECTED[row.crm.id] = true; });
+  renderMadRealSection();
+}
+
+async function applyMadReal() {
+  if (ROLE !== 'admin') return;
+  var toApply = MAD_REEL_ROWS.filter(function(row) { return MAD_REEL_SELECTED[row.crm.id]; });
+  if (!toApply.length) return;
+  if (!confirm('Appliquer le MAD réel Airbnb sur ' + toApply.length + ' réservation(s) ?\nCette action met à jour mad_reel, taux_reel, mad_reel_source et mad_reel_updated_at.')) return;
+  var now = new Date().toISOString();
+  var ok = 0, fail = 0;
+  for (var i = 0; i < toApply.length; i++) {
+    var row = toApply[i];
+    var patch = {
+      mad_reel: row.payoutMAD,
+      taux_reel: row.tauxReel,
+      mad_reel_source: 'CSV Airbnb payout',
+      mad_reel_updated_at: now,
+    };
+    var res = await SUPA.from('resa').update(patch).eq('id', row.crm.id);
+    if (res.error) {
+      console.error('[mad-reel] PATCH error', row.crm.id, res.error);
+      fail++;
+    } else {
+      // Mettre à jour en mémoire
+      row.crm.mad_reel = row.payoutMAD;
+      row.crm.taux_reel = row.tauxReel;
+      row.crm.mad_reel_source = 'CSV Airbnb payout';
+      row.crm.mad_reel_updated_at = now;
+      delete MAD_REEL_SELECTED[row.crm.id];
+      ok++;
+    }
+  }
+  // Retirer les lignes traitées avec succès
+  MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(row) { return row.crm.mad_reel == null; });
+  renderMadRealSection();
+  if (fail > 0) alert(ok + ' mis à jour, ' + fail + ' erreur(s) — voir console.');
+  else alert(ok + ' MAD réel Airbnb enregistré(s) avec succès.');
 }
 
 function renderAnomaliesList() {
@@ -7052,6 +7208,8 @@ function handleReconCSV(input) {
       RECONCIL_ANOMALIES = runReconciliation(parsed);
       applyPersistedIgnores(RECONCIL_ANOMALIES);
       RECONCIL_SELECTED = {};
+      MAD_REEL_ROWS = buildMadRealRows(parsed, taux);
+      MAD_REEL_SELECTED = {};
       renderReconcil();
     } catch(err) {
       alert('Erreur lecture CSV : ' + err.message);
