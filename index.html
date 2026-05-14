@@ -7523,9 +7523,11 @@ function runReconciliation(parsed) {
 
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
-    // D-MAD : si payout MAD réel connu, comparer CRM ↔ MAD réel
+    // D-MAD : si payout MAD réel connu, comparer CRM (converti en MAD) ↔ payout MAD réel
+    // CRM stocke net en EUR → crmMAD = crmAc.net × taux fallback
     if (crmAc && res._payoutMAD) {
-      var crmVsPayD = Math.abs((crmAc.net||0) - res._payoutMAD);
+      var crmMAD    = Math.round((crmAc.net||0) * taux * 100) / 100;
+      var crmVsPayD = Math.abs(crmMAD - res._payoutMAD);
       if (crmVsPayD <= 1) {
         var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
         pushResult({
@@ -7533,7 +7535,7 @@ function runReconciliation(parsed) {
                  checkin: res.date, checkout: '', nuits: 0,
                  net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
           crm: crmAc, ecart: Math.round((res.net - (crmAc.net||0))*100)/100,
-          cause: 'MAD conforme — CRM ' + (crmAc.net||0).toFixed(2) + ' MAD correspond au virement Airbnb réel'
+          cause: 'MAD conforme — CRM ' + crmMAD.toFixed(2) + ' MAD correspond au virement Airbnb réel'
                  + (dRealRate ? ' (taux réel : ' + dRealRate.toFixed(2) + ' MAD/EUR)' : ''),
           level: 'info', checkId: 'D', csvType: 'resolution', status: 'pending',
           _deviseAmbigue: false,
