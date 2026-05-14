@@ -7521,6 +7521,7 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     }) : null;
 
+    if (res.code === 'HMBKW3WYPQ') console.log('[DIAG2-D] HMBKW3WYPQ entrée | crmAc=', crmAc ? (crmAc.ref+'/'+crmAc.type_norm+'/net='+crmAc.net) : 'NULL', '| res._payoutMAD=', res._payoutMAD, '| res.net=', res.net);
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
     // D-MAD : si payout MAD réel connu, comparer CRM (converti en MAD) ↔ payout MAD réel
@@ -7528,6 +7529,7 @@ function runReconciliation(parsed) {
     if (crmAc && res._payoutMAD) {
       var crmMAD    = Math.round((crmAc.net||0) * taux * 100) / 100;
       var crmVsPayD = Math.abs(crmMAD - res._payoutMAD);
+      if (res.code === 'HMBKW3WYPQ') console.log('[DIAG2-D] HMBKW3WYPQ | res.net=', res.net, '| res._payoutMAD=', res._payoutMAD, '| crmAc.net=', crmAc ? crmAc.net : 'NO_CRM', '| taux=', taux, '| crmMAD=', crmMAD, '| ecartMAD=', crmVsPayD, '| levelFinal=', crmVsPayD <= 1 ? 'info' : 'anomaly');
       if (crmVsPayD <= 1) {
         var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
         pushResult({
