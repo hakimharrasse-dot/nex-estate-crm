@@ -3474,7 +3474,7 @@ function renderResa() {
         '<div class="r-card-row3">'+
           '<span>📅 '+(r.checkin||'—')+'</span>'+
           '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
-          '<span class="r-card-net">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</span>'+
+          '<span class="r-card-net">'+(r.mad_reel!=null?Math.round(r.mad_reel).toLocaleString('fr-MA'):e2m(r.net||0).toLocaleString('fr-MA'))+' MAD'+(r.mad_reel!=null?' <span style="font-size:10px;color:var(--bl);font-weight:600;vertical-align:middle" title="MAD réel Airbnb · taux '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'">●</span>':'')+'</span>'+
         '</div>'+
         '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
       '</div>';
@@ -3494,7 +3494,7 @@ function renderResa() {
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
         '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
+        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+(r.mad_reel!=null?Math.round(r.mad_reel).toLocaleString('fr-MA')+' MAD<br><span style="font-size:10px;color:var(--bl);font-weight:400">MAD réel · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'</span>':e2m(r.net||0).toLocaleString('fr-MA')+' MAD')+'</td>'+
         (function(){
           var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
           if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
