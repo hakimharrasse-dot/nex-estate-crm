@@ -994,6 +994,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div style="font-size:11px;color:var(--td);font-style:italic;margin-top:4px">⚠️ Si vous changez le taux ou le seuil, réimportez le CSV pour recalculer les écarts.</div>
   </div>
+  <!-- Onglets de navigation Réconciliation — affichés après import CSV -->
+  <div id="reconcil-tab-bar" style="display:none;gap:6px;margin-bottom:14px">
+    <button class="ba ba-ghost rcf-btn rcf-active" id="rct-anomalies" onclick="setReconcilTab('anomalies')" style="font-size:12px;padding:6px 16px">
+      📋 Anomalies CSV <span id="rct-anomalies-count" style="font-size:11px;background:rgba(255,153,51,.15);color:var(--or);border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span>
+    </button>
+    <button class="ba ba-ghost rcf-btn" id="rct-mad_reel" onclick="setReconcilTab('mad_reel')" style="font-size:12px;padding:6px 16px">
+      💱 MAD réel Airbnb <span id="rct-mad-count" style="font-size:11px;background:rgba(42,157,96,.12);color:#2a9d60;border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span>
+    </button>
+  </div>
   <!-- File d'attente anomalies -->
   <div id="reconcil-queue" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:16px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:10px">
@@ -6802,6 +6811,19 @@ var RECONCIL_FILTER = 'all';
 var RECONCIL_SELECTED = {};   // index → true pour les anomalies cochées
 var MAD_REEL_ROWS = [];
 var MAD_REEL_SELECTED = {};   // crm.id → true pour les lignes cochées
+var RECONCIL_TAB = 'anomalies';  // 'anomalies' | 'mad_reel'
+
+function setReconcilTab(tab) {
+  RECONCIL_TAB = tab;
+  ['anomalies', 'mad_reel'].forEach(function(t) {
+    var btn = document.getElementById('rct-' + t);
+    if (btn) btn.classList.toggle('rcf-active', t === tab);
+  });
+  var hasAnomaly = RECONCIL_ANOMALIES.length > 0;
+  var queueEl = document.getElementById('reconcil-queue');
+  if (queueEl) queueEl.style.display = (tab === 'anomalies' && hasAnomaly) ? 'block' : 'none';
+  renderMadRealSection();
+}
 
 function setReconcilFilter(f) {
   RECONCIL_FILTER = f;
@@ -6815,10 +6837,29 @@ function setReconcilFilter(f) {
 
 function renderReconcil() {
   updateReconcilBadge();
-  var has = RECONCIL_ANOMALIES.length > 0;
-  document.getElementById('reconcil-queue').style.display = has ? 'block' : 'none';
-  document.getElementById('reconcil-empty').style.display = has ? 'none'  : 'block';
-  if (has) renderAnomaliesList();
+  var hasAnomaly = RECONCIL_ANOMALIES.length > 0;
+  var hasMadReel = MAD_REEL_ROWS.length > 0;
+  var hasContent = hasAnomaly || hasMadReel;
+  // Tab bar — visible dès qu'un CSV est chargé
+  var tabBar = document.getElementById('reconcil-tab-bar');
+  if (tabBar) tabBar.style.display = hasContent ? 'flex' : 'none';
+  // Badges des onglets
+  var anomBadge = document.getElementById('rct-anomalies-count');
+  if (anomBadge) {
+    var pendingN = RECONCIL_ANOMALIES.filter(function(a){ return a.status==='pending' && a.level!=='info'; }).length;
+    anomBadge.textContent = pendingN > 0 ? pendingN : '';
+    anomBadge.style.display = pendingN > 0 ? '' : 'none';
+  }
+  var madBadge = document.getElementById('rct-mad-count');
+  if (madBadge) {
+    madBadge.textContent = hasMadReel ? MAD_REEL_ROWS.length : '';
+    madBadge.style.display = hasMadReel ? '' : 'none';
+  }
+  // Contenu selon l'onglet actif
+  var queueEl = document.getElementById('reconcil-queue');
+  if (queueEl) queueEl.style.display = (RECONCIL_TAB === 'anomalies' && hasAnomaly) ? 'block' : 'none';
+  document.getElementById('reconcil-empty').style.display = hasContent ? 'none' : '';
+  if (RECONCIL_TAB === 'anomalies' && hasAnomaly) renderAnomaliesList();
   renderMadRealSection();
 }
 
@@ -6877,7 +6918,7 @@ function buildMadRealRows(parsed, taux) {
 function renderMadRealSection() {
   var sec = document.getElementById('mad-reel-section');
   if (!sec) return;
-  if (!MAD_REEL_ROWS.length) { sec.style.display = 'none'; return; }
+  if (!MAD_REEL_ROWS.length || RECONCIL_TAB !== 'mad_reel') { sec.style.display = 'none'; return; }
   sec.style.display = '';
   var cnt = document.getElementById('mad-reel-count');
   if (cnt) cnt.textContent = MAD_REEL_ROWS.length + ' ligne(s)';
@@ -6989,7 +7030,9 @@ async function applyMadReal() {
   }
   // Retirer les lignes traitées avec succès
   MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(row) { return row.crm.mad_reel == null; });
-  renderMadRealSection();
+  // Si plus aucune ligne MAD réel restante, basculer sur l'onglet Anomalies
+  if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
+  else renderMadRealSection();
   if (fail > 0) alert(ok + ' mis à jour, ' + fail + ' erreur(s) — voir console.');
   else alert(ok + ' MAD réel Airbnb enregistré(s) avec succès.');
 }
