@@ -6891,6 +6891,11 @@ function renderAnomaliesList() {
 
     // ── Carte résolution (checkId D) ─────────────────────────
     if (a.csvType === 'resolution') {
+      var dIsInfo    = (a.level === 'info');
+      var dAmtColor  = dIsInfo ? 'var(--bl)' : 'var(--or)';
+      var dCauseCol  = dIsInfo ? 'var(--bl)' : 'var(--or)';
+      var dCauseLabel= dIsInfo ? 'Info : '   : 'Cause probable : ';
+      if (a.csv && a.csv.code === 'HMBKW3WYPQ') console.log('[DIAG3-D] HMBKW3WYPQ render | level=', a.level, '| status=', a.status, '| cause=', a.cause);
       html +=
         '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
@@ -6904,10 +6909,10 @@ function renderAnomaliesList() {
             '<div class="reconcil-guest">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>' +
             (a.csv.checkin ? '<div style="font-size:11px;color:var(--tm)">Date : ' + escHtml(a.csv.checkin) + '</div>' : '') +
           '</div>' +
-          '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:15px;color:var(--or)">' + (a.csv.net||0).toFixed(2) + ' EUR</span>' +
+          '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:15px;color:' + dAmtColor + '">' + (a.csv.net||0).toFixed(2) + ' EUR</span>' +
         '</div>' +
         (isAmb ? '<div style="margin-top:8px;padding:5px 10px;background:rgba(200,119,58,.1);border-radius:6px;font-size:11px;color:var(--or)">⚠️ Devise différente — vérification manuelle requise</div>' : '') +
-        '<div style="margin-top:8px;font-size:11px;color:var(--or)">Cause probable : ' + escHtml(a.cause) + '</div>' +
+        '<div style="margin-top:8px;font-size:11px;color:' + dCauseCol + '">' + dCauseLabel + escHtml(a.cause) + '</div>' +
         (a.crm
           ? '<div style="font-size:11px;color:var(--tm);margin-top:4px">CRM : ' + escHtml(a.crm.ref||'?') + ' — ' + escHtml(a.crm.voyageur||'?') + ' <span style="color:var(--td)">(' + escHtml(a.crm.type_norm||'?') + ')</span></div>'
           : '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
@@ -7521,7 +7526,6 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
     }) : null;
 
-    if (res.code === 'HMBKW3WYPQ') console.log('[DIAG2-D] HMBKW3WYPQ entrée | crmAc=', crmAc ? (crmAc.ref+'/'+crmAc.type_norm+'/net='+crmAc.net) : 'NULL', '| res._payoutMAD=', res._payoutMAD, '| res.net=', res.net);
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
     // D-MAD : si payout MAD réel connu, comparer CRM (converti en MAD) ↔ payout MAD réel
@@ -7529,7 +7533,6 @@ function runReconciliation(parsed) {
     if (crmAc && res._payoutMAD) {
       var crmMAD    = Math.round((crmAc.net||0) * taux * 100) / 100;
       var crmVsPayD = Math.abs(crmMAD - res._payoutMAD);
-      if (res.code === 'HMBKW3WYPQ') console.log('[DIAG2-D] HMBKW3WYPQ | res.net=', res.net, '| res._payoutMAD=', res._payoutMAD, '| crmAc.net=', crmAc ? crmAc.net : 'NO_CRM', '| taux=', taux, '| crmMAD=', crmMAD, '| ecartMAD=', crmVsPayD, '| levelFinal=', crmVsPayD <= 1 ? 'info' : 'anomaly');
       if (crmVsPayD <= 1) {
         var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
         pushResult({
@@ -7953,10 +7956,12 @@ function reconcilIgnoreSave(keys) {
 }
 
 // Applique les ignores persistés à un tableau d'anomalies (après runReconciliation)
+// Exception : les anomalies level='info' (conformes) ne sont jamais masquées par un ancien ignore.
 function applyPersistedIgnores(anomalies) {
   var ignored = reconcilIgnoreLoad();
   if (!ignored.length) return;
   anomalies.forEach(function(a) {
+    if (a.level === 'info') return; // déjà conforme — ne pas masquer
     if (ignored.indexOf(reconcilIgnoreKey(a)) >= 0) a.status = 'ignored';
   });
 }
