@@ -6810,14 +6810,16 @@ function renderAnomaliesList() {
   if (!el) return;
   var taux    = parseFloat((document.getElementById('reconcil-taux')||{}).value)  || 10.5;
   var seuil   = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
-  var pending = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending'; }).length;
+  var pending = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending' && a.level !== 'info'; }).length;
   var ignored = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
   var nMinor  = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='minor'; }).length;
+  var nInfo   = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='info';  }).length;
   var cnt = document.getElementById('reconcil-queue-count');
   if (cnt) {
     var parts = [pending + ' en attente'];
     if (ignored) parts.push(ignored + ' ignorée(s)');
     if (nMinor)  parts.push(nMinor + ' mineur(s)');
+    if (nInfo)   parts.push(nInfo  + ' conforme(s)');
     cnt.textContent = '(' + parts.join(', ') + ')';
   }
   // Bouton Tout sélectionner — visible si des anomalies éligibles existent
@@ -6881,7 +6883,7 @@ function renderAnomaliesList() {
     if (f === 'complex' && a.level !== 'complex')                    return;
     if (f === 'info'    && a.level !== 'info')                       return;
     if (f === 'locked'  && !(a.crm && a.crm.override_manual))        return;
-    if (f === 'ninfo'   && a.level === 'info')                       return;
+    if ((f === '' || f === 'ninfo') && a.level === 'info')            return;
     if (f === 'nlocked' && (a.crm && a.crm.override_manual))         return;
     var level    = a.level || (Math.abs(a.ecart||0) > 5 ? 'crit' : 'anomaly');
     var cardCls  = 'reconcil-card' + (a.status !== 'ignored' ? ' ' + level : '');
@@ -6895,7 +6897,6 @@ function renderAnomaliesList() {
       var dAmtColor  = dIsInfo ? 'var(--bl)' : 'var(--or)';
       var dCauseCol  = dIsInfo ? 'var(--bl)' : 'var(--or)';
       var dCauseLabel= dIsInfo ? 'Info : '   : 'Cause probable : ';
-      if (a.csv && a.csv.code === 'HMBKW3WYPQ') console.log('[DIAG3-D] HMBKW3WYPQ render | level=', a.level, '| status=', a.status, '| cause=', a.cause);
       html +=
         '<div class="' + cardCls + '" id="anomaly-' + i + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
@@ -7029,7 +7030,7 @@ function renderAnomaliesList() {
 function updateReconcilBadge() {
   var badge = document.getElementById('reconcil-badge');
   if (!badge) return;
-  var n = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending'; }).length;
+  var n = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level !== 'info'; }).length;
   if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
   else        { badge.classList.add('hidden'); }
 }
