@@ -6840,22 +6840,31 @@ function buildMadRealRows(parsed, taux) {
   }
   var seen = {};  // éviter les doublons crm.id
   function addRow(csvRow, payoutMAD) {
+    // taux batch = payoutMAD_batch / net_CSV_EUR — fiable uniquement si CSV en EUR
+    var csvNet = csvRow.net || 0;
+    if (csvNet < 0.01) return;  // montant CSV trop faible pour calculer un taux fiable
+    var batchRate = Math.round(payoutMAD / csvNet * 10000) / 10000;
+    // Sécurité : taux hors plage MAD/EUR réaliste → ignorer (ligne aberrante)
+    if (batchRate < 9 || batchRate > 12) return;
+
     var matches = findByCode(csvRow.code);
     matches.forEach(function(crm) {
       if (TYPES_OK.indexOf(crm.type_norm) < 0) return;
       if (crm.mad_reel != null) return;
       if (seen[crm.id]) return;
+      // MAD réel = net CRM × taux batch (pas le payout brut du CSV)
+      var madReel   = Math.round((crm.net || 0) * batchRate * 100) / 100;
       var madEstime = Math.round((crm.net || 0) * taux * 100) / 100;
-      var ecart = Math.abs(payoutMAD - madEstime);
+      var ecart = Math.abs(madReel - madEstime);
       if (ecart <= 5) return;
       seen[crm.id] = true;
       rows.push({
         csv: csvRow,
         crm: crm,
-        payoutMAD: payoutMAD,
+        batchRate: batchRate,
+        madReel: madReel,
         madEstime: madEstime,
-        ecart: Math.round((payoutMAD - madEstime) * 100) / 100,
-        tauxReel: (crm.net || 0) > 0.01 ? Math.round(payoutMAD / crm.net * 100) / 100 : null,
+        ecart: Math.round((madReel - madEstime) * 100) / 100,
       });
     });
   }
@@ -6904,9 +6913,9 @@ function renderMadRealSection() {
       + '<td style="padding:4px 6px;color:var(--tm)">' + escHtml(row.crm.type_norm || '') + '</td>'
       + '<td style="padding:4px 6px;text-align:right">' + (row.crm.net || 0).toFixed(2) + ' €</td>'
       + '<td style="padding:4px 6px;text-align:right;color:var(--td)">' + row.madEstime.toFixed(2) + '</td>'
-      + '<td style="padding:4px 6px;text-align:right;font-weight:600;color:#2a9d60">' + row.payoutMAD.toFixed(2) + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;font-weight:600;color:#2a9d60">' + row.madReel.toFixed(2) + '</td>'
       + '<td style="padding:4px 6px;text-align:right;color:' + ecartColor + '">' + (row.ecart > 0 ? '+' : '') + row.ecart.toFixed(2) + ' DH</td>'
-      + '<td style="padding:4px 6px;text-align:right;color:var(--tm)">' + (row.tauxReel ? row.tauxReel.toFixed(4) : '—') + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:var(--tm)">' + row.batchRate.toFixed(4) + '</td>'
       + '</tr>';
   });
   html += '</tbody></table>';
@@ -6934,9 +6943,10 @@ async function applyMadReal() {
   var ok = 0, fail = 0;
   for (var i = 0; i < toApply.length; i++) {
     var row = toApply[i];
+    if (!row.madReel || row.batchRate < 9 || row.batchRate > 12) { fail++; continue; }
     var patch = {
-      mad_reel: row.payoutMAD,
-      taux_reel: row.tauxReel,
+      mad_reel: row.madReel,
+      taux_reel: row.batchRate,
       mad_reel_source: 'CSV Airbnb payout',
       mad_reel_updated_at: now,
     };
@@ -6946,8 +6956,8 @@ async function applyMadReal() {
       fail++;
     } else {
       // Mettre à jour en mémoire
-      row.crm.mad_reel = row.payoutMAD;
-      row.crm.taux_reel = row.tauxReel;
+      row.crm.mad_reel = row.madReel;
+      row.crm.taux_reel = row.batchRate;
       row.crm.mad_reel_source = 'CSV Airbnb payout';
       row.crm.mad_reel_updated_at = now;
       delete MAD_REEL_SELECTED[row.crm.id];
@@ -8120,7 +8130,6 @@ function applyPersistedIgnores(anomalies) {
   var ignored = reconcilIgnoreLoad();
   if (!ignored.length) return;
   anomalies.forEach(function(a) {
-    if (a.level === 'info') return; // déjà conforme — ne pas masquer
     if (ignored.indexOf(reconcilIgnoreKey(a)) >= 0) a.status = 'ignored';
   });
 }
