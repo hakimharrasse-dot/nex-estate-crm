@@ -7136,6 +7136,14 @@ function renderMadRealSection() {
         var row = MAD_REEL_ROWS[idx];
         var cid = row.crm.id;
         var rawLines = (row.csv._rawLines || []);
+        // Recalcul au moment du rendu depuis _rawLines — source de vérité,
+        // identique à ce qu'affiche la colonne Montant de la table.
+        var _natifRef = 0;
+        rawLines.forEach(function(rl) {
+          if (rl.devise === 'MAD' && rl.montant > 0) _natifRef += rl.montant;
+        });
+        _natifRef = Math.round(_natifRef * 100) / 100;
+        var _natifRefStr = _natifRef.toFixed(2);
         var compHtml = '';
         if (rawLines.length) {
           compHtml = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
@@ -7159,7 +7167,7 @@ function renderMadRealSection() {
           });
           compHtml += '<tr style="border-top:1px solid var(--br);font-weight:600">'
             + '<td colspan="4" style="padding:4px 6px;color:var(--pu)">Total MAD natif</td>'
-            + '<td style="padding:4px 6px;text-align:right;font-family:monospace;color:var(--pu)">' + row.madReel.toFixed(2) + ' MAD</td>'
+            + '<td style="padding:4px 6px;text-align:right;font-family:monospace;color:var(--pu)">' + _natifRefStr + ' MAD</td>'
             + '</tr></tbody></table>';
         }
         nh += '<div style="border:1px solid rgba(155,89,182,.4);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(155,89,182,.03)">'
@@ -7175,11 +7183,11 @@ function renderMadRealSection() {
           + '<div style="font-size:11px;color:var(--td);margin-bottom:8px">'
           + 'CRM : <strong style="color:var(--tx)">' + (row.crm.net || 0).toFixed(2) + ' €</strong> · '
           + 'MAD estimé (×' + tauMin.toFixed(2) + ') : <strong>' + row.madEstime.toFixed(2) + '</strong> · '
-          + 'MAD natif CSV : <strong style="color:var(--pu)">' + row.madReel.toFixed(2) + ' MAD</strong>'
+          + 'MAD natif CSV : <strong style="color:var(--pu)">' + _natifRefStr + ' MAD</strong>'
           + '</div>'
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
           + '<span style="font-size:12px;color:var(--tm)">MAD réel à enregistrer :</span>'
-          + '<input type="number" id="mad-complex-input-' + cid + '" value="' + row.madReel.toFixed(2) + '" step="0.01" min="0"'
+          + '<input type="number" id="mad-complex-input-' + cid + '" value="' + _natifRefStr + '" data-ref="' + _natifRefStr + '" step="0.01" min="0"'
           + ' style="width:120px;background:var(--s2);border:1px solid rgba(155,89,182,.5);color:var(--tx);border-radius:6px;padding:5px 8px;font-size:12px;font-family:\'DM Sans\',sans-serif">'
           + '<span style="font-size:12px;color:var(--td)">DH</span>'
           + (ROLE === 'admin' ? '<button class="ba bat" onclick="applyMadRealManual(\'' + cid + '\')" style="font-size:12px">💾 Valider</button>' : '')
@@ -7405,6 +7413,14 @@ async function applyMadRealManual(crmId) {
   var input = document.getElementById('mad-complex-input-' + crmId);
   var val = input ? parseFloat(input.value) : NaN;
   if (!val || val <= 0) { alert('Saisir un montant MAD réel valide (positif).'); return; }
+  var refVal = input ? parseFloat(input.getAttribute('data-ref') || '0') : 0;
+  if (refVal > 0) {
+    if (Math.abs(val * 100 - refVal) / refVal < 0.05) {
+      if (!confirm('⚠️ Attention : le montant saisi (' + val.toFixed(2) + ' DH) semble être en EUR (×100 ≈ ' + refVal.toFixed(2) + ' MAD attendu).\nConfirmer quand même ?')) return;
+    } else if (val < refVal * 0.5) {
+      if (!confirm('⚠️ Attention : ' + val.toFixed(2) + ' DH est très inférieur au MAD natif détecté (' + refVal.toFixed(2) + ' MAD).\nConfirmer quand même ?')) return;
+    }
+  }
   var isNatif = !!(row._isNativeMAD);
   var tauxReel = isNatif ? null : ((row.crm.net || 0) > 0.01 ? Math.round(val / row.crm.net * 10000) / 10000 : null);
   var srcLabel = isNatif ? 'CSV Airbnb MAD natif' : 'CSV Airbnb complexe / validation manuelle';
