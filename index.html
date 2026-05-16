@@ -1035,10 +1035,21 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <!-- ── MAD réel Airbnb à appliquer ── -->
   <div id="mad-reel-section" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-top:14px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm)">MAD réel Airbnb à appliquer</span>
-      <span id="mad-reel-count" style="font-size:11px;background:rgba(42,157,96,.12);color:#2a9d60;border-radius:10px;padding:2px 8px;font-weight:600"></span>
-      <span style="font-size:11px;color:var(--td);font-style:italic">Encaissements avec taux réel connu mais non encore enregistré (écart &gt; 5 DH)</span>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm)">MAD réel Airbnb à appliquer</span>
+        <span id="mad-reel-count" style="font-size:11px;background:rgba(42,157,96,.12);color:#2a9d60;border-radius:10px;padding:2px 8px;font-weight:600"></span>
+        <span style="font-size:11px;color:var(--td);font-style:italic">Encaissements avec taux réel connu mais non encore enregistré (écart &gt; 5 DH)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--tm)">Plage taux acceptable :</span>
+        <input type="number" id="mad-reel-taux-min" value="10.50" step="0.01" min="3" max="20" oninput="renderMadRealSection()"
+          style="width:68px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:4px 7px;font-size:12px;font-family:'DM Sans',sans-serif">
+        <span style="font-size:11px;color:var(--td)">→</span>
+        <input type="number" id="mad-reel-taux-max" value="11.00" step="0.01" min="3" max="20" oninput="renderMadRealSection()"
+          style="width:68px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:4px 7px;font-size:12px;font-family:'DM Sans',sans-serif">
+        <span style="font-size:11px;color:var(--td)">MAD/EUR — hors plage = ⚠️ à vérifier</span>
+      </div>
     </div>
     <!-- Bloc résumé sélection + bouton Appliquer — mis à jour par renderMadRealSection() -->
     <div id="mad-reel-summary"></div>
@@ -6886,8 +6897,8 @@ function buildMadRealRows(parsed, taux) {
     var csvNet = csvRow.net || 0;
     if (csvNet < 0.01) return;  // montant CSV trop faible pour calculer un taux fiable
     var batchRate = Math.round(payoutMAD / csvNet * 10000) / 10000;
-    // Sécurité : taux hors plage MAD/EUR réaliste → ignorer (ligne aberrante)
-    if (batchRate < 9 || batchRate > 12) return;
+    // Guard absolu : taux physiquement impossible → écarter silencieusement
+    if (batchRate < 3 || batchRate > 30) return;
 
     var matches = findByCode(csvRow.code);
     matches.forEach(function(crm) {
@@ -6951,10 +6962,40 @@ function renderMadRealSection() {
       summaryEl.innerHTML = '';
     }
   }
+  var tauMin = parseFloat((document.getElementById('mad-reel-taux-min')||{}).value) || 10.5;
+  var tauMax = parseFloat((document.getElementById('mad-reel-taux-max')||{}).value) || 11.0;
   var btnAll = document.getElementById('btn-mad-reel-all');
   if (btnAll) btnAll.style.display = ROLE === 'admin' ? '' : 'none';
+  // Mise à jour badge total
+  var cnt2 = document.getElementById('mad-reel-count');
+  var nSafe = MAD_REEL_ROWS.filter(function(r){ return r.batchRate >= tauMin && r.batchRate <= tauMax; }).length;
+  var nWarn = MAD_REEL_ROWS.length - nSafe;
+  if (cnt2) cnt2.textContent = MAD_REEL_ROWS.length + ' ligne(s)' + (nWarn ? ' · ' + nWarn + ' ⚠️' : '');
+  // Alerte hors-plage dans le résumé
+  var selWarn = selRows.filter(function(r){ return r.batchRate < tauMin || r.batchRate > tauMax; }).length;
+  if (summaryEl && selCount > 0 && selWarn > 0) {
+    summaryEl.innerHTML += '<div style="font-size:11px;color:var(--or);margin-top:6px;padding:6px 14px 0">⚠️ ' + selWarn + ' ligne(s) hors plage [' + tauMin.toFixed(2) + '–' + tauMax.toFixed(2) + '] dans la sélection — vérification recommandée avant application.</div>';
+  }
   var tbl = document.getElementById('mad-reel-table');
   if (!tbl) return;
+  function renderMadRow(row, idx, isWarn) {
+    var checked = MAD_REEL_SELECTED[row.crm.id] ? ' checked' : '';
+    var ecartColor = Math.abs(row.ecart) > 20 ? 'var(--or)' : 'var(--tm)';
+    var rowBg = isWarn ? 'background:rgba(255,153,51,.05);' : '';
+    var tauxColor = isWarn ? 'color:var(--or);font-weight:600' : 'color:var(--tm)';
+    var chkTitle = isWarn ? ' title="⚠️ Taux hors plage [' + tauMin.toFixed(2) + '–' + tauMax.toFixed(2) + '] — cocher volontairement"' : '';
+    return '<tr style="border-bottom:1px solid var(--br);' + rowBg + '">'
+      + '<td style="padding:4px;text-align:center"><input type="checkbox"' + checked + chkTitle + ' onchange="madReelToggle(' + idx + ',this.checked)"></td>'
+      + '<td style="padding:4px 6px">' + escHtml(row.crm.voyageur || '—') + '</td>'
+      + '<td style="padding:4px 6px;font-family:monospace;color:var(--bl)">' + escHtml(row.csv.code || '') + '</td>'
+      + '<td style="padding:4px 6px;color:var(--tm)">' + escHtml(row.crm.type_norm || '') + '</td>'
+      + '<td style="padding:4px 6px;text-align:right">' + (row.crm.net || 0).toFixed(2) + ' €</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:var(--td)">' + row.madEstime.toFixed(2) + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;font-weight:600;color:#2a9d60">' + row.madReel.toFixed(2) + '</td>'
+      + '<td style="padding:4px 6px;text-align:right;color:' + ecartColor + '">' + (row.ecart > 0 ? '+' : '') + row.ecart.toFixed(2) + ' DH</td>'
+      + '<td style="padding:4px 6px;text-align:right;' + tauxColor + '">' + (isWarn ? '⚠️ ' : '') + row.batchRate.toFixed(4) + '</td>'
+      + '</tr>';
+  }
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
     + '<thead><tr style="color:var(--tm);border-bottom:1px solid var(--br)">'
     + '<th style="width:28px;padding:4px"></th>'
@@ -6967,21 +7008,18 @@ function renderMadRealSection() {
     + '<th style="padding:4px 6px;text-align:right">Écart DH</th>'
     + '<th style="padding:4px 6px;text-align:right">Taux réel</th>'
     + '</tr></thead><tbody>';
+  var safeIdxs = [], warnIdxs = [];
   MAD_REEL_ROWS.forEach(function(row, idx) {
-    var checked = MAD_REEL_SELECTED[row.crm.id] ? ' checked' : '';
-    var ecartColor = Math.abs(row.ecart) > 20 ? 'var(--or)' : 'var(--tm)';
-    html += '<tr style="border-bottom:1px solid var(--br)">'
-      + '<td style="padding:4px;text-align:center"><input type="checkbox"' + checked + ' onchange="madReelToggle(' + idx + ',this.checked)"></td>'
-      + '<td style="padding:4px 6px">' + escHtml(row.crm.voyageur || '—') + '</td>'
-      + '<td style="padding:4px 6px;font-family:monospace;color:var(--bl)">' + escHtml(row.csv.code || '') + '</td>'
-      + '<td style="padding:4px 6px;color:var(--tm)">' + escHtml(row.crm.type_norm || '') + '</td>'
-      + '<td style="padding:4px 6px;text-align:right">' + (row.crm.net || 0).toFixed(2) + ' €</td>'
-      + '<td style="padding:4px 6px;text-align:right;color:var(--td)">' + row.madEstime.toFixed(2) + '</td>'
-      + '<td style="padding:4px 6px;text-align:right;font-weight:600;color:#2a9d60">' + row.madReel.toFixed(2) + '</td>'
-      + '<td style="padding:4px 6px;text-align:right;color:' + ecartColor + '">' + (row.ecart > 0 ? '+' : '') + row.ecart.toFixed(2) + ' DH</td>'
-      + '<td style="padding:4px 6px;text-align:right;color:var(--tm)">' + row.batchRate.toFixed(4) + '</td>'
-      + '</tr>';
+    if (row.batchRate >= tauMin && row.batchRate <= tauMax) safeIdxs.push(idx);
+    else warnIdxs.push(idx);
   });
+  safeIdxs.forEach(function(idx) { html += renderMadRow(MAD_REEL_ROWS[idx], idx, false); });
+  if (warnIdxs.length) {
+    html += '<tr><td colspan="9" style="padding:8px 6px;font-size:11px;color:var(--or);border-top:1px dashed var(--or);border-bottom:1px dashed var(--or);background:rgba(255,153,51,.04)">'
+      + '⚠️ Lignes hors plage [' + tauMin.toFixed(2) + ' – ' + tauMax.toFixed(2) + '] MAD/EUR — cocher manuellement si applicable'
+      + '</td></tr>';
+    warnIdxs.forEach(function(idx) { html += renderMadRow(MAD_REEL_ROWS[idx], idx, true); });
+  }
   html += '</tbody></table>';
   tbl.innerHTML = html;
 }
@@ -6994,7 +7032,11 @@ function madReelToggle(idx, checked) {
 }
 
 function madReelSelectAll() {
-  MAD_REEL_ROWS.forEach(function(row) { MAD_REEL_SELECTED[row.crm.id] = true; });
+  var tauMin = parseFloat((document.getElementById('mad-reel-taux-min')||{}).value) || 10.5;
+  var tauMax = parseFloat((document.getElementById('mad-reel-taux-max')||{}).value) || 11.0;
+  MAD_REEL_ROWS.forEach(function(row) {
+    if (row.batchRate >= tauMin && row.batchRate <= tauMax) MAD_REEL_SELECTED[row.crm.id] = true;
+  });
   renderMadRealSection();
 }
 
@@ -7002,12 +7044,17 @@ async function applyMadReal() {
   if (ROLE !== 'admin') return;
   var toApply = MAD_REEL_ROWS.filter(function(row) { return MAD_REEL_SELECTED[row.crm.id]; });
   if (!toApply.length) return;
-  if (!confirm('Appliquer le MAD réel Airbnb sur ' + toApply.length + ' réservation(s) ?\nCette action met à jour mad_reel, taux_reel, mad_reel_source et mad_reel_updated_at.')) return;
+  var tauMin = parseFloat((document.getElementById('mad-reel-taux-min')||{}).value) || 10.5;
+  var tauMax = parseFloat((document.getElementById('mad-reel-taux-max')||{}).value) || 11.0;
+  var nWarnSel = toApply.filter(function(r){ return r.batchRate < tauMin || r.batchRate > tauMax; }).length;
+  var msg = 'Appliquer le MAD réel Airbnb sur ' + toApply.length + ' réservation(s) ?\nCette action met à jour mad_reel, taux_reel, mad_reel_source et mad_reel_updated_at.';
+  if (nWarnSel > 0) msg += '\n\n⚠️ ' + nWarnSel + ' ligne(s) hors plage [' + tauMin.toFixed(2) + '–' + tauMax.toFixed(2) + '] incluse(s). Continuer quand même ?';
+  if (!confirm(msg)) return;
   var now = new Date().toISOString();
   var ok = 0, fail = 0;
   for (var i = 0; i < toApply.length; i++) {
     var row = toApply[i];
-    if (!row.madReel || row.batchRate < 9 || row.batchRate > 12) { fail++; continue; }
+    if (!row.madReel || row.batchRate < 3 || row.batchRate > 30) { fail++; continue; }
     var patch = {
       mad_reel: row.madReel,
       taux_reel: row.batchRate,
