@@ -1002,6 +1002,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <button class="ba ba-ghost rcf-btn" id="rct-mad_reel" onclick="setReconcilTab('mad_reel')" style="font-size:12px;padding:6px 16px">
       💱 MAD réel Airbnb <span id="rct-mad-count" style="font-size:11px;background:rgba(42,157,96,.12);color:#2a9d60;border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span>
     </button>
+    <button class="ba ba-ghost rcf-btn" id="rct-missing" onclick="setReconcilTab('missing')" style="font-size:12px;padding:6px 16px;display:none">
+      🔍 Lignes manquantes <span id="rct-missing-count" style="font-size:11px;background:rgba(224,82,82,.12);color:var(--re);border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span>
+    </button>
   </div>
   <!-- File d'attente anomalies -->
   <div id="reconcil-queue" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:16px">
@@ -1058,6 +1061,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="ba ba-ghost admin-only" id="btn-mad-reel-all" onclick="madReelSelectAll()" style="font-size:12px">☑ Tout sélectionner</button>
     </div>
+  </div>
+  <!-- ── Lignes manquantes / à créer ── -->
+  <div id="missing-section" style="display:none;background:var(--s);border:1px solid rgba(224,82,82,.3);border-radius:12px;padding:16px 18px;margin-top:14px">
+    <div id="missing-list"></div>
   </div>
 </div>
 
@@ -6827,14 +6834,15 @@ var RECONCIL_TAB = 'anomalies';  // 'anomalies' | 'mad_reel'
 
 function setReconcilTab(tab) {
   RECONCIL_TAB = tab;
-  ['anomalies', 'mad_reel'].forEach(function(t) {
+  ['anomalies', 'mad_reel', 'missing'].forEach(function(t) {
     var btn = document.getElementById('rct-' + t);
     if (btn) btn.classList.toggle('rcf-active', t === tab);
   });
-  var hasAnomaly = RECONCIL_ANOMALIES.length > 0;
+  var hasAnomaly = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing'; }).length > 0;
   var queueEl = document.getElementById('reconcil-queue');
   if (queueEl) queueEl.style.display = (tab === 'anomalies' && hasAnomaly) ? 'block' : 'none';
   renderMadRealSection();
+  renderMissingSection();
 }
 
 function setReconcilFilter(f) {
@@ -6849,23 +6857,36 @@ function setReconcilFilter(f) {
 
 function renderReconcil() {
   updateReconcilBadge();
-  var hasAnomaly = RECONCIL_ANOMALIES.length > 0;
+  var anomalyItems = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing'; });
+  var missingItems  = RECONCIL_ANOMALIES.filter(function(a) { return a._section === 'missing'; });
+  var hasAnomaly = anomalyItems.length > 0;
   var hasMadReel = MAD_REEL_ROWS.length > 0;
-  var hasContent = hasAnomaly || hasMadReel;
-  // Tab bar — visible dès qu'un CSV est chargé
+  var hasMissing = missingItems.length > 0;
+  var hasContent = hasAnomaly || hasMadReel || hasMissing;
+  // Tab bar
   var tabBar = document.getElementById('reconcil-tab-bar');
   if (tabBar) tabBar.style.display = hasContent ? 'flex' : 'none';
-  // Badges des onglets
+  // Badge anomalies (hors missing)
   var anomBadge = document.getElementById('rct-anomalies-count');
   if (anomBadge) {
-    var pendingN = RECONCIL_ANOMALIES.filter(function(a){ return a.status==='pending' && a.level!=='info'; }).length;
+    var pendingN = anomalyItems.filter(function(a){ return a.status==='pending' && a.level!=='info'; }).length;
     anomBadge.textContent = pendingN > 0 ? pendingN : '';
     anomBadge.style.display = pendingN > 0 ? '' : 'none';
   }
+  // Badge MAD réel
   var madBadge = document.getElementById('rct-mad-count');
   if (madBadge) {
     madBadge.textContent = hasMadReel ? MAD_REEL_ROWS.length : '';
     madBadge.style.display = hasMadReel ? '' : 'none';
+  }
+  // Badge + visibilité onglet Lignes manquantes
+  var rctMissing = document.getElementById('rct-missing');
+  if (rctMissing) rctMissing.style.display = hasMissing ? '' : 'none';
+  var missBadge = document.getElementById('rct-missing-count');
+  if (missBadge) {
+    var pendingM = missingItems.filter(function(a){ return a.status==='pending'; }).length;
+    missBadge.textContent = pendingM > 0 ? pendingM : '';
+    missBadge.style.display = pendingM > 0 ? '' : 'none';
   }
   // Contenu selon l'onglet actif
   var queueEl = document.getElementById('reconcil-queue');
@@ -6873,6 +6894,7 @@ function renderReconcil() {
   document.getElementById('reconcil-empty').style.display = hasContent ? 'none' : '';
   if (RECONCIL_TAB === 'anomalies' && hasAnomaly) renderAnomaliesList();
   renderMadRealSection();
+  renderMissingSection();
 }
 
 function buildMadRealRows(parsed, taux) {
@@ -7116,6 +7138,70 @@ function renderMadRealSection() {
   }
 }
 
+function renderMissingSection() {
+  var sec = document.getElementById('missing-section');
+  if (!sec) return;
+  var items = RECONCIL_ANOMALIES.filter(function(a) { return a._section === 'missing'; });
+  if (!items.length || RECONCIL_TAB !== 'missing') { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+
+  var pendingM = items.filter(function(a) { return a.status === 'pending'; }).length;
+  var ignoredM = items.filter(function(a) { return a.status === 'ignored'; }).length;
+
+  var resAbsent = items.filter(function(a) { return a.checkId === 'A'; });
+  var acAbsent  = items.filter(function(a) { return a.checkId === 'D'; });
+
+  function missingCard(a) {
+    var idx = RECONCIL_ANOMALIES.indexOf(a);
+    var isIgnored = a.status === 'ignored';
+    var isRes = a.checkId === 'A';
+    var typeLabel = isRes ? 'Réservation absente' : (a.isAircover ? '✈ AirCover absent' : 'Versement résolution absent');
+    var typeColor = isRes ? 'var(--re)' : 'var(--or)';
+    var montantEur = (a.csv.net || 0).toFixed(2);
+    var dateStr = isRes
+      ? escHtml(a.csv.checkin||'—') + ' → ' + escHtml(a.csv.checkout||'—') + ' · ' + (a.csv.nuits||0) + ' nuit(s)'
+      : escHtml(a.csv.checkin||'—');
+    var btns = isIgnored
+      ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="unignoreAnomaly(' + idx + ')">↩ Remettre</button>'
+      : '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Ouvre le formulaire de création">➕ Créer</button>'
+        + '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="ignoreAnomaly(' + idx + ')">🙈 Ignorer</button>';
+    return '<div style="border:1px solid rgba(224,82,82,.25);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:rgba(224,82,82,.03);' + (isIgnored ? 'opacity:0.55' : '') + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:5px">'
+        + '<div>'
+          + '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">' + escHtml(a.csv.code||'') + '</span>'
+          + (a.dossier ? ' <span style="font-size:10px;color:var(--tm)">(' + escHtml(a.dossier) + ')</span>' : '')
+          + ' <span style="font-size:11px;font-weight:600;color:' + typeColor + '">' + typeLabel + '</span>'
+        + '</div>'
+        + '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:14px;color:var(--or)">' + montantEur + ' EUR</span>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--tm);margin-bottom:2px">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>'
+      + '<div style="font-size:11px;color:var(--td);margin-bottom:6px">' + dateStr + '</div>'
+      + '<div style="font-size:11px;color:var(--re);margin-bottom:8px">' + escHtml(a.cause) + '</div>'
+      + (isIgnored ? '<div style="font-size:11px;color:var(--td);margin-bottom:6px"><em>— Ignorée</em></div>' : '')
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + btns + '</div>'
+      + '</div>';
+  }
+
+  var html = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--td);margin-bottom:12px">'
+    + 'Lignes manquantes / à créer · <span style="color:var(--re)">' + pendingM + ' en attente</span>'
+    + (ignoredM ? ' · <span style="color:var(--td)">' + ignoredM + ' ignorée(s)</span>' : '')
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--td);margin-bottom:12px;padding:8px 12px;background:var(--s2);border-radius:6px">'
+    + 'Ces lignes sont présentes dans le CSV Airbnb mais absentes du CRM. Aucune création automatique — à traiter manuellement.'
+    + '</div>';
+
+  if (resAbsent.length) {
+    html += '<div style="font-size:11px;color:var(--td);margin:0 0 6px;text-transform:uppercase;letter-spacing:.08em">Réservations absentes (' + resAbsent.length + ')</div>';
+    resAbsent.forEach(function(a) { html += missingCard(a); });
+  }
+  if (acAbsent.length) {
+    html += '<div style="font-size:11px;color:var(--td);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.08em">AirCover / Versements résolution absents (' + acAbsent.length + ')</div>';
+    acAbsent.forEach(function(a) { html += missingCard(a); });
+  }
+
+  document.getElementById('missing-list').innerHTML = html;
+}
+
 function madReelToggle(idx, checked) {
   var row = MAD_REEL_ROWS[idx];
   if (!row) return;
@@ -7217,10 +7303,10 @@ function renderAnomaliesList() {
   if (!el) return;
   var taux    = parseFloat((document.getElementById('reconcil-taux')||{}).value)  || 10.5;
   var seuil   = parseFloat((document.getElementById('reconcil-seuil')||{}).value) || 1.0;
-  var pending = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'pending' && a.level !== 'info'; }).length;
-  var ignored = RECONCIL_ANOMALIES.filter(function(a) { return a.status === 'ignored'; }).length;
-  var nMinor  = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='minor'; }).length;
-  var nInfo   = RECONCIL_ANOMALIES.filter(function(a) { return a.status==='pending' && a.level==='info';  }).length;
+  var pending = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing' && a.status === 'pending' && a.level !== 'info'; }).length;
+  var ignored = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing' && a.status === 'ignored'; }).length;
+  var nMinor  = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing' && a.status==='pending' && a.level==='minor'; }).length;
+  var nInfo   = RECONCIL_ANOMALIES.filter(function(a) { return a._section !== 'missing' && a.status==='pending' && a.level==='info';  }).length;
   var cnt = document.getElementById('reconcil-queue-count');
   if (cnt) {
     var parts = [pending + ' en attente'];
@@ -7279,6 +7365,7 @@ function renderAnomaliesList() {
   var html = '';
   RECONCIL_ANOMALIES.forEach(function(a, i) {
     if (a.status === 'validated') return;
+    if (a._section === 'missing') return;
     // Filtre actif
     var f = RECONCIL_FILTER;
     // Ignorées : masquées par défaut, visibles uniquement dans le filtre 'ignored'
@@ -7826,7 +7913,7 @@ function runReconciliation(parsed) {
       pushResult(Object.assign({}, baseFields, {
         crm: null, ecart: Math.round((csv.net||0)*100)/100, csvType: 'reservation', status: 'pending',
         cause: 'Réservation absente du CRM — à créer ou rattacher manuellement',
-        level: 'crit', checkId: 'A',
+        level: 'crit', checkId: 'A', _section: 'missing',
       })); return;
     }
 
@@ -7988,6 +8075,7 @@ function runReconciliation(parsed) {
       cause: causeD, level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
       _deviseAmbigue: res.devise !== 'EUR',
       isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+      _section: !crmAc ? 'missing' : 'anomaly',
     });
   });
 
@@ -8396,7 +8484,8 @@ function ignoreAnomaly(i) {
   var k = reconcilIgnoreKey(a);
   if (keys.indexOf(k) < 0) { keys.push(k); reconcilIgnoreSave(keys); }
   updateReconcilBadge();
-  renderAnomaliesList();
+  if (a._section === 'missing') renderMissingSection();
+  else renderAnomaliesList();
 }
 
 function unignoreAnomaly(i) {
@@ -8406,7 +8495,8 @@ function unignoreAnomaly(i) {
   var k = reconcilIgnoreKey(a);
   reconcilIgnoreSave(reconcilIgnoreLoad().filter(function(x) { return x !== k; }));
   updateReconcilBadge();
-  renderAnomaliesList();
+  if (a._section === 'missing') renderMissingSection();
+  else renderAnomaliesList();
 }
 
 function exportAnomaliesJSON() {
