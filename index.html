@@ -6881,7 +6881,7 @@ function renderReconcil() {
   }
   // Badge + visibilité onglet Lignes manquantes
   var rctMissing = document.getElementById('rct-missing');
-  if (rctMissing) rctMissing.style.display = hasMissing ? '' : 'none';
+  if (rctMissing) rctMissing.style.display = hasContent ? '' : 'none';
   var missBadge = document.getElementById('rct-missing-count');
   if (missBadge) {
     var pendingM = missingItems.filter(function(a){ return a.status==='pending'; }).length;
@@ -7142,7 +7142,12 @@ function renderMissingSection() {
   var sec = document.getElementById('missing-section');
   if (!sec) return;
   var items = RECONCIL_ANOMALIES.filter(function(a) { return a._section === 'missing'; });
-  if (!items.length || RECONCIL_TAB !== 'missing') { sec.style.display = 'none'; return; }
+  if (RECONCIL_TAB !== 'missing') { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  if (!items.length) {
+    document.getElementById('missing-list').innerHTML = '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Aucune ligne manquante — toutes les réservations CSV ont une correspondance dans le CRM.</div>';
+    return;
+  }
   sec.style.display = '';
 
   var pendingM = items.filter(function(a) { return a.status === 'pending'; }).length;
