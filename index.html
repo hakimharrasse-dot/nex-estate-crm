@@ -7059,18 +7059,34 @@ function renderMadRealSection() {
         if (row._hasUSD) reasons.push('devise USD présente');
         if (row._hasRegulResol) reasons.push('régularisation de résolution');
         var cid = row.crm.id;
-        // Composition CSV
-        var csvParts = [];
-        var csvR = row.csv;
-        if (csvR.netBase != null) csvParts.push({ label: 'Réservation nette', amt: csvR.netBase, dev: 'EUR' });
-        if (csvR.hasRegul && csvR.regulAmt)      csvParts.push({ label: 'Régularisation', amt: csvR.regulAmt, dev: 'EUR' });
-        if (csvR.hasRegulResol && csvR.regulResolAmt) csvParts.push({ label: 'Régul. résolution' + (row._hasUSD ? ' (USD→EUR)' : ''), amt: csvR.regulResolAmt, dev: 'EUR' });
-        var compHtml = csvParts.map(function(p) {
-          return '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tm);padding:2px 0">'
-            + '<span>' + escHtml(p.label) + '</span>'
-            + '<span style="font-family:monospace;color:' + (p.amt >= 0 ? 'var(--gr)' : 'var(--re)') + '">' + (p.amt >= 0 ? '+' : '') + p.amt.toFixed(2) + ' ' + p.dev + '</span>'
-            + '</div>';
-        }).join('');
+        // Composition CSV — lignes brutes
+        var rawLines = (row.csv._rawLines || []);
+        var compHtml = '';
+        if (rawLines.length) {
+          compHtml = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
+            + '<thead><tr style="color:var(--td);border-bottom:1px solid var(--br)">'
+            + '<th style="padding:3px 6px;text-align:left;font-weight:500">Type mouvement</th>'
+            + '<th style="padding:3px 6px;text-align:right;font-weight:500">Date</th>'
+            + '<th style="padding:3px 6px;text-align:right;font-weight:500">Montant</th>'
+            + '<th style="padding:3px 6px;text-align:right;font-weight:500">Devise</th>'
+            + '<th style="padding:3px 6px;text-align:right;font-weight:500">Équiv. EUR</th>'
+            + '</tr></thead><tbody>';
+          rawLines.forEach(function(l) {
+            var isPos = l.mEur >= 0;
+            var devCol = l.devise === 'USD' ? 'var(--or)' : l.devise === 'MAD' ? 'var(--pu)' : 'var(--tm)';
+            compHtml += '<tr style="border-bottom:1px solid rgba(255,255,255,.04)">'
+              + '<td style="padding:3px 6px;color:var(--tm)">' + escHtml(l.type) + '</td>'
+              + '<td style="padding:3px 6px;text-align:right;color:var(--td);font-family:monospace;font-size:10px">' + (l.date || '—') + '</td>'
+              + '<td style="padding:3px 6px;text-align:right;font-family:monospace;color:' + (isPos ? 'var(--gr)' : 'var(--re)') + '">' + (isPos ? '+' : '') + l.montant.toFixed(2) + '</td>'
+              + '<td style="padding:3px 6px;text-align:right;font-size:10px;color:' + devCol + '">' + escHtml(l.devise) + '</td>'
+              + '<td style="padding:3px 6px;text-align:right;font-family:monospace;color:' + (isPos ? 'var(--gr)' : 'var(--re)') + '">' + (isPos ? '+' : '') + l.mEur.toFixed(2) + ' €</td>'
+              + '</tr>';
+          });
+          compHtml += '<tr style="border-top:1px solid var(--br);font-weight:600">'
+            + '<td colspan="4" style="padding:4px 6px;color:var(--tm)">Net CSV total</td>'
+            + '<td style="padding:4px 6px;text-align:right;font-family:monospace">' + (row.csv.net||0).toFixed(2) + ' €</td>'
+            + '</tr></tbody></table>';
+        }
         ch += '<div style="border:1px solid rgba(255,153,51,.4);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(255,153,51,.03)">'
           + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
           + '<div>'
@@ -7080,10 +7096,7 @@ function renderMadRealSection() {
           + '</div>'
           + '<span style="font-size:11px;color:var(--or);font-weight:600">' + reasons.join(' · ') + '</span>'
           + '</div>'
-          + (compHtml ? '<div style="background:var(--s2);border-radius:6px;padding:8px 10px;margin-bottom:8px">' + compHtml
-              + '<div style="border-top:1px solid var(--br);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;font-size:11px;font-weight:600">'
-              + '<span>Net CSV total</span><span style="font-family:monospace">' + (row.csv.net||0).toFixed(2) + ' EUR</span></div>'
-              + '</div>' : '')
+          + (compHtml ? '<div style="background:var(--s2);border-radius:6px;padding:8px 10px;margin-bottom:8px">' + compHtml + '</div>' : '')
           + '<div style="font-size:11px;color:var(--td);margin-bottom:8px">'
           + 'CRM : <strong style="color:var(--tx)">' + (row.crm.net||0).toFixed(2) + ' €</strong> · '
           + 'MAD estimé (×' + tauMin.toFixed(2) + ') : <strong>' + row.madEstime.toFixed(2) + '</strong> · '
@@ -7558,11 +7571,13 @@ function parseAirbnbCSV(text, taux) {
     var fEur    = toEur(frais,   devise);
 
     if (type === 'Réservation') {
+      var rawLine = { type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details };
       if (grouped[code]) {
         grouped[code].net        += mEur;
         grouped[code].netBase    += mEur;
         grouped[code].brut       += bEur;
         grouped[code].commission += fEur;
+        grouped[code]._rawLines.push(rawLine);
       } else {
         grouped[code] = {
           code: code,
@@ -7580,6 +7595,7 @@ function parseAirbnbCSV(text, taux) {
           hasRegulResol: false,
           regulAmt:      0,
           regulResolAmt: 0,
+          _rawLines:  [rawLine],
         };
         // Apply any pending adjustments stored before this row
         if (pendingAdj[code]) {
@@ -7590,33 +7606,42 @@ function parseAirbnbCSV(text, taux) {
           grouped[code].hasRegulResol = adj.hasRegulResol;
           grouped[code].regulResolAmt = adj.regulResolAmt;
           if (adj._hasUSD) grouped[code]._hasUSD = true;
+          if (adj._rawLines) grouped[code]._rawLines = adj._rawLines.concat(grouped[code]._rawLines);
           delete pendingAdj[code];
         }
       }
 
     } else if (type === 'Régularisation') {
+      var rawLine = { type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details };
       if (grouped[code]) {
         grouped[code].net      += mEur;
         grouped[code].hasRegul  = true;
         grouped[code].regulAmt += mEur;
+        grouped[code]._rawLines.push(rawLine);
       } else {
-        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false };
+        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false, _rawLines:[] };
+        if (!pendingAdj[code]._rawLines) pendingAdj[code]._rawLines = [];
         pendingAdj[code].regulAmt += mEur;
         pendingAdj[code].hasRegul  = true;
+        pendingAdj[code]._rawLines.push(rawLine);
       }
 
     } else if (type === 'Régularisation de la résolution') {
       var isUSD = (devise === 'USD');
+      var rawLine = { type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details };
       if (grouped[code]) {
         grouped[code].net             += mEur;
         grouped[code].hasRegulResol    = true;
         grouped[code].regulResolAmt   += mEur;
         if (isUSD) grouped[code]._hasUSD = true;
+        grouped[code]._rawLines.push(rawLine);
       } else {
-        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false };
+        if (!pendingAdj[code]) pendingAdj[code] = { regulAmt:0, hasRegul:false, regulResolAmt:0, hasRegulResol:false, _rawLines:[] };
+        if (!pendingAdj[code]._rawLines) pendingAdj[code]._rawLines = [];
         pendingAdj[code].regulResolAmt += mEur;
         pendingAdj[code].hasRegulResol  = true;
         if (isUSD) pendingAdj[code]._hasUSD = true;
+        pendingAdj[code]._rawLines.push(rawLine);
       }
 
     } else if (type === 'Versement de résolution') {
@@ -7636,6 +7661,7 @@ function parseAirbnbCSV(text, taux) {
         details:    details,
         subtype:    isAc ? 'aircover' : 'resolution',
         _payoutMAD: payoutByCodeResol[code] || null,
+        _rawLines:  [{ type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details }],
       });
     }
     // Payout → ignoré (1 virement peut grouper plusieurs réservations)
