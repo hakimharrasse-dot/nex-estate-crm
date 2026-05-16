@@ -6953,6 +6953,15 @@ function buildMadRealRows(parsed, taux) {
       if (batchRate < 3 || batchRate > 30) return;  // taux physiquement impossible
     }
     var matches = findByCode(csvRow.code);
+    // Guard natif MAD : restreindre au type RESERVATION uniquement.
+    // findByCode retourne aussi les -Resol / -AIRC via startsWith(code+'-') ;
+    // AJUSTEMENT et AIRCOVER ne doivent jamais recevoir un mad_reel natif.
+    // Guard ambiguïté : si plusieurs RESERVATION pour le même code → complexe manuel.
+    if (_isNativeMad) {
+      matches = matches.filter(function(m) { return m.type_norm === 'RESERVATION'; });
+      if (matches.length === 0) return;
+    }
+    var _natifForceComplex = _isNativeMad && matches.length > 1;
     matches.forEach(function(crm) {
       if (TYPES_OK.indexOf(crm.type_norm) < 0) return;
       if (crm.mad_reel != null) return;
@@ -6983,7 +6992,7 @@ function buildMadRealRows(parsed, taux) {
         madReel: madReel,
         madEstime: madEstime,
         ecart: Math.round((madReel - madEstime) * 100) / 100,
-        _isNativeMAD: _isNativeMad,
+        _isNativeMAD: _isNativeMad && !_natifForceComplex,
         // Drapeaux structurels de complexité (calculés une fois à la construction)
         _hasUSD:          !!(csvRow._hasUSD),
         _hasRegulResol:   !!(csvRow.hasRegulResol),
