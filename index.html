@@ -7604,14 +7604,22 @@ function parseAirbnbCSV(text, taux) {
       for (_j = 0; _j < _pEUR.length;     _j++) _sumE += _pEUR[_j].amt;
       for (_j = 0; _j < _pResolEUR.length; _j++) _sumE += _pResolEUR[_j].amt;
       if (_sumE > 0.01) {
-        var _rate = _pMad / _sumE;
-        for (_j = 0; _j < _pEUR.length; _j++) {
-          _it = _pEUR[_j];
-          payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
-        }
-        for (_j = 0; _j < _pResolEUR.length; _j++) {
-          _it = _pResolEUR[_j];
-          payoutByCodeResol[_it.code] = Math.round(((payoutByCodeResol[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+        // Retirer les MAD natifs du payout avant de calculer le taux EUR.
+        // Sans cette correction, un batch mixte EUR+MAD gonfle le numérateur
+        // et produit des taux aberrants (ex : 5661 DH / 427 EUR = 13,27 au lieu de 10,87).
+        var _madNative = 0;
+        for (_j = 0; _j < _pMADtx.length; _j++) _madNative += _pMADtx[_j].amt;
+        var _pMadEur = _pMad - _madNative;
+        if (_pMadEur > 0.01) {
+          var _rate = _pMadEur / _sumE;
+          for (_j = 0; _j < _pEUR.length; _j++) {
+            _it = _pEUR[_j];
+            payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+          }
+          for (_j = 0; _j < _pResolEUR.length; _j++) {
+            _it = _pResolEUR[_j];
+            payoutByCodeResol[_it.code] = Math.round(((payoutByCodeResol[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+          }
         }
       }
     }
