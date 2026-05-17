@@ -7271,7 +7271,7 @@ function renderMadRealSection() {
           + ' style="width:110px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:5px 8px;font-size:12px;font-family:\'DM Sans\',sans-serif">'
           + '<span style="font-size:12px;color:var(--td)">DH</span>'
           + (ROLE==='admin' ? '<button class="ba bat" onclick="applyMadRealManual(\'' + cid + '\')" style="font-size:12px">💾 Enregistrer</button>' : '')
-          + '<button class="ba ba-ghost" onclick="madReelIgnore(\'' + cid + '\')" style="font-size:12px;padding:5px 10px" title="Ne plus afficher cette ligne">🙈 Ignorer</button>'
+          + '<button class="ba ba-ghost" onclick="if(confirm(\'Ignorer ce cas complexe ? Il ne sera plus proposé.\')) madReelIgnore(\'' + cid + '\')" style="font-size:12px;padding:5px 10px" title="Ignorer définitivement ce cas complexe">🙈 Ignorer ce cas complexe</button>'
           + '</div>'
           + '</div>';
       });
