@@ -6918,7 +6918,9 @@ function madReelIgnore(crmId) {
 function buildMadRealRows(parsed, taux) {
   taux = taux || 10.5;
   var rows = [];
-  var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'AIRCOVER', 'AJUSTEMENT'];
+  // Seules RESERVATION et ANNULATION_PAYEE peuvent recevoir un mad_reel automatique.
+  // AJUSTEMENT / AIRCOVER / résolutions = cas manuels — jamais écrits par le module.
+  var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE'];
   // Codes déjà ignorés manuellement dans Réconciliation → ne pas réafficher
   var ignoredCodes = {};
   RECONCIL_ANOMALIES.forEach(function(a) {
@@ -6998,6 +7000,8 @@ function buildMadRealRows(parsed, taux) {
         _hasRegulResol:   !!(csvRow.hasRegulResol),
         // Patch B — régularisation négative (geste commercial, remboursement)
         _hasNegativeRegul: !!(csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01),
+        // net CRM ≠ net CSV Airbnb (tolérance 1 EUR) — écart → complexe, pas d'auto-apply
+        _hasNetMismatch:   !_isNativeMad && Math.abs((crm.net||0) - (csvRow.net||0)) > 1,
       });
     });
   }
@@ -7047,7 +7051,7 @@ function renderMadRealSection() {
   function isSimpleRow(row) {
     // MAD natif → section dédiée "à valider", jamais coché automatiquement
     if (row._isNativeMAD) return false;
-    return row.batchRate >= tauMin && row.batchRate <= tauMax && !row._hasUSD && !row._hasRegulResol && !row._hasNegativeRegul;
+    return row.batchRate >= tauMin && row.batchRate <= tauMax && !row._hasUSD && !row._hasRegulResol && !row._hasNegativeRegul && !row._hasNetMismatch;
   }
   var simpleIdxs = [], natifIdxs = [], complexIdxs = [];
   MAD_REEL_ROWS.forEach(function(row, idx) {
@@ -7360,7 +7364,7 @@ function madReelSelectAll() {
   var tauMin = parseFloat((document.getElementById('mad-reel-taux-min')||{}).value) || 10.5;
   var tauMax = parseFloat((document.getElementById('mad-reel-taux-max')||{}).value) || 11.0;
   MAD_REEL_ROWS.forEach(function(row) {
-    var simple = !row._isNativeMAD && (row.batchRate >= tauMin && row.batchRate <= tauMax && !row._hasUSD && !row._hasRegulResol && !row._hasNegativeRegul);
+    var simple = !row._isNativeMAD && (row.batchRate >= tauMin && row.batchRate <= tauMax && !row._hasUSD && !row._hasRegulResol && !row._hasNegativeRegul && !row._hasNetMismatch);
     if (simple) MAD_REEL_SELECTED[row.crm.id] = true;
   });
   renderMadRealSection();
@@ -7374,7 +7378,7 @@ async function applyMadReal() {
   var tauMax = parseFloat((document.getElementById('mad-reel-taux-max')||{}).value) || 11.0;
   // Exclure les lignes complexes — elles passent par applyMadRealManual
   toApply = toApply.filter(function(r) {
-    return !r._isNativeMAD && (r.batchRate >= tauMin && r.batchRate <= tauMax && !r._hasUSD && !r._hasRegulResol && !r._hasNegativeRegul);
+    return !r._isNativeMAD && (r.batchRate >= tauMin && r.batchRate <= tauMax && !r._hasUSD && !r._hasRegulResol && !r._hasNegativeRegul && !r._hasNetMismatch);
   });
   if (!toApply.length) { alert('Aucune ligne simple à appliquer. Les cas complexes se saisissent ligne par ligne.'); return; }
   if (!confirm('Appliquer le MAD réel Airbnb sur ' + toApply.length + ' réservation(s) simple(s) ?\nCette action met à jour mad_reel, taux_reel, mad_reel_source et mad_reel_updated_at.')) return;
