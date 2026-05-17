@@ -10,7 +10,7 @@
 
 **Nex-Estate CRM** est un outil de gestion de réservations locatives courte durée (Airbnb, Booking.com, VRBO, Direct) pour 4 appartements au Maroc.
 
-- **Frontend** : `index.html` unique (~7528 lignes), vanilla JS, zéro framework, zéro build
+- **Frontend** : `index.html` unique (~8400 lignes), vanilla JS, zéro framework, zéro build
 - **Backend** : Vercel Serverless Functions (Node.js)
 - **Base de données** : Supabase (PostgreSQL 17, projet `zjultuaqkzjupiiewxhy`, région `eu-west-1`)
 - **Source de réservations** : Smoobu (PMS) via webhook temps réel + cron horaire
@@ -114,6 +114,10 @@ Le CRM dispose d'une section **Logements** permettant d'activer/archiver des bie
 | `phone` / `email` / `guest_language` | text | Coordonnées voyageur |
 | `adults` / `children` / `nb_personnes` | integer | Composition du groupe |
 | `notes` | text | Notes libres |
+| `mad_reel` | numeric NULL | Montant net réel encaissé en MAD (Airbnb payout) — jamais écrasé par webhook/poll |
+| `taux_reel` | numeric NULL | Taux EUR→MAD effectif du versement (ex: 10.8723) — null pour natif MAD |
+| `mad_reel_source` | text NULL | `'CSV Airbnb payout'` / `'CSV Airbnb MAD natif'` / `'CSV Airbnb complexe / validation manuelle'` |
+| `mad_reel_updated_at` | text NULL | ISO datetime de la dernière mise à jour mad_reel |
 
 ### Autres tables
 - `business` — dépenses/revenus liés aux appartements (scope: property ou global)
@@ -266,6 +270,17 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 | `renderGainsCards()` | Gains ménage par membre — filterPer sur clé 'gn' (période indépendante) |
 | `getSoldeData(name)` | Calcule bizIds/taxeIds/servIds + men/adv/tax/ext/net pour la modale Solder |
 | `confirmSolde()` | Exécute le règlement : ①bizPend→Payé + neutralise paid_by, ②taxe→Reversé, ③serv→Payé, ④crée Règlement terrain |
+| `parseAirbnbCSV(text, taux)` | Parse le CSV paiements Airbnb → `{ reservations[], resolutions[] }`. Pre-pass lie les Payout MAD aux transactions individuelles. |
+| `buildMadRealRows(parsed, taux)` | Construit `MAD_REEL_ROWS` à partir du CSV parsé — appelle `addRow` pour chaque ligne éligible |
+| `addRow(csvRow, payoutMAD)` | Cœur du module — applique les guards (TYPES_OK, natif MAD, ambiguïté, net mismatch) et pousse dans MAD_REEL_ROWS |
+| `renderMadRealSection()` | Rendu UI de la section MAD réel Airbnb (onglet Réconciliation) |
+| `applyMadReal()` | Batch auto-apply sur les lignes simples cochées (taux dans plage, pas USD, pas régul, pas mismatch) |
+| `applyMadRealManual(crmId)` | Validation manuelle unitaire — guards EUR-au-lieu-de-MAD (×100) et val < ref×0.5 |
+| `madReelIgnore(crmId)` | Ajoute à `nex_madReel_ignored_v1` (localStorage), retire de MAD_REEL_ROWS |
+| `rNetMAD(r)` | Helper dashboard : retourne `r.mad_reel` si éligible, sinon `r.net × EUR_MAD` |
+| `rBrutMAD(r)` | Helper dashboard : `r.brut × r.taux_reel` si éligible, sinon `r.brut × EUR_MAD` |
+| `rComMAD(r)` | Helper dashboard : `r.commission × r.taux_reel` si éligible, sinon `r.commission × EUR_MAD` |
+| `sumNetMAD(rows)` | Somme MAD nette d'un tableau via `rNetMAD` — utilisé dans computePeriodKPIs, renderDash, renderResa |
 
 ### Variables globales d'état des périodes (lignes ~2550-2558)
 ```javascript
@@ -394,6 +409,17 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-10 | Fix(recompute): nb_personnes = adults + children corrigé via bouton Recalculer — commit `2da4d7f` |
 | 2026-05-10 | Fix(poll): empêcher sync Smoobu de ré-introduire anomalies QA — nextThursday() UTC-safe dans poll + normalizer, calcDatePaiement Booking.com sans fallback dateCreation, guards checkout vide + dp dans tous les cas (B/C-NORMAL/C-DATESONLY/C-DOWNGRADE) — commit `2a84592` |
 | 2026-05-10 | Backup `nex-estate-crm-backup-2026-05-10` produit — suppression ancien backup 2026-05-06 |
+| 2026-05-12 | Stabilisation module Réconciliation Airbnb CSV — commit `60c2290` (baseline backup) |
+| 2026-05-13 | Fix(mad-reel): pre-fill input natif MAD corrigé — utilise `_rawLines` sum, pas `row.madReel` (`d47ef1c`) |
+| 2026-05-13 | Fix(mad-natif): guard type RESERVATION strict pour natifs MAD + `_natifForceComplex` si ambiguïté (`ccc910f`) |
+| 2026-05-13 | UX(mad-reel): bouton "Ignorer ce cas complexe" + confirmation avant masquage (`1adbbf4`) |
+| 2026-05-13 | Fix(mad-reel): TYPES_OK restreint à RESERVATION+ANNULATION_PAYEE ; guard `_hasNetMismatch` ajouté (`e3cdf17`) |
+| 2026-05-13 | DB cleanup: HMYNCCSARK-Resol — mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL (AJUSTEMENT contamination) |
+| 2026-05-13 | DB cleanup: HMHBWXF55D × 3 lignes (Stella) — mad_reel nullé (auto-apply erroné sur RESERVATION + 2 AJUSTEMENT) |
+| 2026-05-14 | Feat(mad-reel): RELOCATION ajouté dans TYPES_OK — financièrement identique à RESERVATION côté Airbnb (`37cb5d6`) |
+| 2026-05-17 | DB cleanup: 12 records AIRCOVER/AJUSTEMENT — mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL (écriture ancienne, avant restriction TYPES_OK) |
+| 2026-05-17 | Feat(dashboard): helpers rNetMAD/rBrutMAD/rComMAD/sumNetMAD — KPIs dashboard et renderResa utilisent mad_reel/taux_reel quand disponibles, fallback EUR×EUR_MAD (`11d31da`) |
+| 2026-05-17 | Backup `nex-estate-crm-backup-2026-05-17` produit — suppression ancien backup 2026-05-12 |
 
 ---
 
@@ -468,3 +494,108 @@ var CATS_B = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais 
 
 - Cartes Business : `paid_by` affiché comme badge bleu 💳 dans `row2`
 - Logique : `isMobile()` = `window.innerWidth < 700`
+
+---
+
+## 14. Module MAD réel Airbnb — Architecture complète (stabilisé 2026-05-17)
+
+### Objectif
+
+Réconcilier les versements Airbnb en MAD (CSV paiements Airbnb) avec les réservations CRM stockées en EUR, pour afficher et stocker le vrai montant encaissé en MAD.
+
+### Champs DB (table `resa`)
+
+| Champ | Contenu |
+|---|---|
+| `mad_reel` | Montant net MAD réellement encaissé |
+| `taux_reel` | Taux EUR→MAD du versement (null si natif MAD) |
+| `mad_reel_source` | Origine : `'CSV Airbnb payout'` / `'CSV Airbnb MAD natif'` / `'CSV Airbnb complexe / validation manuelle'` |
+| `mad_reel_updated_at` | ISO datetime |
+
+**Règle immuable** : ces champs ne sont JAMAIS écrits par webhook, poll Smoobu ou import CSV Smoobu. Ils sont écrits uniquement par le module MAD réel (validation manuelle ou batch).
+
+### TYPES_OK — types éligibles à l'écriture automatique
+
+```javascript
+var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'RELOCATION'];
+// AIRCOVER, AJUSTEMENT, RESOLUTION → jamais écrits par le module
+```
+
+`RELOCATION` = réservation relogée, financièrement identique à `RESERVATION` côté Airbnb.
+
+### Guards dans `addRow()` (ordre d'application)
+
+1. **TYPES_OK** : `crm.type_norm` doit être dans la liste → sinon ignoré
+2. **Natif MAD** (`_isNativeMad`) : filter strict `type_norm === 'RESERVATION'` uniquement + `findByCode` via startsWith bloqué pour éviter contamination -Resol / -AIRC
+3. **`_natifForceComplex`** : plusieurs RESERVATION pour le même code → complexe manuel
+4. **`_hasNetMismatch`** : `|crm.net - csvRow.net| > 1 EUR` → complexe, jamais auto-apply
+5. **`isSimpleRow`** : `batchRate ∈ [tauMin, tauMax]` ET pas `_hasUSD` ET pas `_hasNegativeRegul` ET pas `_hasRegulResol`
+
+### `findByCode(code)` — correspondance ref Airbnb
+
+```javascript
+function findByCode(code) {
+  var c = code.toUpperCase();
+  return DB.resa.filter(function(r) {
+    if (r.source !== 'Airbnb' || !r.ref) return false;
+    var ref = r.ref.toUpperCase();
+    return ref === c
+        || ref === 'AIR-' + c
+        || ref.startsWith(c + '_')
+        || ref.startsWith(c + '-')       // ← matche -Resol / -AIRC
+        || ref.startsWith('AIR-' + c + '_')
+        || ref.startsWith('AIR-' + c + '-');
+  });
+}
+```
+
+⚠️ `startsWith(c + '-')` matche les -Resol et -AIRC → le guard TYPES_OK et natif MAD filtrent en aval.
+
+### Sections UI (onglet Réconciliation)
+
+| Section | Condition |
+|---|---|
+| **Lignes simples** | `isSimpleRow()` → coché auto, apply batch |
+| **À valider (natif MAD)** | `_isNativeMad` → input pré-rempli avec `_natifRef` (somme des lignes MAD brutes CSV), `data-ref` pour les guards |
+| **Cas complexes** | `_hasNetMismatch` / `_hasRegulResol` / `_hasUSD` / `_hasNegativeRegul` / `_natifForceComplex` → saisie manuelle + bouton "Ignorer ce cas complexe" |
+
+### Guards `applyMadRealManual(crmId)` (validation manuelle)
+
+1. **EUR-au-lieu-de-MAD** : si `|val × 100 - ref| / ref < 5%` → confirmation "valeur semble être en EUR"
+2. **Valeur trop basse** : si `val < ref × 0.5` → confirmation "très inférieur au MAD natif détecté"
+
+### Ignore persistant
+
+- Clé localStorage : `nex_madReel_ignored_v1` (`{ [crmId]: true }`)
+- `madReelIgnore(crmId)` → ajoute + retire de `MAD_REEL_ROWS`
+- Rechargé à chaque `buildMadRealRows` via `applyPersistedIgnoresMAD()`
+
+### Helpers dashboard (ajoutés 2026-05-17)
+
+```javascript
+var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION'];
+function rNetMAD(r)  { return r.mad_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? r.mad_reel : (r.net||0)*EUR_MAD; }
+function rBrutMAD(r) { return r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? (r.brut||0)*r.taux_reel : (r.brut||0)*EUR_MAD; }
+function rComMAD(r)  { return r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? (r.commission||0)*r.taux_reel : (r.commission||0)*EUR_MAD; }
+function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s+rNetMAD(r); },0); }
+```
+
+Utilisés dans : `computePeriodKPIs` (netMad, netMadAtt), `renderDash` (brut, com, sparklines, recap appart/source, décisions rapides), `renderResa` (totaux entête, ADR, recap par appart).
+
+### Règle d'affichage — ne JAMAIS modifier
+
+- `net / brut / commission` en base = toujours EUR → **jamais touchés**
+- `e2m()` / `fmtE()` = fonctions globales EUR×EUR_MAD → **inchangées**, utilisées pour Booking.com / VRBO / Direct / AIRCOVER / AJUSTEMENT
+- AIRCOVER et AJUSTEMENT : toujours fallback EUR×EUR_MAD, `mad_reel` = NULL en base
+
+### CSV Airbnb — format attendu
+
+- Séparateur : virgule, encodage UTF-8
+- Nombres : format français (`3 537,17` = espace milliers, virgule décimale) → `_parseNum()`
+- Devises : EUR (standard) ou MAD (`_isNativeMad = csvRow.devise === 'MAD'`)
+- Payout rows : type = `'Payout'`, ne doivent jamais entrer dans le traitement individuel → guard `_ptyp !== 'Payout'`
+
+### Décisions stratégiques (2026-05-13)
+
+- **26 versements de résolution** dans le CSV Jan–Avr 2026 : **pas automatisés** — trop complexes, validation manuelle uniquement
+- **Cas complexes** (`_hasNetMismatch`, régularisation, USD, natif ambigu) : bouton "Ignorer ce cas complexe" avec confirmation → masqué définitivement
