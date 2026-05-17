@@ -6918,9 +6918,10 @@ function madReelIgnore(crmId) {
 function buildMadRealRows(parsed, taux) {
   taux = taux || 10.5;
   var rows = [];
-  // Seules RESERVATION et ANNULATION_PAYEE peuvent recevoir un mad_reel automatique.
+  // Types éligibles au mad_reel automatique.
+  // RELOCATION = réservation relogée, financièrement identique à RESERVATION côté Airbnb.
   // AJUSTEMENT / AIRCOVER / résolutions = cas manuels — jamais écrits par le module.
-  var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE'];
+  var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'RELOCATION'];
   // Codes déjà ignorés manuellement dans Réconciliation → ne pas réafficher
   var ignoredCodes = {};
   RECONCIL_ANOMALIES.forEach(function(a) {
