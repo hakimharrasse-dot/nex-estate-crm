@@ -2379,6 +2379,23 @@ function fmt(v)  { return Math.round(v||0).toLocaleString('fr-MA')+' MAD'; }
 function fmtE(v) { return Math.round((v||0)*EUR_MAD).toLocaleString('fr-MA')+' MAD'; }
 function e2m(v)  { return Math.round((v||0)*EUR_MAD); }
 function uid()   { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+// ── Helpers MAD réel — conversion EUR→MAD avec taux_reel quand disponible ──
+// Éligibles : RESERVATION, ANNULATION_PAYEE, RELOCATION (sources Airbnb principalement).
+// AIRCOVER, AJUSTEMENT, RESOLUTION : toujours fallback EUR×EUR_MAD.
+var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION'];
+function rNetMAD(r) {
+  if (r.mad_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return r.mad_reel;
+  return (r.net || 0) * EUR_MAD;
+}
+function rBrutMAD(r) {
+  if (r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return (r.brut || 0) * r.taux_reel;
+  return (r.brut || 0) * EUR_MAD;
+}
+function rComMAD(r) {
+  if (r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return (r.commission || 0) * r.taux_reel;
+  return (r.commission || 0) * EUR_MAD;
+}
+function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s + rNetMAD(r); }, 0); }
 
 function fetchEurMad() {
   var url = 'https://api.frankfurter.app/latest?from=EUR&to=MAD';
@@ -3119,15 +3136,15 @@ function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
   var revPaye = rev.filter(function(r){ return r.date_paiement && r.date_paiement <= td; });
   var revAtt  = rev.filter(function(r){ return !r.date_paiement || r.date_paiement > td; });
   var NUITS_T = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'];
-  var netEur    = sum(revPaye,'net');
-  var netEurAtt = sum(revAtt,'net');
   var nuitsFact = revPaye.filter(function(r){return NUITS_T.indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
   // Occupation physique : nuit par nuit, non filtrée par statut
   var nuitsSej=(pBounds&&pBounds.start)
     ? occupNightsBiz(appart||null, pBounds.start, pBounds.end)
     : rev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
-  var netMad    = netEur*EUR_MAD;
-  var netMadAtt = netEurAtt*EUR_MAD;
+  // Net MAD : utilise mad_reel si disponible (RESERVATION/ANNULATION_PAYEE/RELOCATION),
+  // sinon fallback net EUR × EUR_MAD (Booking.com, VRBO, Direct, AIRCOVER, AJUSTEMENT…).
+  var netMad    = sumNetMAD(revPaye);
+  var netMadAtt = sumNetMAD(revAtt);
   var dep    = sum(bizRows,'montant');
   var adr    = nuitsFact>0?netMad/nuitsFact:0;
   var occ    = joursDispo>0?(nuitsSej/joursDispo*100):0;
@@ -3153,8 +3170,9 @@ function renderDash() {
   var joursDispo=periodDays('d')*nAp;
   var pb=periodBounds('d'); // bornes de la période pour calcul occupation nuit/nuit
   var cur=computePeriodKPIs(allRes,bizRows,joursDispo,pb,fa||null);
-  var brutEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;}),'brut');
-  var comEur=sum(allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;}),'commission');
+  var _revPayeDash=allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
+  var brutMad=_revPayeDash.reduce(function(s,r){return s+rBrutMAD(r);},0);
+  var comMad=_revPayeDash.reduce(function(s,r){return s+rComMAD(r);},0);
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
@@ -3187,10 +3205,10 @@ function renderDash() {
 
   // ── Affichage KPI ──
   set('d-net',fmt(cur.netMad));
-  set('d-brut','Brut : '+fmt(brutEur*EUR_MAD));
+  set('d-brut','Brut : '+fmt(brutMad));
   set('d-net-att',cur.netMadAtt>0?'En attente : '+fmt(cur.netMadAtt):'');
   set('d-res',fmt(cur.resultat));
-  set('d-com',fmt(comEur*EUR_MAD));
+  set('d-com',fmt(comMad));
   set('d-dep',fmt(cur.dep));
   set('d-tax',fmt(taxeCollectee));
   set('d-ext',fmt(extras));
@@ -3259,7 +3277,7 @@ function renderDash() {
     var smRes=DB.resa.filter(function(r){return (r.mois_kpi||r.date_paiement||r.checkin||'').startsWith(smMk);});
     if(fa) smRes=smRes.filter(function(r){return r.appart===fa;});
     var smRev=smRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
-    var smNet=sum(smRev,'net')*EUR_MAD;
+    var smNet=sumNetMAD(smRev);
     var smY=smDate.getFullYear(),smM=smDate.getMonth();
     var smStart=smY+'-'+String(smM+1).padStart(2,'0')+'-01';
     var smEnd=new Date(Date.UTC(smY,smM+1,1)).toISOString().slice(0,10);
@@ -3322,13 +3340,13 @@ function renderDash() {
   var revRes=allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
   // Meilleur appart
   var apNet=getAppartsForPeriod('d').map(function(ap){
-    var n=sum(revRes.filter(function(r){return r.appart===ap;}),'net')*EUR_MAD;
+    var n=sumNetMAD(revRes.filter(function(r){return r.appart===ap;}));
     return {ap:ap,n:n};
   }).sort(function(a,b){return b.n-a.n;});
   var bestAp=apNet[0];
   // Meilleure source
   var srcNet=['Airbnb','Booking.com','Direct','VRBO'].map(function(s){
-    var n=sum(revRes.filter(function(r){return r.source===s;}),'net')*EUR_MAD;
+    var n=sumNetMAD(revRes.filter(function(r){return r.source===s;}));
     return {s:s,n:n};
   }).filter(function(x){return x.n>0;}).sort(function(a,b){return b.n-a.n;});
   var bestSrc=srcNet[0];
@@ -3342,7 +3360,7 @@ function renderDash() {
   var perf_days=periodDays('d');
   set('d-recap-ap',getAppartsForPeriod('d').map(function(ap){
     var apR=revRes.filter(function(r){return r.appart===ap;});
-    var apNet2=sum(apR,'net')*EUR_MAD;
+    var apNet2=sumNetMAD(apR);
     // occupation physique nuit par nuit sur la période
     var apNuits2=pb.start?occupNightsBiz(ap,pb.start,pb.end):0;
     var apOcc2=perf_days>0?apNuits2/perf_days*100:0;
@@ -3366,8 +3384,8 @@ function renderDash() {
   set('d-recap-src',sources.map(function(src){
     var x=revRes.filter(function(r){return r.source===src;});
     if(!x.length) return '';
-    var n=sum(x,'net');
-    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmtE(n)+'</div></div>';
+    var n=sumNetMAD(x);
+    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
 }
 
@@ -3439,14 +3457,17 @@ function renderResa() {
     if(t.reservation_ref){realTaxeMap[t.reservation_ref]=(realTaxeMap[t.reservation_ref]||0)+t.montant;}
   });
   var rev=rows.filter(function(r){return isRevRow(r);});
-  var brut=sum(rev,'brut'),com=sum(rev,'commission'),net=sum(rev,'net');
   var nuits=rev.filter(function(r){return ['RESERVATION','ANNULATION_PAYEE','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_fact||0);},0);
-  var adrMAD=nuits>0?Math.round(e2m(net)/nuits):0;
+  // Totaux MAD : mad_reel/taux_reel si disponibles, sinon EUR×EUR_MAD
+  var rNetMadTotal =sumNetMAD(rev);
+  var rBrutMadTotal=rev.reduce(function(s,r){return s+rBrutMAD(r);},0);
+  var rComMadTotal =rev.reduce(function(s,r){return s+rComMAD(r);},0);
+  var adrMAD=nuits>0?Math.round(rNetMadTotal/nuits):0;
   var nbPaye=rows.filter(function(r){return r.statut==='Payé';}).length;
   var nbAtt=rows.filter(function(r){return r.statut==='En attente';}).length;
   var nbAnn=rows.filter(function(r){return r.statut==='Annulé';}).length;
   var txPaye=rows.length>0?Math.round(nbPaye/rows.length*100):0;
-  set('r-net',fmtE(net)); set('r-brut',fmtE(brut)); set('r-com',fmtE(com));
+  set('r-net',fmt(rNetMadTotal)); set('r-brut',fmt(rBrutMadTotal)); set('r-com',fmt(rComMadTotal));
   set('r-nuits',nuits); set('r-cnt',rows.length+' réservation'+(rows.length>1?'s':''));
   set('r-adr',adrMAD.toLocaleString('fr-MA')+' MAD');
   set('r-txpaye',rows.length?txPaye+'% payées':'—');
@@ -3457,8 +3478,8 @@ function renderResa() {
   var apartsR=getAppartsForPeriod('r');
   allR.forEach(function(r){if(r.appart&&apartsR.indexOf(r.appart)<0)apartsR.push(r.appart);});
   set('r-recap',apartsR.map(function(ap){
-    var x=allR.filter(function(r){return r.appart===ap;}),n=x.reduce(function(s,r){return s+r.net;},0);
-    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmtE(n)+'</div></div>';
+    var x=allR.filter(function(r){return r.appart===ap;}),n=sumNetMAD(x);
+    return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--gr)">'+fmt(n)+'</div></div>';
   }).join(''));
   var tb=document.getElementById('r-tb'),em=document.getElementById('r-em');
   var cardsCont=document.getElementById('r-cards');
