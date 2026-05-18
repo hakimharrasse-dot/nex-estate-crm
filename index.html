@@ -7567,26 +7567,28 @@ var BK_MOIS = {
   'd\xc3\xa9c':12,'d\xc3\xa9c.':12,'d\xc3\xa9cembre':12
 };
 
+// Normalise les artefacts d'encodage Booking CSV (double-encodage NBSP, Â parasites)
+function bkNormStr(str) {
+  if (!str) return '';
+  return str.replace(/\xc2\xa0/g, ' ').replace(/\xc2/g, '').replace(/\xa0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function bkParseFrDate(str) {
   if (!str) return '';
-  // 1. Séquence double-encodée : U+00C2 suivi de U+00A0 (NBSP) → espace simple
-  str = str.replace(/\xc2\xa0/g, ' ');
-  // 2. U+00C2 (Â) isolé restant → supprimé
-  str = str.replace(/\xc2/g, '');
-  // 3. U+00A0 (NBSP) restant → espace simple
-  str = str.replace(/\xa0/g, ' ');
-  // 4. Espaces multiples → un seul, et trim
-  str = str.replace(/\s+/g, ' ').trim();
+  str = bkNormStr(str);
   if (!str) return '';
-  // ISO YYYY-MM-DD → retourné tel quel
+  // ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   // DD/MM/YYYY
   var dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (dmy) return dmy[3] + '-' + String(parseInt(dmy[2],10)).padStart(2,'0') + '-' + String(parseInt(dmy[1],10)).padStart(2,'0');
-  // "D mois YYYY" ou "DD mois YYYY" (FR abrégé/complet, EN, double-encodé)
+  // "D mois YYYY" (FR abrégé/complet, EN, double-encodé)
   var m = str.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/i);
   if (!m) return '';
-  var mo = BK_MOIS[m[2].toLowerCase()];
+  // Double lookup : d'abord lowercase (cas normal), puis original (double-encodé)
+  // Nécessaire car toLowerCase() transforme U+00C3 (Ã) en U+00E3 (ã), cassant la clé double-encodée
+  var tok = m[2];
+  var mo = BK_MOIS[tok.toLowerCase()] || BK_MOIS[tok];
   if (!mo) return '';
   return m[3] + '-' + String(mo).padStart(2,'0') + '-' + String(parseInt(m[1],10)).padStart(2,'0');
 }
@@ -7647,32 +7649,47 @@ function bkParseCSV(text) {
       frais:        parseFloat(g(iFrs).replace(',','.')) || 0,
       net:          parseFloat(g(iNet).replace(',','.')) || 0,
       datePaiement:    bkParseFrDate(g(iDp)),
-      rawDatePaiement: g(iDp),
+      rawDatePaiement: bkNormStr(g(iDp)),
       batchId:         g(iBat),
     });
   }
   return rows;
 }
 
-function bkFindCRM(numRef) {
+function bkFindCRM(numRef, row) {
   var n = String(numRef).trim();
   var nUp = n.toUpperCase();
-  // Pour les IDs Booking purement numériques (≥8 chiffres), on extrait aussi les chiffres du ref CRM
   var nIsNumeric = /^\d{8,}$/.test(n);
-  return (DB.resa || []).filter(function(r) {
-    // Source insensible à la casse : couvre 'Booking.com' / 'booking' / 'Booking'
+  var results = (DB.resa || []).filter(function(r) {
     if (!r.source || r.source.toLowerCase().indexOf('booking') < 0) return false;
     var ref = r.ref ? String(r.ref).trim() : '';
-    // 1. Correspondance exacte
+    // 1. Exacte
     if (ref.toUpperCase() === nUp) return true;
-    // 2. Ref sans préfixe BKG-/BK- (ex: BKG-6746092183 → 6746092183)
+    // 2. Sans préfixe BKG-/BK-
     if (ref.replace(/^BKG?-/i, '').toUpperCase() === nUp) return true;
-    // 3. Extraction numérique pure — couvre tout préfixe inconnu (BKG-, BK-, REZ-, …)
+    // 3. Extraction numérique pure — couvre tout préfixe inconnu
     if (nIsNumeric && ref.replace(/\D/g, '') === n) return true;
-    // 4. smoobu_id
+    // 4. Ref contient le numéro en sous-chaîne
+    if (nIsNumeric && ref.indexOf(n) >= 0) return true;
+    // 5. smoobu_id
     if (r.smoobu_id && String(r.smoobu_id).trim() === n) return true;
     return false;
   });
+  // Fallback voyageur + mois/année si aucun match par référence
+  if (!results.length && row && row.nomClient && row.arrivee) {
+    var nomParts = (row.nomClient || '').toLowerCase().replace(/\s+/g,' ').trim().split(' ')
+      .filter(function(p){ return p.length >= 3; });
+    var moisAnnee = row.arrivee.substring(0, 7); // YYYY-MM
+    if (nomParts.length && moisAnnee) {
+      results = (DB.resa || []).filter(function(r) {
+        if (!r.source || r.source.toLowerCase().indexOf('booking') < 0) return false;
+        var voy = (r.voyageur || '').toLowerCase();
+        if (!nomParts.some(function(p){ return voy.indexOf(p) >= 0; })) return false;
+        return (r.checkin || '').startsWith(moisAnnee);
+      });
+    }
+  }
+  return results;
 }
 
 function bkIgnLoad() {
@@ -7711,7 +7728,7 @@ function handleBkCSV(inp) {
     BK_BATCHES.forEach(function(batch) {
       var anyFound = false, allMad = true;
       batch.rows.forEach(function(r) {
-        bkFindCRM(r.numRef).forEach(function(crm) {
+        bkFindCRM(r.numRef, r).forEach(function(crm) {
           anyFound = true;
           if (crm.mad_reel == null) allMad = false;
         });
@@ -7721,7 +7738,7 @@ function handleBkCSV(inp) {
       // Reconstituer les données PDF depuis le CRM pour l'affichage
       var taux = null, madTotal = 0;
       batch.rows.forEach(function(r) {
-        bkFindCRM(r.numRef).forEach(function(crm) {
+        bkFindCRM(r.numRef, r).forEach(function(crm) {
           if (!taux && crm.taux_reel) taux = crm.taux_reel;
           if (crm.mad_reel) madTotal = Math.round((madTotal + crm.mad_reel) * 100) / 100;
         });
@@ -7732,7 +7749,7 @@ function handleBkCSV(inp) {
     BK_ANOM = []; BK_MISS = [];
     var ign = bkIgnLoad();
     used.forEach(function(r) {
-      var matches = bkFindCRM(r.numRef);
+      var matches = bkFindCRM(r.numRef, r);
       if (!matches.length) {
         BK_MISS.push({ row:r, status: ign['miss_'+r.numRef] ? 'ignored' : 'pending' });
         return;
@@ -7866,7 +7883,7 @@ function renderBkBatches() {
       // Ligne par réservation du batch
       + '<div style="margin-bottom:10px;border:1px solid var(--br);border-radius:6px;overflow:hidden">'
         + batch.rows.map(function(r) {
-          var crmM = bkFindCRM(r.numRef)[0];
+          var crmM = bkFindCRM(r.numRef, r)[0];
           var hasMad = crmM && crmM.mad_reel != null;
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid var(--br);font-size:12px">'
             + '<div><span style="font-family:\'DM Mono\',monospace;color:var(--bl);font-size:11px">#' + escHtml(r.numRef) + '</span> <span style="color:var(--tm)">' + escHtml(r.nomClient || '—') + '</span></div>'
@@ -8013,7 +8030,7 @@ async function applyBkBatch(bi) {
   // Construire la liste des réservations à mettre à jour
   var toApply = [];
   batch.rows.forEach(function(r) {
-    bkFindCRM(r.numRef).forEach(function(crm) {
+    bkFindCRM(r.numRef, r).forEach(function(crm) {
       if (crm.mad_reel != null) return;  // déjà renseigné, on ne réécrit pas
       toApply.push({ crm:crm, madReel: Math.round(r.net * d.taux * 100) / 100, csvRow:r });
     });
