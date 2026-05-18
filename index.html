@@ -7675,17 +7675,19 @@ function bkFindCRM(numRef, row) {
     if (r.smoobu_id && String(r.smoobu_id).trim() === n) return true;
     return false;
   });
-  // Fallback voyageur + mois/année si aucun match par référence
-  if (!results.length && row && row.nomClient && row.arrivee) {
+  // Fallback voyageur si aucun match par référence
+  if (!results.length && row && row.nomClient) {
     var nomParts = (row.nomClient || '').toLowerCase().replace(/\s+/g,' ').trim().split(' ')
       .filter(function(p){ return p.length >= 3; });
-    var moisAnnee = row.arrivee.substring(0, 7); // YYYY-MM
-    if (nomParts.length && moisAnnee) {
+    var moisAnnee = row.arrivee ? row.arrivee.substring(0, 7) : '';
+    if (nomParts.length) {
       results = (DB.resa || []).filter(function(r) {
         if (!r.source || r.source.toLowerCase().indexOf('booking') < 0) return false;
         var voy = (r.voyageur || '').toLowerCase();
         if (!nomParts.some(function(p){ return voy.indexOf(p) >= 0; })) return false;
-        return (r.checkin || '').startsWith(moisAnnee);
+        // Contrainte date si disponible, sinon montant net (±1 EUR) — évite les faux positifs
+        if (moisAnnee) return (r.checkin || '').startsWith(moisAnnee);
+        return Math.abs((r.net || 0) - (row.net || 0)) < 1.00;
       });
     }
   }
@@ -8028,15 +8030,21 @@ async function applyBkBatch(bi) {
     }
   }
   // Construire la liste des réservations à mettre à jour
-  var toApply = [];
+  var anyFound = false, toApply = [];
   batch.rows.forEach(function(r) {
-    bkFindCRM(r.numRef, r).forEach(function(crm) {
+    var matches = bkFindCRM(r.numRef, r);
+    if (matches.length) anyFound = true;
+    matches.forEach(function(crm) {
       if (crm.mad_reel != null) return;  // déjà renseigné, on ne réécrit pas
       toApply.push({ crm:crm, madReel: Math.round(r.net * d.taux * 100) / 100, csvRow:r });
     });
   });
   if (!toApply.length) {
-    alert('Toutes les réservations de ce batch ont déjà un mad_reel. Rien à appliquer.');
+    if (!anyFound) {
+      alert('Aucune réservation de ce batch n\'a été trouvée dans le CRM.\nVérifiez que les réservations sont bien importées (section Réservations).');
+    } else {
+      alert('Toutes les réservations de ce batch ont déjà un mad_reel. Rien à appliquer.');
+    }
     return;
   }
   // Confirmation visuelle détaillée
