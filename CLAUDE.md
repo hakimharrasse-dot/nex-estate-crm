@@ -281,6 +281,17 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 | `rBrutMAD(r)` | Helper dashboard : `r.brut × r.taux_reel` si éligible, sinon `r.brut × EUR_MAD` |
 | `rComMAD(r)` | Helper dashboard : `r.commission × r.taux_reel` si éligible, sinon `r.commission × EUR_MAD` |
 | `sumNetMAD(rows)` | Somme MAD nette d'un tableau via `rNetMAD` — utilisé dans computePeriodKPIs, renderDash, renderResa |
+| `handleBkCSV(inp)` | Import CSV Booking global (ISO-8859-1) → parse, groupe par batch, construit anomalies + manquantes |
+| `bkParseCSV(text)` | Parse le CSV versements Booking : colonnes positionnelles + fallback nom (encodage robuste) |
+| `bkParseFrDate(str)` | Convertit "1 janv. 2026" → "2026-01-01" (mapping mois FR abrégés ISO-8859-1) |
+| `bkFindCRM(numRef)` | Cherche dans DB.resa les Booking.com dont `ref` = numRef CSV |
+| `handleBkPDF(inp, bi)` | Upload PDF par batch → charge PDF.js CDN lazy → extrait MAD/taux via `bkParsePDFText` |
+| `bkParsePDFText(text, batch)` | Regex sur texte PDF.js : taux de change, MAD total versé, ID paiement, cross-check refs |
+| `applyBkBatch(bi)` | Batch PATCH Supabase : mad_reel=net×taux, taux_reel, mad_reel_source='booking_pdf' — avec guards |
+| `renderBkSection()` | Rendu principal Booking : onglets, badges, dispatch anomalies/batches/manquantes |
+| `renderBkBatches()` | Rendu des cartes batch avec état eur_only/pdf_ready/applied, upload PDF, bouton Appliquer |
+| `renderBkAnom()` | Rendu anomalies EUR (écart CSV↔CRM > 0.50 EUR) avec ignorer/remettre persistant |
+| `renderBkMiss()` | Rendu lignes CSV absentes du CRM avec ignorer/remettre persistant |
 
 ### Variables globales d'état des périodes (lignes ~2550-2558)
 ```javascript
@@ -420,6 +431,7 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-17 | DB cleanup: 12 records AIRCOVER/AJUSTEMENT — mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL (écriture ancienne, avant restriction TYPES_OK) |
 | 2026-05-17 | Feat(dashboard): helpers rNetMAD/rBrutMAD/rComMAD/sumNetMAD — KPIs dashboard et renderResa utilisent mad_reel/taux_reel quand disponibles, fallback EUR×EUR_MAD (`11d31da`) |
 | 2026-05-17 | Backup `nex-estate-crm-backup-2026-05-17` produit — suppression ancien backup 2026-05-12 |
+| 2026-05-18 | Feat: module Réconciliation Booking — CSV global (ISO-8859-1) + PDF par batch → mad_reel/taux_reel/mad_reel_source='booking_pdf' — section indépendante dans vw-reconcil, sans toucher Airbnb |
 
 ---
 
@@ -599,3 +611,89 @@ Utilisés dans : `computePeriodKPIs` (netMad, netMadAtt), `renderDash` (brut, co
 
 - **26 versements de résolution** dans le CSV Jan–Avr 2026 : **pas automatisés** — trop complexes, validation manuelle uniquement
 - **Cas complexes** (`_hasNetMismatch`, régularisation, USD, natif ambigu) : bouton "Ignorer ce cas complexe" avec confirmation → masqué définitivement
+
+
+---
+
+## 15. Module MAD réel Booking — Architecture (ajouté 2026-05-18)
+
+### Objectif
+
+Réconcilier les versements Booking.com (CSV global + PDF par batch) avec les réservations CRM pour stocker le vrai montant MAD encaissé.
+
+### Principe en 2 étapes
+
+1. **CSV global** (`Informations de versement` → Booking Comptabilité) — encodage ISO-8859-1
+   - Colonnes clés : `Numéro de référence` (jointure CRM via `r.ref`), `Net` EUR, `Identifiant du paiement` (batch CSV), `Date du paiement`
+   - Tous les montants sont en EUR — pas de MAD dans le CSV
+2. **PDF par batch** (`Relevé du paiement`) — upload manuel un par un
+   - Contient : taux de change exact (6 décimales), MAD total versé, ID numérique PDF (≠ batch ID CSV)
+   - Matching CSV↔PDF : par `Date du paiement` + `total net EUR` (les deux IDs sont différents)
+
+### Attention : IDs de batch différents entre CSV et PDF
+
+| Source | Identifiant du paiement | Format |
+|---|---|---|
+| CSV | `vQRWNPw4Ec4IaMdr` | Alphanumérique |
+| PDF | `010739794924` | Numérique 12 chiffres |
+
+Le matching est fait implicitement : l'utilisateur uploade le PDF **sur la carte du batch CSV correspondant** (même date, même total EUR). Le module vérifie en cross-check que les numéros de réservation du PDF se retrouvent dans le batch CSV.
+
+### Champs DB écrits (même que Airbnb)
+
+| Champ | Valeur |
+|---|---|
+| `mad_reel` | `net_EUR × taux_reel` (par réservation) |
+| `taux_reel` | Taux extrait du PDF (ex: `10.821384`) |
+| `mad_reel_source` | `'booking_pdf'` |
+| `mad_reel_updated_at` | ISO datetime |
+
+**Règle immuable** : ces champs ne sont jamais écrits si `mad_reel` est déjà renseigné pour la réservation.
+
+### États d'un batch
+
+| État | Signification |
+|---|---|
+| `eur_only` | CSV importé, PDF manquant |
+| `pdf_ready` | PDF chargé et parsé, en attente validation |
+| `applied` | MAD appliqué en base — batch figé |
+
+### Guards dans `applyBkBatch()`
+
+1. PDF refs ≠ batch refs → warning "mauvais PDF ?"
+2. Delta taux PDF vs taux calculé (MAD÷EUR) > 0.05 → confirmation obligatoire
+3. `mad_reel != null` sur un CRM record → skip silencieux (pas d'écrasement)
+
+### Variables globales Booking
+
+```javascript
+var BK_ROWS    = [];   // CSV rows bruts
+var BK_BATCHES = [];   // batches groupés par batchId CSV
+var BK_ANOM    = [];   // anomalies EUR (écart > 0.50 EUR)
+var BK_MISS    = [];   // lignes CSV sans correspondance CRM
+var BK_TAB     = 'anom';
+var BK_IGN_KEY = 'nex_bk_ignored_v1';  // localStorage
+```
+
+### IDs DOM Booking
+
+| ID | Rôle |
+|---|---|
+| `bk-root` | Conteneur racine section Booking |
+| `bk-csv-inp` | Input file CSV |
+| `bk-tab-bar` | Barre onglets (masquée jusqu'à import) |
+| `bkt-anom` / `bkt-batches` / `bkt-miss` | Boutons onglets |
+| `bk-anom-sec` / `bk-batches-sec` / `bk-miss-sec` | Sections contenu |
+| `bk-anom-list` / `bk-batches-list` / `bk-miss-list` | Conteneurs rendu |
+| `bk-empty` | État vide avant import |
+
+### PDF.js — chargement lazy
+
+PDF.js v3.11.174 est chargé depuis CDN **uniquement lors du premier upload PDF** (pas d'impact sur le chargement initial de la page). Le worker est configuré depuis le même CDN.
+
+### Ce que le module ne fait PAS
+
+- Ne touche pas aux fonctions Airbnb (aucune variable partagée sauf `DB.resa`, `SUPA`, `ROLE`, `escHtml`, `showToast`)
+- Ne crée pas de nouvelle table Supabase
+- N'écrase jamais un `mad_reel` déjà renseigné
+- Ne gère pas les remboursements / annulations partielles Booking → rester en anomalie manuelle

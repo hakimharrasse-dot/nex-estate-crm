@@ -1067,6 +1067,48 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div id="missing-section" style="display:none;background:var(--s);border:1px solid rgba(224,82,82,.3);border-radius:12px;padding:16px 18px;margin-top:14px">
     <div id="missing-list"></div>
   </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ── RÉCONCILIATION BOOKING — section indépendante Airbnb ──
+       ══════════════════════════════════════════════════════════════ -->
+  <div style="border-top:2px solid var(--br);margin-top:32px;padding-top:24px" id="bk-root">
+    <div class="vh" style="margin-bottom:14px">
+      <div>
+        <div style="font-size:18px;font-weight:600;color:var(--or)">Réconciliation Booking</div>
+        <div class="vsub">CSV versements Booking + PDF par batch → <code style="font-size:11px;background:var(--s2);padding:1px 5px;border-radius:4px">mad_reel</code> CRM</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="ba bat" onclick="document.getElementById('bk-csv-inp').click()">📥 Importer CSV Booking</button>
+        <input type="file" id="bk-csv-inp" accept=".csv" style="display:none" onchange="handleBkCSV(this)">
+      </div>
+    </div>
+    <!-- Onglets — affichés après import CSV -->
+    <div id="bk-tab-bar" style="display:none;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="ba ba-ghost rcf-btn rcf-active" id="bkt-anom"    onclick="setBkTab('anom')"    style="font-size:12px;padding:6px 16px">📋 Anomalies <span id="bkt-anom-cnt" style="font-size:11px;background:rgba(255,153,51,.15);color:var(--or);border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span></button>
+      <button class="ba ba-ghost rcf-btn"            id="bkt-batches" onclick="setBkTab('batches')" style="font-size:12px;padding:6px 16px">💱 MAD réel Booking <span id="bkt-batches-cnt" style="font-size:11px;background:rgba(200,119,58,.12);color:var(--or);border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span></button>
+      <button class="ba ba-ghost rcf-btn"            id="bkt-miss"    onclick="setBkTab('miss')"    style="font-size:12px;padding:6px 16px">🔍 Manquantes <span id="bkt-miss-cnt" style="font-size:11px;background:rgba(224,82,82,.12);color:var(--re);border-radius:8px;padding:1px 6px;margin-left:4px;font-weight:600"></span></button>
+    </div>
+    <!-- État vide -->
+    <div id="bk-empty" style="color:var(--td);font-size:13px;padding:20px 0;text-align:center">
+      Aucun CSV Booking importé — cliquez sur <strong style="color:var(--tx)">Importer CSV Booking</strong> pour démarrer.
+    </div>
+    <!-- Anomalies EUR -->
+    <div id="bk-anom-sec" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:10px">Anomalies Booking <span id="bk-anom-hdr-cnt" style="color:var(--or)"></span></div>
+      <div id="bk-anom-list"></div>
+    </div>
+    <!-- Batches MAD réel -->
+    <div id="bk-batches-sec" style="display:none;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tm);margin-bottom:4px">Versements Booking — MAD réel par batch</div>
+      <div style="font-size:12px;color:var(--td);font-style:italic;margin-bottom:14px">Chargez le PDF de chaque versement pour extraire automatiquement le montant MAD et le taux de change.</div>
+      <div id="bk-batches-list"></div>
+    </div>
+    <!-- Lignes manquantes -->
+    <div id="bk-miss-sec" style="display:none;background:var(--s);border:1px solid rgba(224,82,82,.3);border-radius:12px;padding:16px 18px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--re);margin-bottom:10px">Lignes Booking manquantes dans le CRM</div>
+      <div id="bk-miss-list"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ VIEW: CONTRÔLE QUALITÉ ═══ -->
@@ -7480,6 +7522,519 @@ async function applyMadRealManual(crmId) {
   else renderMadRealSection();
   alert('MAD réel manuel enregistré pour ' + (row.crm.voyageur || row.csv.code) + '.');
 }
+
+// ── RÉCONCILIATION BOOKING ─────────────────────────────────────────────────
+// Section indépendante — ne touche pas aux fonctions Airbnb ci-dessus.
+// CSV global (Latin-1) = source EUR ; PDF par batch = source MAD / taux_reel.
+// Champs DB utilisés : mad_reel, taux_reel, mad_reel_source='booking_pdf', mad_reel_updated_at.
+
+var BK_ROWS    = [];   // lignes CSV parsées
+var BK_BATCHES = [];   // { batchId, datePaiement, totalNetEUR, rows[], pdfData, state }
+var BK_ANOM    = [];   // { row, crm, type, ecart, status }
+var BK_MISS    = [];   // { row, status }
+var BK_TAB     = 'anom';
+var BK_IGN_KEY = 'nex_bk_ignored_v1';
+
+// Mapping mois FR abrégés → numéro.
+// Inclut les variantes "double-encodées" présentes dans l'export CSV Booking.com :
+// le CSV est UTF-8 mais les accents et les NBSP ont subi un re-encodage Latin-1→UTF-8.
+var BK_MOIS = {
+  'janv':1,'janv.':1,'jan':1,
+  'f\xe9vr':2,'f\xe9vr.':2,'fev':2,'fevr':2,
+  'f\xc3\xa9vr':2,'f\xc3\xa9vr.':2,       // double-encodé : fÃ©vr
+  'mars':3,'mar':3,
+  'avr':4,'avr.':4,'apr':4,
+  'mai':5,'may':5,
+  'juin':6,'jun':6,
+  'juil':7,'juil.':7,'jul':7,
+  'ao\xfbt':8,'aout':8,'aug':8,'ao\xc3\xbbt':8, // double-encodé : aoÃ»t
+  'sept':9,'sept.':9,'sep':9,
+  'oct':10,'oct.':10,
+  'nov':11,'nov.':11,
+  'd\xe9c':12,'d\xe9c.':12,'dec':12,
+  'd\xc3\xa9c':12,'d\xc3\xa9c.':12        // double-encodé : dÃ©c
+};
+
+function bkParseFrDate(str) {
+  if (!str) return '';
+  // Strip U+00C2 (Â) — artefact du double-encodage des NBSP dans le CSV Booking :
+  // chaque NBSP (U+00A0, bytes UTF-8 0xC2 0xA0) est précédé d'un Â (U+00C2) parasite.
+  str = str.trim().replace(/\xc2/g, '');
+  // \S+ : capte tout caractère non-espace (couvre les mois ASCII et double-encodés)
+  var m = str.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/i);
+  if (!m) return '';
+  var mo = BK_MOIS[m[2].toLowerCase()];
+  if (!mo) return '';
+  return m[3] + '-' + String(mo).padStart(2,'0') + '-' + String(parseInt(m[1],10)).padStart(2,'0');
+}
+
+function bkSplitCSV(line) {
+  var fields = [], f = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { fields.push(f.trim()); f = ''; }
+    else { f += c; }
+  }
+  fields.push(f.trim());
+  return fields;
+}
+function bkGet(f, idx) { return (f[idx] || '').replace(/"/g, '').trim(); }
+
+function bkParseCSV(text) {
+  var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
+  if (lines.length < 2) return [];
+  var hdr = bkSplitCSV(lines[0]).map(function(h) { return h.replace(/"/g,'').trim(); });
+  function ci(names) {
+    if (!Array.isArray(names)) names = [names];
+    for (var ni = 0; ni < names.length; ni++) {
+      for (var hi = 0; hi < hdr.length; hi++) { if (hdr[hi] === names[ni]) return hi; }
+    }
+    return -1;
+  }
+  // Indices par nom, fallback positionnel si encodage garbled
+  var iType = ci('Type');                                  if (iType   < 0) iType   = 0;
+  var iRef  = ci(['Num\xe9ro de r\xe9f\xe9rence','Numéro de référence']); if (iRef    < 0) iRef    = 1;
+  var iArr  = ci(['Arriv\xe9e','Arrivée']);                 if (iArr    < 0) iArr    = 2;
+  var iChk  = ci('Checkout');                              if (iChk    < 0) iChk    = 3;
+  var iNom  = ci('Nom du client');                         if (iNom    < 0) iNom    = 4;
+  var iStat = ci(['Statut de la r\xe9servation','Statut de la réservation']); if (iStat < 0) iStat = 5;
+  var iDev  = ci('Devise');                                if (iDev    < 0) iDev    = 6;
+  var iMnt  = ci('Montant');                               if (iMnt    < 0) iMnt    = 8;
+  var iCom  = ci('Commission');                            if (iCom    < 0) iCom    = 9;
+  var iFrs  = ci(['Frais de service de paiement']);        if (iFrs    < 0) iFrs    = 10;
+  var iNet  = ci('Net');                                   if (iNet    < 0) iNet    = 11;
+  var iDp   = ci('Date du paiement');                      if (iDp     < 0) iDp     = 12;
+  var iBat  = ci('Identifiant du paiement');               if (iBat    < 0) iBat    = 13;
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    var f = bkSplitCSV(lines[i]);
+    if (f.length < 5) continue;
+    function g(idx) { return (f[idx] || '').replace(/"/g,'').trim(); }
+    rows.push({
+      type:         g(iType),
+      numRef:       g(iRef),
+      arrivee:      bkParseFrDate(g(iArr)),
+      checkout:     bkParseFrDate(g(iChk)),
+      nomClient:    g(iNom),
+      statut:       g(iStat),
+      devise:       g(iDev) || 'EUR',
+      montant:      parseFloat(g(iMnt).replace(',','.')) || 0,
+      commission:   parseFloat(g(iCom).replace(',','.')) || 0,
+      frais:        parseFloat(g(iFrs).replace(',','.')) || 0,
+      net:          parseFloat(g(iNet).replace(',','.')) || 0,
+      datePaiement: bkParseFrDate(g(iDp)),
+      batchId:      g(iBat),
+    });
+  }
+  return rows;
+}
+
+function bkFindCRM(numRef) {
+  var n = String(numRef).trim();
+  return (DB.resa || []).filter(function(r) {
+    if (r.source !== 'Booking.com' || !r.ref) return false;
+    return String(r.ref).trim() === n || String(r.ref).replace(/^BK-/i,'').trim() === n;
+  });
+}
+
+function bkIgnLoad() {
+  try { return JSON.parse(localStorage.getItem(BK_IGN_KEY) || '{}'); } catch(e) { return {}; }
+}
+function bkIgnSave(obj) {
+  try { localStorage.setItem(BK_IGN_KEY, JSON.stringify(obj)); } catch(e) {}
+}
+
+function handleBkCSV(inp) {
+  var file = inp.files && inp.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    BK_ROWS = bkParseCSV(text);
+    inp.value = '';
+    if (!BK_ROWS.length) { alert('CSV vide ou format non reconnu. Vérifiez le fichier.'); return; }
+    var used = BK_ROWS.filter(function(r) { return r.numRef && r.net !== 0; });
+    // Grouper par batch
+    var bMap = {};
+    used.forEach(function(r) {
+      if (!bMap[r.batchId]) bMap[r.batchId] = { batchId:r.batchId, datePaiement:r.datePaiement, rows:[], totalNetEUR:0, pdfData:null, state:'eur_only' };
+      bMap[r.batchId].rows.push(r);
+      bMap[r.batchId].totalNetEUR = Math.round((bMap[r.batchId].totalNetEUR + r.net) * 100) / 100;
+    });
+    BK_BATCHES = Object.values(bMap).sort(function(a,b) { return (b.datePaiement||'').localeCompare(a.datePaiement||''); });
+    // Anomalies + manquantes
+    BK_ANOM = []; BK_MISS = [];
+    var ign = bkIgnLoad();
+    used.forEach(function(r) {
+      var matches = bkFindCRM(r.numRef);
+      if (!matches.length) {
+        BK_MISS.push({ row:r, status: ign['miss_'+r.numRef] ? 'ignored' : 'pending' });
+        return;
+      }
+      matches.forEach(function(crm) {
+        var ecart = Math.round(((crm.net||0) - r.net) * 100) / 100;
+        if (Math.abs(ecart) > 0.50) {
+          BK_ANOM.push({ row:r, crm:crm, type:'eur_mismatch', ecart:ecart,
+            status: ign['anom_'+r.numRef+'_'+crm.id] ? 'ignored' : 'pending' });
+        }
+      });
+    });
+    renderBkSection();
+    showToast('✅ CSV Booking importé — ' + BK_ROWS.length + ' ligne(s) · ' + BK_BATCHES.length + ' batch(es)');
+  };
+  reader.readAsText(file);
+}
+
+function setBkTab(tab) {
+  BK_TAB = tab;
+  ['anom','batches','miss'].forEach(function(t) {
+    var btn = document.getElementById('bkt-' + t);
+    if (btn) btn.classList.toggle('rcf-active', t === tab);
+  });
+  renderBkSection();
+}
+
+function renderBkSection() {
+  var hasContent = BK_BATCHES.length > 0;
+  var tbar = document.getElementById('bk-tab-bar');
+  var empty = document.getElementById('bk-empty');
+  if (tbar)  tbar.style.display  = hasContent ? 'flex' : 'none';
+  if (empty) empty.style.display = hasContent ? 'none' : '';
+  // Badges
+  var nAnom    = BK_ANOM.filter(function(a) { return a.status === 'pending'; }).length;
+  var nBatches = BK_BATCHES.filter(function(b) { return b.state !== 'applied'; }).length;
+  var nMiss    = BK_MISS.filter(function(m) { return m.status === 'pending'; }).length;
+  function setBadge(id, n) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = n > 0 ? n : '';
+    el.style.display = n > 0 ? '' : 'none';
+  }
+  setBadge('bkt-anom-cnt',    nAnom);
+  setBadge('bkt-batches-cnt', nBatches);
+  setBadge('bkt-miss-cnt',    nMiss);
+  // Sections
+  function showSec(id, show) { var el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; }
+  showSec('bk-anom-sec',    hasContent && BK_TAB === 'anom');
+  showSec('bk-batches-sec', hasContent && BK_TAB === 'batches');
+  showSec('bk-miss-sec',    hasContent && BK_TAB === 'miss');
+  if (hasContent && BK_TAB === 'anom')    renderBkAnom();
+  if (hasContent && BK_TAB === 'batches') renderBkBatches();
+  if (hasContent && BK_TAB === 'miss')    renderBkMiss();
+}
+
+function renderBkAnom() {
+  var el  = document.getElementById('bk-anom-list');
+  var hdr = document.getElementById('bk-anom-hdr-cnt');
+  if (!el) return;
+  var pending = BK_ANOM.filter(function(a) { return a.status === 'pending'; }).length;
+  var ignored = BK_ANOM.filter(function(a) { return a.status === 'ignored'; }).length;
+  if (hdr) hdr.textContent = '(' + pending + ' en attente' + (ignored ? ' · ' + ignored + ' ignorée(s)' : '') + ')';
+  if (!BK_ANOM.length) {
+    el.innerHTML = '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Aucune anomalie EUR détectée.</div>';
+    return;
+  }
+  var html = '';
+  BK_ANOM.forEach(function(a, i) {
+    var isIgn = a.status === 'ignored';
+    var eAbs  = Math.abs(a.ecart);
+    var eCol  = eAbs > 5 ? 'var(--re)' : eAbs > 1 ? 'var(--or)' : 'var(--bl)';
+    var badge = eAbs > 5 ? '🔴 Critique' : eAbs > 1 ? '🟡 À vérifier' : '🔵 Mineur';
+    html += '<div style="border:1px solid ' + (isIgn ? 'var(--br)' : 'rgba(200,119,58,.35)') + ';border-radius:8px;padding:12px 14px;margin-bottom:8px;background:rgba(200,119,58,.03);' + (isIgn ? 'opacity:.5' : '') + '">'
+      + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px">'
+        + '<div><span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">#' + escHtml(a.row.numRef) + '</span>'
+          + ' <span style="font-size:11px;font-weight:600;color:' + eCol + '">' + badge + '</span>'
+          + (a.crm.override_manual ? ' <span style="font-size:10px;color:#9b7de8" title="Verrouillé">🔒</span>' : '') + '</div>'
+        + '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:' + eCol + '">Écart ' + (a.ecart > 0 ? '+' : '') + a.ecart.toFixed(2) + ' EUR</span>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--tm);margin-bottom:3px">' + escHtml(a.row.nomClient || '—') + ' · ' + escHtml(a.row.arrivee || '—') + ' → ' + escHtml(a.row.checkout || '—') + '</div>'
+      + '<div style="font-size:11px;color:var(--td);margin-bottom:6px">CRM : ' + (a.crm.net||0).toFixed(2) + ' EUR · CSV : ' + a.row.net.toFixed(2) + ' EUR</div>'
+      + (isIgn ? '<em style="font-size:11px;color:var(--td)">— Ignorée</em>' : '')
+      + '<div style="display:flex;gap:6px;margin-top:6px">'
+        + (isIgn
+          ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="bkUnignAnom(' + i + ')">↩ Remettre</button>'
+          : '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnAnom(' + i + ')">🙈 Ignorer</button>')
+      + '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function bkIgnAnom(i) {
+  var a = BK_ANOM[i]; if (!a) return;
+  a.status = 'ignored';
+  var obj = bkIgnLoad(); obj['anom_' + a.row.numRef + '_' + a.crm.id] = true; bkIgnSave(obj);
+  renderBkSection();
+}
+function bkUnignAnom(i) {
+  var a = BK_ANOM[i]; if (!a) return;
+  a.status = 'pending';
+  var obj = bkIgnLoad(); delete obj['anom_' + a.row.numRef + '_' + a.crm.id]; bkIgnSave(obj);
+  renderBkSection();
+}
+
+function renderBkBatches() {
+  var el = document.getElementById('bk-batches-list');
+  if (!el) return;
+  if (!BK_BATCHES.length) { el.innerHTML = '<div style="color:var(--td);font-size:13px">Aucun batch.</div>'; return; }
+  var html = '';
+  BK_BATCHES.forEach(function(batch, bi) {
+    var isPdf     = batch.state === 'pdf_ready';
+    var isApplied = batch.state === 'applied';
+    var stateCol  = isApplied ? 'var(--gr)' : isPdf ? 'var(--te)' : 'var(--td)';
+    var stateLabel= isApplied ? '✅ MAD appliqué' : isPdf ? '📄 PDF chargé — en attente validation' : '⏳ PDF manquant';
+    html += '<div style="border:1px solid var(--br);border-radius:10px;padding:14px 16px;margin-bottom:12px;background:var(--s2)' + (isApplied ? ';opacity:.65' : '') + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+        + '<div>'
+          + '<div style="font-size:13px;font-weight:600">Versement · ' + escHtml(batch.datePaiement || batch.batchId) + '</div>'
+          + '<div style="font-size:10px;color:var(--td);font-family:\'DM Mono\',monospace;margin-top:2px">' + escHtml(batch.batchId) + '</div>'
+        + '</div>'
+        + '<div style="text-align:right">'
+          + '<div style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:14px;color:var(--or)">' + batch.totalNetEUR.toFixed(2) + ' EUR net</div>'
+          + '<div style="font-size:11px;font-weight:600;color:' + stateCol + ';margin-top:2px">' + stateLabel + '</div>'
+        + '</div>'
+      + '</div>'
+      // Ligne par réservation du batch
+      + '<div style="margin-bottom:10px;border:1px solid var(--br);border-radius:6px;overflow:hidden">'
+        + batch.rows.map(function(r) {
+          var crmM = bkFindCRM(r.numRef)[0];
+          var hasMad = crmM && crmM.mad_reel != null;
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid var(--br);font-size:12px">'
+            + '<div><span style="font-family:\'DM Mono\',monospace;color:var(--bl);font-size:11px">#' + escHtml(r.numRef) + '</span> <span style="color:var(--tm)">' + escHtml(r.nomClient || '—') + '</span></div>'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+              + '<span style="font-family:\'DM Mono\',monospace;color:var(--or)">' + r.net.toFixed(2) + ' EUR</span>'
+              + (hasMad
+                ? '<span style="font-size:10px;font-weight:600;color:var(--gr)" title="mad_reel déjà renseigné">● MAD ✓</span>'
+                : '<span style="font-size:10px;color:var(--td)">— MAD</span>')
+              + (!crmM ? '<span style="font-size:10px;color:var(--re)" title="Non trouvé dans le CRM">⚠ CRM?</span>' : '')
+            + '</div></div>';
+        }).join('')
+      + '</div>'
+      // Données PDF si chargées
+      + (isPdf || isApplied ? bkRenderPdfData(batch) : '')
+      // Boutons d'action
+      + (isApplied ? '' :
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+          + '<label class="ba ba-ghost" style="cursor:pointer;font-size:12px;padding:6px 14px">📄 Charger PDF'
+            + '<input type="file" accept=".pdf" style="display:none" onchange="handleBkPDF(this,' + bi + ')"></label>'
+          + (isPdf
+            ? '<button class="ba" style="background:var(--te);color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600" onclick="applyBkBatch(' + bi + ')">⚡ Appliquer MAD réel</button>'
+              + '<button class="ba ba-ghost" style="font-size:12px;padding:6px 14px;color:var(--td)" onclick="bkResetPDF(' + bi + ')">✕ Annuler</button>'
+            : '')
+        + '</div>'
+      )
+      + '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function bkRenderPdfData(batch) {
+  var d = batch.pdfData;
+  if (!d) return '';
+  var tauxCalc = (batch.totalNetEUR > 0 && d.madTotal != null) ? Math.round(d.madTotal / batch.totalNetEUR * 1000000) / 1000000 : null;
+  var delta = (tauxCalc != null && d.taux != null) ? Math.abs(tauxCalc - d.taux) : null;
+  return '<div style="background:rgba(61,189,170,.07);border:1px solid rgba(61,189,170,.3);border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Données extraites du PDF</div>'
+    + '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin-bottom:6px">'
+      + '<div><span style="color:var(--tm)">MAD versé :</span> <strong style="font-family:\'DM Mono\',monospace;color:var(--or)">' + (d.madTotal != null ? d.madTotal.toLocaleString('fr-MA') + ' MAD' : '— non extrait') + '</strong></div>'
+      + '<div><span style="color:var(--tm)">Taux PDF :</span> <strong style="font-family:\'DM Mono\',monospace;color:var(--te)">' + (d.taux != null ? d.taux : '— non extrait') + '</strong></div>'
+      + '<div><span style="color:var(--tm)">ID PDF :</span> <span style="font-family:\'DM Mono\',monospace;color:var(--td)">' + escHtml(d.idPaiement || '—') + '</span></div>'
+    + '</div>'
+    + (delta != null ? '<div style="font-size:11px;color:' + (delta > 0.05 ? 'var(--or)' : 'var(--gr)') + '">'
+      + (delta > 0.05 ? '⚠ ' : '✓ ') + 'Taux calculé (MAD÷EUR) : ' + tauxCalc + ' · Taux PDF : ' + d.taux + ' · Delta : ' + delta.toFixed(6)
+      + '</div>' : '')
+    + (d.pdfRefs && d.pdfRefs.length && d.overlap === 0 ? '<div style="font-size:11px;color:var(--re);margin-top:4px">⚠ Aucun numéro de réservation du PDF ne correspond à ce batch — mauvais PDF ?</div>' : '')
+    + '</div>';
+}
+
+function bkResetPDF(bi) {
+  var b = BK_BATCHES[bi]; if (!b) return;
+  b.pdfData = null; b.state = 'eur_only';
+  renderBkBatches();
+}
+
+function handleBkPDF(inp, bi) {
+  var file = inp.files && inp.files[0]; inp.value = '';
+  if (!file) return;
+  var batch = BK_BATCHES[bi]; if (!batch) return;
+  function doParse() {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var ab = e.target.result;
+      pdfjsLib.getDocument({ data: ab }).promise.then(function(pdf) {
+        var allText = '', total = pdf.numPages, done = 0;
+        for (var pg = 1; pg <= pdf.numPages; pg++) {
+          pdf.getPage(pg).then(function(page) {
+            page.getTextContent().then(function(tc) {
+              allText += ' ' + tc.items.map(function(it) { return it.str; }).join(' ');
+              done++;
+              if (done === total) {
+                var data = bkParsePDFText(allText, batch);
+                if (!data.taux && !data.madTotal) {
+                  alert('Impossible d\'extraire les données MAD du PDF.\nVérifiez que c\'est bien un relevé de paiement Booking.');
+                  return;
+                }
+                batch.pdfData = data;
+                batch.state   = 'pdf_ready';
+                renderBkBatches();
+              }
+            });
+          });
+        }
+      }).catch(function(err) { alert('Erreur lecture PDF : ' + err.message); });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // Charger PDF.js depuis CDN à la demande (lazy)
+  if (window.pdfjsLib) { doParse(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload = function() {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    doParse();
+  };
+  s.onerror = function() { alert('Impossible de charger PDF.js. Vérifiez votre connexion internet.'); };
+  document.head.appendChild(s);
+}
+
+function bkParsePDFText(text, batch) {
+  // Taux de change (ex: "Taux de change 10.821384")
+  var tauxM   = text.match(/Taux de change\s+([\d.]+)/);
+  var taux    = tauxM ? parseFloat(tauxM[1]) : null;
+  // MAD final versé — suit immédiatement le taux : "Taux de change 10.821384 MAD 1 809,66"
+  // Les espaces de milliers peuvent être   (non-breaking) selon PDF.js
+  var madM    = text.match(/Taux de change\s+[\d.]+\s+MAD\s*([\d \s,]+)/);
+  var madTotal = null;
+  if (madM) {
+    var raw = madM[1].replace(/[ \s]/g,'').replace(',','.');
+    madTotal = parseFloat(raw) || null;
+  }
+  // Identifiant du paiement dans le PDF (numérique, différent du batchId CSV)
+  var idM      = text.match(/Identifiant du paiement\s+(\d+)/);
+  var idPaiement = idM ? idM[1] : null;
+  // Numéros de réservation (9-10 chiffres) présents dans le PDF — cross-check avec le batch
+  var pdfRefs = [];
+  var allNums = text.match(/\b\d{9,10}\b/g) || [];
+  allNums.forEach(function(n) { if (pdfRefs.indexOf(n) < 0) pdfRefs.push(n); });
+  var batchRefs = batch.rows.map(function(r) { return r.numRef; });
+  var overlap = pdfRefs.filter(function(n) { return batchRefs.indexOf(n) >= 0; }).length;
+  return { taux:taux, madTotal:madTotal, idPaiement:idPaiement, pdfRefs:pdfRefs, overlap:overlap };
+}
+
+async function applyBkBatch(bi) {
+  if (ROLE !== 'admin') return;
+  var batch = BK_BATCHES[bi]; if (!batch || !batch.pdfData) return;
+  var d = batch.pdfData;
+  if (!d.madTotal || !d.taux) {
+    alert('Données PDF incomplètes (MAD total ou taux manquant).\nImpossible d\'appliquer.');
+    return;
+  }
+  // Guard : PDF potentiellement mal associé au batch
+  if (d.pdfRefs.length > 0 && d.overlap === 0) {
+    if (!confirm('⚠️ Aucun numéro de réservation du PDF ne correspond à ce batch.\nLe mauvais PDF est peut-être chargé. Continuer quand même ?')) return;
+  }
+  // Guard : écart taux PDF vs taux calculé depuis les totaux
+  if (batch.totalNetEUR > 0) {
+    var tauxCalc = d.madTotal / batch.totalNetEUR;
+    if (Math.abs(tauxCalc - d.taux) > 0.05) {
+      if (!confirm('⚠️ Écart significatif entre taux PDF (' + d.taux + ') et taux calculé (' + tauxCalc.toFixed(6) + ').\nContinuer quand même ?')) return;
+    }
+  }
+  // Construire la liste des réservations à mettre à jour
+  var toApply = [];
+  batch.rows.forEach(function(r) {
+    bkFindCRM(r.numRef).forEach(function(crm) {
+      if (crm.mad_reel != null) return;  // déjà renseigné, on ne réécrit pas
+      toApply.push({ crm:crm, madReel: Math.round(r.net * d.taux * 100) / 100, csvRow:r });
+    });
+  });
+  if (!toApply.length) {
+    alert('Toutes les réservations de ce batch ont déjà un mad_reel. Rien à appliquer.');
+    return;
+  }
+  // Confirmation visuelle détaillée
+  var lines = toApply.map(function(x) {
+    return '  #' + x.csvRow.numRef + ' ' + x.csvRow.nomClient + '\n'
+      + '  ' + x.csvRow.net.toFixed(2) + ' EUR × ' + d.taux + ' = ' + x.madReel.toFixed(2) + ' MAD';
+  }).join('\n');
+  if (!confirm(
+    'Appliquer mad_reel sur ' + toApply.length + ' réservation(s) Booking ?\n\n'
+    + lines + '\n\n'
+    + 'taux_reel = ' + d.taux + '\n'
+    + 'mad_reel_source = "booking_pdf"\n\n'
+    + 'Cette action est définitive.'
+  )) return;
+  var now = new Date().toISOString(), ok = 0, fail = 0;
+  for (var i = 0; i < toApply.length; i++) {
+    var x = toApply[i];
+    var res = await SUPA.from('resa').update({
+      mad_reel:          x.madReel,
+      taux_reel:         d.taux,
+      mad_reel_source:   'booking_pdf',
+      mad_reel_updated_at: now,
+    }).eq('id', x.crm.id);
+    if (res.error) { console.error('[bk-mad] id=' + x.crm.id, res.error); fail++; }
+    else {
+      x.crm.mad_reel          = x.madReel;
+      x.crm.taux_reel         = d.taux;
+      x.crm.mad_reel_source   = 'booking_pdf';
+      x.crm.mad_reel_updated_at = now;
+      ok++;
+    }
+  }
+  batch.state = 'applied';
+  if (fail) alert(ok + ' appliqué(s), ' + fail + ' erreur(s) — voir console.');
+  else showToast('✅ MAD réel Booking appliqué sur ' + ok + ' réservation(s)');
+  renderBkBatches();
+}
+
+function renderBkMiss() {
+  var el = document.getElementById('bk-miss-list');
+  if (!el) return;
+  if (!BK_MISS.length) {
+    el.innerHTML = '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Toutes les lignes CSV Booking ont une correspondance dans le CRM.</div>';
+    return;
+  }
+  var pending = BK_MISS.filter(function(m) { return m.status === 'pending'; }).length;
+  var ignored = BK_MISS.filter(function(m) { return m.status === 'ignored'; }).length;
+  var html = '<div style="font-size:11px;color:var(--td);margin-bottom:12px;padding:8px 12px;background:var(--s2);border-radius:6px">'
+    + pending + ' ligne(s) CSV Booking absentes du CRM'
+    + (ignored ? ' · ' + ignored + ' ignorée(s)' : '')
+    + '. Aucune création automatique.</div>';
+  BK_MISS.forEach(function(m, i) {
+    var isIgn = m.status === 'ignored';
+    html += '<div style="border:1px solid rgba(224,82,82,.25);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:rgba(224,82,82,.03);' + (isIgn ? 'opacity:.5' : '') + '">'
+      + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px">'
+        + '<div><span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">#' + escHtml(m.row.numRef) + '</span>'
+          + ' <span style="font-size:11px;font-weight:600;color:var(--re)">Absent du CRM</span></div>'
+        + '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:13px;color:var(--or)">' + m.row.net.toFixed(2) + ' EUR net</span>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--tm);margin-bottom:2px">' + escHtml(m.row.nomClient || '—') + '</div>'
+      + '<div style="font-size:11px;color:var(--td);margin-bottom:6px">' + escHtml(m.row.arrivee || '—') + ' → ' + escHtml(m.row.checkout || '—') + '</div>'
+      + (isIgn ? '<em style="font-size:11px;color:var(--td)">— Ignorée</em>' : '')
+      + '<div style="display:flex;gap:6px;margin-top:6px">'
+        + (isIgn
+          ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="bkUnignMiss(' + i + ')">↩ Remettre</button>'
+          : '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer manuellement">➕ Créer</button>'
+            + '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnMiss(' + i + ')">🙈 Ignorer</button>')
+      + '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function bkIgnMiss(i) {
+  var m = BK_MISS[i]; if (!m) return;
+  m.status = 'ignored';
+  var obj = bkIgnLoad(); obj['miss_' + m.row.numRef] = true; bkIgnSave(obj);
+  renderBkSection();
+}
+function bkUnignMiss(i) {
+  var m = BK_MISS[i]; if (!m) return;
+  m.status = 'pending';
+  var obj = bkIgnLoad(); delete obj['miss_' + m.row.numRef]; bkIgnSave(obj);
+  renderBkSection();
+}
+// ── FIN RÉCONCILIATION BOOKING ──────────────────────────────────────────────
 
 function renderAnomaliesList() {
   var el = document.getElementById('reconcil-anomalies');
