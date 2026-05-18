@@ -7539,28 +7539,43 @@ var BK_IGN_KEY = 'nex_bk_ignored_v1';
 // Inclut les variantes "double-encodées" présentes dans l'export CSV Booking.com :
 // le CSV est UTF-8 mais les accents et les NBSP ont subi un re-encodage Latin-1→UTF-8.
 var BK_MOIS = {
-  'janv':1,'janv.':1,'jan':1,
-  'f\xe9vr':2,'f\xe9vr.':2,'fev':2,'fevr':2,
-  'f\xc3\xa9vr':2,'f\xc3\xa9vr.':2,       // double-encodé : fÃ©vr
+  // Janvier
+  'janv':1,'janv.':1,'jan':1,'jan.':1,'janvier':1,
+  // Février — avec accents, double-encodés (Ã©), et sans accent
+  'f\xe9vr':2,'f\xe9vr.':2,'f\xe9vrier':2,'fev':2,'fevr':2,'fevrier':2,
+  'f\xc3\xa9vr':2,'f\xc3\xa9vr.':2,'f\xc3\xa9vrier':2,
+  // Mars
   'mars':3,'mar':3,
-  'avr':4,'avr.':4,'apr':4,
+  // Avril
+  'avr':4,'avr.':4,'apr':4,'avril':4,
+  // Mai
   'mai':5,'may':5,
+  // Juin
   'juin':6,'jun':6,
-  'juil':7,'juil.':7,'jul':7,
-  'ao\xfbt':8,'aout':8,'aug':8,'ao\xc3\xbbt':8, // double-encodé : aoÃ»t
-  'sept':9,'sept.':9,'sep':9,
-  'oct':10,'oct.':10,
-  'nov':11,'nov.':11,
-  'd\xe9c':12,'d\xe9c.':12,'dec':12,
-  'd\xc3\xa9c':12,'d\xc3\xa9c.':12        // double-encodé : dÃ©c
+  // Juillet
+  'juil':7,'juil.':7,'jul':7,'juillet':7,
+  // Août — avec accent, double-encodé, sans accent
+  'ao\xfbt':8,'ao\xfbt.':8,'aout':8,'aug':8,'ao\xc3\xbbt':8,'ao\xc3\xbbt.':8,'\xe9t':8,
+  // Septembre
+  'sept':9,'sept.':9,'sep':9,'septembre':9,
+  // Octobre
+  'oct':10,'oct.':10,'octobre':10,
+  // Novembre
+  'nov':11,'nov.':11,'novembre':11,
+  // Décembre — avec accent, double-encodé, sans accent
+  'd\xe9c':12,'d\xe9c.':12,'dec':12,'d\xe9cembre':12,'decembre':12,
+  'd\xc3\xa9c':12,'d\xc3\xa9c.':12,'d\xc3\xa9cembre':12
 };
 
 function bkParseFrDate(str) {
   if (!str) return '';
-  // Strip U+00C2 (Â) — artefact du double-encodage des NBSP dans le CSV Booking :
-  // chaque NBSP (U+00A0, bytes UTF-8 0xC2 0xA0) est précédé d'un Â (U+00C2) parasite.
-  str = str.trim().replace(/\xc2/g, '');
-  // \S+ : capte tout caractère non-espace (couvre les mois ASCII et double-encodés)
+  str = str.trim().replace(/\xc2/g, '');  // strip U+00C2 (Â) artefact double-encodage NBSP
+  // ISO YYYY-MM-DD → retourné tel quel
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // DD/MM/YYYY
+  var dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) return dmy[3] + '-' + String(parseInt(dmy[2],10)).padStart(2,'0') + '-' + String(parseInt(dmy[1],10)).padStart(2,'0');
+  // "D mois YYYY" ou "DD mois YYYY" (FR abrégé/complet, EN, double-encodé)
   var m = str.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/i);
   if (!m) return '';
   var mo = BK_MOIS[m[2].toLowerCase()];
@@ -7623,8 +7638,9 @@ function bkParseCSV(text) {
       commission:   parseFloat(g(iCom).replace(',','.')) || 0,
       frais:        parseFloat(g(iFrs).replace(',','.')) || 0,
       net:          parseFloat(g(iNet).replace(',','.')) || 0,
-      datePaiement: bkParseFrDate(g(iDp)),
-      batchId:      g(iBat),
+      datePaiement:    bkParseFrDate(g(iDp)),
+      rawDatePaiement: g(iDp),
+      batchId:         g(iBat),
     });
   }
   return rows;
@@ -7665,11 +7681,17 @@ function handleBkCSV(inp) {
     // Grouper par batch
     var bMap = {};
     used.forEach(function(r) {
-      if (!bMap[r.batchId]) bMap[r.batchId] = { batchId:r.batchId, datePaiement:r.datePaiement, rows:[], totalNetEUR:0, pdfData:null, state:'eur_only' };
+      if (!bMap[r.batchId]) bMap[r.batchId] = { batchId:r.batchId, datePaiement:r.datePaiement, rawDatePaiement:r.rawDatePaiement, rows:[], totalNetEUR:0, pdfData:null, state:'eur_only' };
       bMap[r.batchId].rows.push(r);
       bMap[r.batchId].totalNetEUR = Math.round((bMap[r.batchId].totalNetEUR + r.net) * 100) / 100;
     });
-    BK_BATCHES = Object.values(bMap).sort(function(a,b) { return (b.datePaiement||'').localeCompare(a.datePaiement||''); });
+    BK_BATCHES = Object.values(bMap).sort(function(a,b) {
+      var da = a.datePaiement || '', db = b.datePaiement || '';
+      if (!da && !db) return 0;
+      if (!da) return 1;   // date inconnue → fin de liste
+      if (!db) return -1;
+      return db.localeCompare(da);  // décroissant : plus récent en premier
+    });
     // Anomalies + manquantes
     BK_ANOM = []; BK_MISS = [];
     var ign = bkIgnLoad();
@@ -7793,7 +7815,11 @@ function renderBkBatches() {
     html += '<div style="border:1px solid var(--br);border-radius:10px;padding:14px 16px;margin-bottom:12px;background:var(--s2)' + (isApplied ? ';opacity:.65' : '') + '">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
         + '<div>'
-          + '<div style="font-size:13px;font-weight:600">Versement · ' + escHtml(batch.datePaiement || batch.batchId) + '</div>'
+          + '<div style="font-size:13px;font-weight:600">Versement · '
+            + (batch.datePaiement
+                ? escHtml(batch.datePaiement)
+                : '<span style="color:var(--or)" title="Format de date non reconnu — vérifiez le CSV">⚠ ' + escHtml(batch.rawDatePaiement || batch.batchId) + '</span>')
+            + '</div>'
           + '<div style="font-size:10px;color:var(--td);font-family:\'DM Mono\',monospace;margin-top:2px">' + escHtml(batch.batchId) + '</div>'
         + '</div>'
         + '<div style="text-align:right">'
