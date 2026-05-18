@@ -7830,31 +7830,47 @@ function renderBkAnom() {
   if (!el) return;
   var pending = BK_ANOM.filter(function(a) { return a.status === 'pending'; }).length;
   var ignored = BK_ANOM.filter(function(a) { return a.status === 'ignored'; }).length;
-  if (hdr) hdr.textContent = '(' + pending + ' en attente' + (ignored ? ' · ' + ignored + ' ignorée(s)' : '') + ')';
+  var aligned = BK_ANOM.filter(function(a) { return a.status === 'aligned'; }).length;
+  if (hdr) hdr.textContent = '(' + pending + ' en attente'
+    + (aligned ? ' · ' + aligned + ' alignée(s)' : '')
+    + (ignored ? ' · ' + ignored + ' ignorée(s)' : '') + ')';
   if (!BK_ANOM.length) {
     el.innerHTML = '<div style="color:var(--gr);font-size:13px;padding:8px 0">✅ Aucune anomalie EUR détectée.</div>';
     return;
   }
   var html = '';
   BK_ANOM.forEach(function(a, i) {
-    var isIgn = a.status === 'ignored';
+    var isIgn     = a.status === 'ignored';
+    var isAligned = a.status === 'aligned';
     var eAbs  = Math.abs(a.ecart);
     var eCol  = eAbs > 5 ? 'var(--re)' : eAbs > 1 ? 'var(--or)' : 'var(--bl)';
     var badge = eAbs > 5 ? '🔴 Critique' : eAbs > 1 ? '🟡 À vérifier' : '🔵 Mineur';
-    html += '<div style="border:1px solid ' + (isIgn ? 'var(--br)' : 'rgba(200,119,58,.35)') + ';border-radius:8px;padding:12px 14px;margin-bottom:8px;background:rgba(200,119,58,.03);' + (isIgn ? 'opacity:.5' : '') + '">'
+    var borderCol = isAligned ? 'rgba(61,189,170,.4)' : isIgn ? 'var(--br)' : 'rgba(200,119,58,.35)';
+    var bgStyle   = isAligned ? 'background:rgba(61,189,170,.06);' : 'background:rgba(200,119,58,.03);';
+    html += '<div style="border:1px solid ' + borderCol + ';border-radius:8px;padding:12px 14px;margin-bottom:8px;' + bgStyle + (isIgn ? 'opacity:.5' : '') + '">'
       + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px">'
         + '<div><span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">#' + escHtml(a.row.numRef) + '</span>'
-          + ' <span style="font-size:11px;font-weight:600;color:' + eCol + '">' + badge + '</span>'
+          + (isAligned
+            ? ' <span style="font-size:11px;font-weight:600;color:var(--gr)">✅ Alignée</span>'
+            : ' <span style="font-size:11px;font-weight:600;color:' + eCol + '">' + badge + '</span>')
           + (a.crm.override_manual ? ' <span style="font-size:10px;color:#9b7de8" title="Verrouillé">🔒</span>' : '') + '</div>'
-        + '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:' + eCol + '">Écart ' + (a.ecart > 0 ? '+' : '') + a.ecart.toFixed(2) + ' EUR</span>'
+        + (isAligned
+          ? '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--gr)">net CSV : ' + a.row.net.toFixed(2) + ' EUR</span>'
+          : '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:' + eCol + '">Écart ' + (a.ecart > 0 ? '+' : '') + a.ecart.toFixed(2) + ' EUR</span>')
       + '</div>'
       + '<div style="font-size:12px;color:var(--tm);margin-bottom:3px">' + escHtml(a.row.nomClient || '—') + ' · ' + escHtml(a.row.arrivee || '—') + ' → ' + escHtml(a.row.checkout || '—') + '</div>'
-      + '<div style="font-size:11px;color:var(--td);margin-bottom:6px">CRM : ' + (a.crm.net||0).toFixed(2) + ' EUR · CSV : ' + a.row.net.toFixed(2) + ' EUR</div>'
+      + (isAligned
+        ? '<div style="font-size:11px;color:var(--gr);margin-bottom:6px">CRM mis à jour avec les valeurs Booking officielles</div>'
+        : '<div style="font-size:11px;color:var(--td);margin-bottom:6px">CRM : ' + (a.crm.net||0).toFixed(2) + ' EUR · CSV : ' + a.row.net.toFixed(2) + ' EUR</div>')
       + (isIgn ? '<em style="font-size:11px;color:var(--td)">— Ignorée</em>' : '')
-      + '<div style="display:flex;gap:6px;margin-top:6px">'
-        + (isIgn
-          ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="bkUnignAnom(' + i + ')">↩ Remettre</button>'
-          : '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnAnom(' + i + ')">🙈 Ignorer</button>')
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
+        + (isAligned ? ''
+          : isIgn
+            ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="bkUnignAnom(' + i + ')">↩ Remettre</button>'
+            : '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnAnom(' + i + ')">🙈 Ignorer</button>'
+              + (!a.crm.override_manual
+                ? '<button class="ba" style="background:var(--te);color:#fff;border:none;font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="bkAlignAnom(' + i + ')">📐 Aligner sur CSV</button>'
+                : ''))
       + '</div></div>';
   });
   el.innerHTML = html;
@@ -7871,6 +7887,34 @@ function bkUnignAnom(i) {
   a.status = 'pending';
   var obj = bkIgnLoad(); delete obj['anom_' + a.row.numRef + '_' + a.crm.id]; bkIgnSave(obj);
   renderBkSection();
+}
+function bkAlignAnom(i) {
+  var a = BK_ANOM[i]; if (!a) return;
+  if (a.crm.override_manual) { showToast('⛔ Réservation verrouillée — alignement impossible.', 'warn'); return; }
+  var newBrut   = Math.round(a.row.montant * 100) / 100;
+  var newCom    = Math.round((a.row.montant - a.row.net) * 100) / 100;
+  var newComPct = newBrut > 0 ? Math.round(newCom / newBrut * 10000) / 10000 : 0;
+  var newNet    = Math.round(a.row.net * 100) / 100;
+  var msg = '📐 Aligner sur CSV Booking — #' + a.row.numRef + '\n' + (a.row.nomClient || '') + '\n\n'
+    + 'AVANT (estimation CRM)\n'
+    + '  Brut       : ' + (a.crm.brut||0).toFixed(2) + ' EUR\n'
+    + '  Commission : ' + (a.crm.commission||0).toFixed(2) + ' EUR  (' + (Math.round((a.crm.com_pct||0)*10000)/100).toFixed(1) + '%)\n'
+    + '  Net        : ' + (a.crm.net||0).toFixed(2) + ' EUR\n\n'
+    + 'APRÈS (CSV Booking officiel)\n'
+    + '  Brut       : ' + newBrut.toFixed(2) + ' EUR\n'
+    + '  Commission : ' + newCom.toFixed(2) + ' EUR  (' + (Math.round(newComPct*10000)/100).toFixed(1) + '%)\n'
+    + '    dont frais de service : ' + Math.abs(a.row.frais||0).toFixed(2) + ' EUR\n'
+    + '  Net        : ' + newNet.toFixed(2) + ' EUR\n\n'
+    + 'La réservation sera verrouillée (override_manual).';
+  if (!confirm(msg)) return;
+  var patch = { brut: newBrut, commission: newCom, com_pct: newComPct, net: newNet, override_manual: true };
+  SUPA.from('resa').update(patch).eq('id', a.crm.id).then(function(res) {
+    if (res.error) { showToast('❌ ' + res.error.message, 'err'); return; }
+    Object.assign(a.crm, patch);
+    a.status = 'aligned';
+    renderBkSection();
+    showToast('✅ #' + a.row.numRef + ' — valeurs CSV Booking appliquées.');
+  });
 }
 
 function renderBkBatches() {
