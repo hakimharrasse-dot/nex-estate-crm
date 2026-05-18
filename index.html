@@ -7532,8 +7532,10 @@ var BK_ROWS    = [];   // lignes CSV parsées
 var BK_BATCHES = [];   // { batchId, datePaiement, totalNetEUR, rows[], pdfData, state }
 var BK_ANOM    = [];   // { row, crm, type, ecart, status }
 var BK_MISS    = [];   // { row, status }
-var BK_TAB     = 'anom';
-var BK_IGN_KEY = 'nex_bk_ignored_v1';
+var BK_TAB      = 'anom';
+var BK_IGN_KEY  = 'nex_bk_ignored_v1';
+var BK_LINKS_KEY = 'nex_bk_links_v1';
+var BK_LINK_ROW  = null;  // ligne CSV en cours de rattachement
 
 // Mapping mois FR abrégés → numéro.
 // Inclut les variantes "double-encodées" présentes dans l'export CSV Booking.com :
@@ -7675,7 +7677,15 @@ function bkFindCRM(numRef, row) {
     if (r.smoobu_id && String(r.smoobu_id).trim() === n) return true;
     return false;
   });
-  // Fallback voyageur si aucun match par référence
+  // 6. Lien manuel persisté (nex_bk_links_v1) — rattachement explicite par l'utilisateur
+  if (!results.length) {
+    var lnks = bkLinksLoad();
+    if (lnks[n]) {
+      var linked = (DB.resa || []).filter(function(r) { return r.id === lnks[n]; });
+      if (linked.length) return linked;
+    }
+  }
+  // 7. Fallback voyageur si aucun match par référence
   if (!results.length && row && row.nomClient) {
     var nomParts = (row.nomClient || '').toLowerCase().replace(/\s+/g,' ').trim().split(' ')
       .filter(function(p){ return p.length >= 3; });
@@ -7699,6 +7709,12 @@ function bkIgnLoad() {
 }
 function bkIgnSave(obj) {
   try { localStorage.setItem(BK_IGN_KEY, JSON.stringify(obj)); } catch(e) {}
+}
+function bkLinksLoad() {
+  try { return JSON.parse(localStorage.getItem(BK_LINKS_KEY) || '{}'); } catch(e) { return {}; }
+}
+function bkLinksSave(obj) {
+  try { localStorage.setItem(BK_LINKS_KEY, JSON.stringify(obj)); } catch(e) {}
 }
 
 function handleBkCSV(inp) {
@@ -8096,22 +8112,38 @@ function renderBkMiss() {
     + pending + ' ligne(s) CSV Booking absentes du CRM'
     + (ignored ? ' · ' + ignored + ' ignorée(s)' : '')
     + '. Aucune création automatique.</div>';
+  var links = bkLinksLoad();
   BK_MISS.forEach(function(m, i) {
     var isIgn = m.status === 'ignored';
-    html += '<div style="border:1px solid rgba(224,82,82,.25);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:rgba(224,82,82,.03);' + (isIgn ? 'opacity:.5' : '') + '">'
+    var linkedId = links[m.row.numRef];
+    var linkedCrm = linkedId ? (DB.resa||[]).filter(function(r){ return r.id === linkedId; })[0] : null;
+    var borderCol = linkedCrm ? 'rgba(61,189,170,.35)' : 'rgba(224,82,82,.25)';
+    var bgCol     = linkedCrm ? 'rgba(61,189,170,.04)' : 'rgba(224,82,82,.03)';
+    html += '<div style="border:1px solid ' + borderCol + ';border-radius:8px;padding:12px 14px;margin-bottom:8px;background:' + bgCol + ';' + (isIgn ? 'opacity:.5' : '') + '">'
       + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px">'
         + '<div><span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">#' + escHtml(m.row.numRef) + '</span>'
-          + ' <span style="font-size:11px;font-weight:600;color:var(--re)">Absent du CRM</span></div>'
+          + (linkedCrm
+              ? ' <span style="font-size:11px;font-weight:600;color:var(--te)">🔗 Rattaché</span>'
+              : ' <span style="font-size:11px;font-weight:600;color:var(--re)">Absent du CRM</span>')
+        + '</div>'
         + '<span style="font-family:\'DM Mono\',monospace;font-weight:600;font-size:13px;color:var(--or)">' + m.row.net.toFixed(2) + ' EUR net</span>'
       + '</div>'
       + '<div style="font-size:12px;color:var(--tm);margin-bottom:2px">' + escHtml(m.row.nomClient || '—') + '</div>'
       + '<div style="font-size:11px;color:var(--td);margin-bottom:6px">' + escHtml(m.row.arrivee || '—') + ' → ' + escHtml(m.row.checkout || '—') + '</div>'
+      + (linkedCrm
+          ? '<div style="font-size:11px;color:var(--te);margin-bottom:6px;padding:6px 10px;background:rgba(61,189,170,.08);border-radius:6px">'
+              + '→ ' + escHtml(linkedCrm.voyageur||'—') + ' · ' + escHtml(linkedCrm.ref||'—') + ' · ' + escHtml(linkedCrm.checkin||'—')
+              + (linkedCrm.mad_reel != null ? ' · <strong>MAD ✓</strong>' : ' · MAD non encore appliqué')
+            + '</div>'
+          : '')
       + (isIgn ? '<em style="font-size:11px;color:var(--td)">— Ignorée</em>' : '')
-      + '<div style="display:flex;gap:6px;margin-top:6px">'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
         + (isIgn
           ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="bkUnignMiss(' + i + ')">↩ Remettre</button>'
-          : '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer manuellement">➕ Créer</button>'
-            + '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnMiss(' + i + ')">🙈 Ignorer</button>')
+          : (linkedCrm
+              ? '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--re)" onclick="removeBkLink(\'' + escHtml(m.row.numRef) + '\')">✕ Supprimer rattachement</button>'
+              : '<button class="ba" style="background:var(--te);color:#fff;border:none;padding:6px 13px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600" onclick="openBkLinkModal(' + i + ')">🔗 Rattacher</button>'
+                + '<button class="ba ba-ghost" style="font-size:11px;padding:4px 10px;color:var(--td)" onclick="bkIgnMiss(' + i + ')">🙈 Ignorer</button>'))
       + '</div></div>';
   });
   el.innerHTML = html;
@@ -8129,6 +8161,104 @@ function bkUnignMiss(i) {
   var obj = bkIgnLoad(); delete obj['miss_' + m.row.numRef]; bkIgnSave(obj);
   renderBkSection();
 }
+function bkRebuildMiss() {
+  var ign = bkIgnLoad();
+  BK_MISS = [];
+  BK_ROWS.filter(function(r){ return r.numRef && r.net !== 0; }).forEach(function(r) {
+    if (!bkFindCRM(r.numRef, r).length) {
+      BK_MISS.push({ row:r, status: ign['miss_'+r.numRef] ? 'ignored' : 'pending' });
+    }
+  });
+}
+
+function openBkLinkModal(mi) {
+  BK_LINK_ROW = BK_MISS[mi] ? BK_MISS[mi].row : null;
+  if (!BK_LINK_ROW) return;
+  var old = document.getElementById('bk-link-ov'); if (old) old.remove();
+  var ov = document.createElement('div');
+  ov.id = 'bk-link-ov';
+  ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9100;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML =
+    '<div style="background:var(--bg);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 40px rgba(0,0,0,.4)">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+      + '<div>'
+        + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">🔗 Rattacher une réservation CRM</div>'
+        + '<div style="font-size:12px;color:var(--td);font-family:\'DM Mono\',monospace">#' + escHtml(BK_LINK_ROW.numRef)
+          + ' &nbsp;·&nbsp; ' + escHtml(BK_LINK_ROW.nomClient||'—')
+          + ' &nbsp;·&nbsp; ' + BK_LINK_ROW.net.toFixed(2) + ' EUR'
+          + (BK_LINK_ROW.arrivee ? ' &nbsp;·&nbsp; ' + escHtml(BK_LINK_ROW.arrivee) : '') + '</div>'
+      + '</div>'
+      + '<button class="ba ba-ghost" style="font-size:12px;padding:5px 11px;flex-shrink:0" onclick="closeBkLinkModal()">✕</button>'
+    + '</div>'
+    + '<input id="bk-link-q" type="text" placeholder="Chercher par nom, réf, montant, date…" oninput="renderBkLinkResults()"'
+      + ' style="border:1px solid var(--br);border-radius:8px;padding:9px 12px;background:var(--s2);color:var(--tc);font-size:13px;width:100%;box-sizing:border-box">'
+    + '<div id="bk-link-res" style="overflow-y:auto;max-height:48vh;display:flex;flex-direction:column;gap:6px"></div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  renderBkLinkResults();
+  var inp = document.getElementById('bk-link-q');
+  if (inp) setTimeout(function(){ inp.focus(); }, 60);
+}
+
+function renderBkLinkResults() {
+  var el = document.getElementById('bk-link-res'); if (!el || !BK_LINK_ROW) return;
+  var q = ((document.getElementById('bk-link-q')||{}).value||'').toLowerCase().trim();
+  var netQ = parseFloat(q);
+  var pool = (DB.resa||[]).filter(function(r) {
+    if (!r.source || r.source.toLowerCase().indexOf('booking') < 0) return false;
+    if (!q) return true;
+    return (r.voyageur||'').toLowerCase().indexOf(q) >= 0
+        || (r.ref||'').toLowerCase().indexOf(q) >= 0
+        || (r.checkin||'').indexOf(q) >= 0
+        || (!isNaN(netQ) && Math.abs((r.net||0) - netQ) < 1.00);
+  }).slice(0, 40);
+  if (!pool.length) { el.innerHTML = '<div style="font-size:12px;color:var(--td);padding:8px 0">Aucun résultat — essayez un autre terme.</div>'; return; }
+  el.innerHTML = pool.map(function(r) {
+    var hasMad = r.mad_reel != null;
+    return '<div onclick="confirmBkLink(\'' + r.id + '\')" style="border:1px solid var(--br);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;background:var(--s2);transition:background .12s" onmouseover="this.style.background=\'var(--s3)\'" onmouseout="this.style.background=\'var(--s2)\'">'
+      + '<div style="min-width:0">'
+        + '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(r.voyageur||'—') + '</div>'
+        + '<div style="font-size:11px;color:var(--td);font-family:\'DM Mono\',monospace">' + escHtml(r.ref||'—') + ' · ' + escHtml(r.checkin||'—') + ' · ' + escHtml(r.appart||'—') + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;white-space:nowrap;flex-shrink:0">'
+        + '<div style="font-size:12px;font-weight:600;color:var(--or)">' + (r.net||0).toFixed(2) + ' EUR</div>'
+        + '<div style="font-size:10px;font-weight:600;color:' + (hasMad ? 'var(--gr)' : 'var(--td)') + '">' + (hasMad ? '● MAD ✓' : '— MAD') + '</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+function confirmBkLink(crmId) {
+  if (!BK_LINK_ROW || !crmId) return;
+  var r = (DB.resa||[]).filter(function(x){ return x.id === crmId; })[0];
+  if (!confirm(
+    'Rattacher #' + BK_LINK_ROW.numRef + ' (' + (BK_LINK_ROW.nomClient||'—') + ') à :\n\n'
+    + (r ? '  ' + (r.voyageur||'—') + '  |  ' + (r.ref||'—') + '  |  ' + (r.checkin||'—') + '\n\n' : '')
+    + 'Le MAD réel sera appliqué sur cette réservation CRM lors du prochain "Appliquer MAD réel".'
+  )) return;
+  var links = bkLinksLoad();
+  links[BK_LINK_ROW.numRef] = crmId;
+  bkLinksSave(links);
+  closeBkLinkModal();
+  bkRebuildMiss();
+  renderBkSection();
+  showToast('✅ Rattachement enregistré — applique le MAD réel via le batch correspondant');
+}
+
+function closeBkLinkModal() {
+  var el = document.getElementById('bk-link-ov'); if (el) el.remove();
+  BK_LINK_ROW = null;
+}
+
+function removeBkLink(numRef) {
+  if (!confirm('Supprimer le rattachement manuel pour #' + numRef + ' ?')) return;
+  var links = bkLinksLoad();
+  delete links[numRef];
+  bkLinksSave(links);
+  bkRebuildMiss();
+  renderBkSection();
+}
+
 // ── FIN RÉCONCILIATION BOOKING ──────────────────────────────────────────────
 
 function renderAnomaliesList() {
