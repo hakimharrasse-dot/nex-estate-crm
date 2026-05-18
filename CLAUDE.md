@@ -10,7 +10,7 @@
 
 **Nex-Estate CRM** est un outil de gestion de réservations locatives courte durée (Airbnb, Booking.com, VRBO, Direct) pour 4 appartements au Maroc.
 
-- **Frontend** : `index.html` unique (~8400 lignes), vanilla JS, zéro framework, zéro build
+- **Frontend** : `index.html` unique (~9800 lignes), vanilla JS, zéro framework, zéro build
 - **Backend** : Vercel Serverless Functions (Node.js)
 - **Base de données** : Supabase (PostgreSQL 17, projet `zjultuaqkzjupiiewxhy`, région `eu-west-1`)
 - **Source de réservations** : Smoobu (PMS) via webhook temps réel + cron horaire
@@ -431,7 +431,14 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-17 | DB cleanup: 12 records AIRCOVER/AJUSTEMENT — mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL (écriture ancienne, avant restriction TYPES_OK) |
 | 2026-05-17 | Feat(dashboard): helpers rNetMAD/rBrutMAD/rComMAD/sumNetMAD — KPIs dashboard et renderResa utilisent mad_reel/taux_reel quand disponibles, fallback EUR×EUR_MAD (`11d31da`) |
 | 2026-05-17 | Backup `nex-estate-crm-backup-2026-05-17` produit — suppression ancien backup 2026-05-12 |
-| 2026-05-18 | Feat: module Réconciliation Booking — CSV global (ISO-8859-1) + PDF par batch → mad_reel/taux_reel/mad_reel_source='booking_pdf' — section indépendante dans vw-reconcil, sans toucher Airbnb |
+| 2026-05-18 | Feat: module Réconciliation Booking — CSV global (UTF-8 double-encodé) + PDF par batch → mad_reel/taux_reel/mad_reel_source='booking_pdf' — section indépendante dans vw-reconcil, sans toucher Airbnb |
+| 2026-05-18 | Feat(booking): matching robuste — BKG- prefix, double-encodage NBSP/accents, toLowerCase bug, fallback fuzzy voyageur+date/montant, 7 niveaux de matching |
+| 2026-05-18 | Feat(booking): persistance état applied — auto-détection batches déjà appliqués depuis mad_reel CRM au rechargement CSV |
+| 2026-05-18 | Feat(booking): rattachement manuel — lien localStorage numRef→crmId pour lignes CSV sans match automatique (`e799374`) |
+| 2026-05-18 | Feat(booking): Aligner sur CSV — bouton 📐 sur anomalies EUR, patch brut/commission/com_pct/net + override_manual=true (`70d0b2e`) |
+| 2026-05-18 | Fix(resa): tooltip MAD réel distingue "MAD réel Airbnb" vs "MAD réel Booking" selon r.source |
+| 2026-05-18 | **STABLE** : module Réconciliation Booking clôturé — CSV = vérité EUR, PDF = vérité MAD/taux, 4 logements réconciliés |
+| 2026-05-18 | Backup `nex-estate-crm-backup-2026-05-18-booking-stable` produit — suppression ancien backup 2026-05-17 |
 
 ---
 
@@ -615,7 +622,7 @@ Utilisés dans : `computePeriodKPIs` (netMad, netMadAtt), `renderDash` (brut, co
 
 ---
 
-## 15. Module MAD réel Booking — Architecture (ajouté 2026-05-18)
+## 15. Module MAD réel Booking — Architecture (stabilisé 2026-05-18)
 
 ### Objectif
 
@@ -690,6 +697,46 @@ var BK_IGN_KEY = 'nex_bk_ignored_v1';  // localStorage
 ### PDF.js — chargement lazy
 
 PDF.js v3.11.174 est chargé depuis CDN **uniquement lors du premier upload PDF** (pas d'impact sur le chargement initial de la page). Le worker est configuré depuis le même CDN.
+
+### Règles métier immuables Booking (validées 2026-05-18)
+
+| Règle | Valeur |
+|---|---|
+| Commission par défaut Booking | **22%** — estimation avant réconciliation |
+| Taux EUR→MAD fallback | **10.50** — fallback avant MAD réel PDF |
+| Vérité EUR | **CSV Booking** (`Informations de versement`) — remplace l'estimation 22% via bouton 📐 Aligner |
+| Vérité MAD | **PDF Booking** (`Relevé du paiement`) — taux exact 6 décimales, MAD réel par réservation |
+| Impact Dashboard | `rNetMAD` / `rBrutMAD` / `rComMAD` / `sumNetMAD` — Booking traité comme Airbnb via `MAD_REEL_ELIGIBLE` |
+| Airbnb | **Jamais touché** par le module Booking — variables, fonctions et DB séparés |
+
+### Flux de réconciliation complet
+
+```
+Import CSV → anomalies EUR (écart >0.50) + manquantes détectées
+     ↓
+📐 Aligner sur CSV → patch brut/commission/net réels + override_manual=true
+     ↓
+Upload PDF par batch → taux exact + MAD total → applyBkBatch()
+     ↓
+mad_reel = net_EUR × taux_reel stocké en base
+     ↓
+Dashboard / KPIs / Réservations → rNetMAD() retourne mad_reel (prioritaire sur EUR×10.5)
+```
+
+### Propagation des valeurs corrigées dans le CRM
+
+| Correction | Champs mis à jour | Impacte |
+|---|---|---|
+| CSV aligné (📐) | `brut`, `commission`, `com_pct`, `net`, `override_manual=true` | Tous calculs EUR + fallback MAD amélioré |
+| PDF appliqué | `mad_reel`, `taux_reel`, `mad_reel_source='booking_pdf'` | `rNetMAD` retourne valeur exacte |
+| Les deux | Tous les champs ci-dessus | Valeur MAD exacte basée sur EUR corrigé |
+
+Les helpers `rNetMAD/rBrutMAD/rComMAD` sont **source-agnostiques** : ils s'appliquent à Airbnb ET Booking dès que `mad_reel`/`taux_reel` sont renseignés et `type_norm ∈ MAD_REEL_ELIGIBLE`.
+
+### Affichage MAD dans la liste Réservations
+
+- Colonne MAD : `r.mad_reel` si renseigné, sinon `e2m(r.net)` (EUR × EUR_MAD)
+- Indicateur `●` bleu : tooltip **"MAD réel Booking · taux X"** ou **"MAD réel Airbnb · taux X"** selon `r.source`
 
 ### Ce que le module ne fait PAS
 
