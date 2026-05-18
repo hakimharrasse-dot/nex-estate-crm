@@ -7632,9 +7632,16 @@ function bkParseCSV(text) {
 
 function bkFindCRM(numRef) {
   var n = String(numRef).trim();
+  var nUp = n.toUpperCase();
   return (DB.resa || []).filter(function(r) {
-    if (r.source !== 'Booking.com' || !r.ref) return false;
-    return String(r.ref).trim() === n || String(r.ref).replace(/^BK-/i,'').trim() === n;
+    if (r.source !== 'Booking.com') return false;
+    // match via ref : brute, sans préfixe BKG-/BK-, ou smoobu_id
+    var ref = r.ref ? String(r.ref).trim() : '';
+    var refNorm = ref.replace(/^BKG?-/i, '');
+    if (ref.toUpperCase() === nUp) return true;
+    if (refNorm.toUpperCase() === nUp) return true;
+    if (r.smoobu_id && String(r.smoobu_id).trim() === n) return true;
+    return false;
   });
 }
 
