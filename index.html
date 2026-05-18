@@ -7569,7 +7569,15 @@ var BK_MOIS = {
 
 function bkParseFrDate(str) {
   if (!str) return '';
-  str = str.trim().replace(/\xc2/g, '');  // strip U+00C2 (Â) artefact double-encodage NBSP
+  // 1. Séquence double-encodée : U+00C2 suivi de U+00A0 (NBSP) → espace simple
+  str = str.replace(/\xc2\xa0/g, ' ');
+  // 2. U+00C2 (Â) isolé restant → supprimé
+  str = str.replace(/\xc2/g, '');
+  // 3. U+00A0 (NBSP) restant → espace simple
+  str = str.replace(/\xa0/g, ' ');
+  // 4. Espaces multiples → un seul, et trim
+  str = str.replace(/\s+/g, ' ').trim();
+  if (!str) return '';
   // ISO YYYY-MM-DD → retourné tel quel
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   // DD/MM/YYYY
@@ -7649,13 +7657,19 @@ function bkParseCSV(text) {
 function bkFindCRM(numRef) {
   var n = String(numRef).trim();
   var nUp = n.toUpperCase();
+  // Pour les IDs Booking purement numériques (≥8 chiffres), on extrait aussi les chiffres du ref CRM
+  var nIsNumeric = /^\d{8,}$/.test(n);
   return (DB.resa || []).filter(function(r) {
-    if (r.source !== 'Booking.com') return false;
-    // match via ref : brute, sans préfixe BKG-/BK-, ou smoobu_id
+    // Source insensible à la casse : couvre 'Booking.com' / 'booking' / 'Booking'
+    if (!r.source || r.source.toLowerCase().indexOf('booking') < 0) return false;
     var ref = r.ref ? String(r.ref).trim() : '';
-    var refNorm = ref.replace(/^BKG?-/i, '');
+    // 1. Correspondance exacte
     if (ref.toUpperCase() === nUp) return true;
-    if (refNorm.toUpperCase() === nUp) return true;
+    // 2. Ref sans préfixe BKG-/BK- (ex: BKG-6746092183 → 6746092183)
+    if (ref.replace(/^BKG?-/i, '').toUpperCase() === nUp) return true;
+    // 3. Extraction numérique pure — couvre tout préfixe inconnu (BKG-, BK-, REZ-, …)
+    if (nIsNumeric && ref.replace(/\D/g, '') === n) return true;
+    // 4. smoobu_id
     if (r.smoobu_id && String(r.smoobu_id).trim() === n) return true;
     return false;
   });
@@ -7691,6 +7705,28 @@ function handleBkCSV(inp) {
       if (!da) return 1;   // date inconnue → fin de liste
       if (!db) return -1;
       return db.localeCompare(da);  // décroissant : plus récent en premier
+    });
+    // Auto-détecter les batches déjà appliqués (mad_reel présent en CRM)
+    // Évite de demander le PDF pour un batch déjà traité lors d'un réimport CSV
+    BK_BATCHES.forEach(function(batch) {
+      var anyFound = false, allMad = true;
+      batch.rows.forEach(function(r) {
+        bkFindCRM(r.numRef).forEach(function(crm) {
+          anyFound = true;
+          if (crm.mad_reel == null) allMad = false;
+        });
+      });
+      if (!anyFound || !allMad) return;
+      batch.state = 'applied';
+      // Reconstituer les données PDF depuis le CRM pour l'affichage
+      var taux = null, madTotal = 0;
+      batch.rows.forEach(function(r) {
+        bkFindCRM(r.numRef).forEach(function(crm) {
+          if (!taux && crm.taux_reel) taux = crm.taux_reel;
+          if (crm.mad_reel) madTotal = Math.round((madTotal + crm.mad_reel) * 100) / 100;
+        });
+      });
+      batch.pdfData = { taux:taux, madTotal:madTotal, idPaiement:null, pdfRefs:[], overlap:1, autoDetected:true };
     });
     // Anomalies + manquantes
     BK_ANOM = []; BK_MISS = [];
@@ -7877,6 +7913,7 @@ function bkRenderPdfData(batch) {
       + (delta > 0.05 ? '⚠ ' : '✓ ') + 'Taux calculé (MAD÷EUR) : ' + tauxCalc + ' · Taux PDF : ' + d.taux + ' · Delta : ' + delta.toFixed(6)
       + '</div>' : '')
     + (d.pdfRefs && d.pdfRefs.length && d.overlap === 0 ? '<div style="font-size:11px;color:var(--re);margin-top:4px">⚠ Aucun numéro de réservation du PDF ne correspond à ce batch — mauvais PDF ?</div>' : '')
+    + (d.autoDetected ? '<div style="font-size:11px;color:var(--gr);margin-top:4px">✓ Données reconstituées depuis le CRM — batch déjà appliqué, aucune action requise.</div>' : '')
     + '</div>';
 }
 
