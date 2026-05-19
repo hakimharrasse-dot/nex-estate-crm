@@ -630,6 +630,25 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div><div class="kd" id="d-delta-revpan"></div></div>
     <div class="kc" id="kc-marge"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div><div class="kd" id="d-delta-marge2"></div></div>
   </div>
+  <!-- ── Vue complémentaire ── -->
+  <div style="display:flex;align-items:center;gap:8px;margin:10px 0 2px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--td);font-weight:500">Vue complémentaire :</span>
+    <select id="d-vue-compl" class="fdt" style="font-size:12px;padding:3px 8px;height:28px" onchange="setVueCompl(this.value)">
+      <option value="">Aucun</option>
+      <option value="ca-conso">CA consommé par nuits</option>
+    </select>
+  </div>
+  <div id="d-compl-block" style="display:none;margin-bottom:4px">
+    <div class="kg">
+      <div class="kc" style="border-left:3px solid var(--bl)">
+        <div class="kl">CA consommé 📐</div>
+        <div class="kv" style="color:var(--bl)" id="d-ca-conso">0 MAD</div>
+        <div class="ks" id="d-ca-conso-det"></div>
+        <div class="ks" style="color:var(--td);font-size:11px;font-style:italic">Lecture seule · proratisé par nuits · ≠ trésorerie</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Circle KPIs -->
   <div class="circ-row">
     <div class="circ-card">
@@ -2721,6 +2740,7 @@ var CUSTOM_FROM = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
 var CUSTOM_TO   = {r:'',b:'',t:'',s:'',p:'',d:'',gn:''};
 var wkRef     = today();
 var WK_MODE      = 'cumul';    // 'semaine' | 'mois' | 'perso' | 'cumul' — défaut: En cours (tout ouvert)
+var DASH_VUE_COMPL = '';       // '' | 'ca-conso' — vue complémentaire dashboard
 var WK_MO_REF    = today().slice(0,7); // 'YYYY-MM' pour le mode mois
 var WK_FROM      = '';         // date début période perso
 var WK_TO        = '';         // date fin période perso
@@ -3171,6 +3191,29 @@ function occupNightsBiz(appart, pStart, pEnd) {
   }).reduce(function(s,r){return s+effectiveNightsInPeriod(r,pStart,pEnd);},0);
 }
 
+// ── CA consommé par nuits : même ratio que l'occupation, appliqué au montant net ──
+var CA_CONSO_TYPES = ['RESERVATION','RELOCATION','DIRECT','ANNULATION_PAYEE'];
+function sumCaConsomme(pStart, pEnd, appart) {
+  var netConso = 0, nuitsConsо = 0;
+  DB.resa.forEach(function(r) {
+    if (CA_CONSO_TYPES.indexOf(r.type_norm) < 0) return;
+    if (appart && r.appart !== appart) return;
+    if (!r.checkin || !r.checkout) return;
+    var overlap = nightsInPeriod(r.checkin, r.checkout, pStart, pEnd);
+    if (overlap <= 0) return;
+    var totalN = diffNuits(r.checkin, r.checkout);
+    if (totalN <= 0) return;
+    netConso  += rNetMAD(r) * overlap / totalN;
+    nuitsConsо += overlap;
+  });
+  return { net: netConso, nuits: nuitsConsо };
+}
+function setVueCompl(v) {
+  DASH_VUE_COMPL = v;
+  var el = document.getElementById('d-compl-block');
+  if (el) el.style.display = v ? '' : 'none';
+}
+
 // pBounds={start,end} optionnel pour occupation nuit/nuit ; appart optionnel pour filtre
 function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
   var rev     = resaRows.filter(function(r){ return isRevRow(r); });
@@ -3264,6 +3307,13 @@ function renderDash() {
   set('d-circ-occ-det', cur.nuitsSej+' / '+joursDispo+' nuits');
   drawCircle('d-svg-marge', Math.max(0,cur.marge), 'var(--or)');
   set('d-circ-marge', Math.round(cur.marge)+' %');
+
+  // ── Vue complémentaire : CA consommé par nuits ──
+  var cc = sumCaConsomme(pb.start, pb.end, fa||null);
+  set('d-ca-conso', fmt(cc.net));
+  set('d-ca-conso-det', Math.round(cc.nuits) + ' nuits réparties sur la période');
+  var complEl = document.getElementById('d-compl-block');
+  if (complEl) complEl.style.display = DASH_VUE_COMPL ? '' : 'none';
 
   // ── Calcul période précédente ──
   var prevRes=[], prevBiz=[], prevJours=joursDispo, prevLbl='préc.', prevBounds=null;
