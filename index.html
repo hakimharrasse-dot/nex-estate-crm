@@ -950,7 +950,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: DOUBLONS ═══ -->
 <div class="vw" id="vw-doublons">
   <div class="vh">
-    <div><div class="vt" style="color:var(--re)">Doublons</div><div class="vsub">Smoobu ID · ref · même séjour · doublon probable (voyageur + appart + dates)</div></div>
+    <div><div class="vt" style="color:var(--re)">Doublons</div><div class="vsub">Financiers : Smoobu ID · ref · même séjour · probable — Techniques : orphelins sans smoobu_id</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost admin-only" id="btn-dup-clear-ignored" onclick="clearDupIgnored()" style="display:none">↺ Réafficher ignorés</button>
       <button class="ba ba-ghost" onclick="renderDoublons()">🔄 Rafraîchir</button>
@@ -961,6 +961,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Groupes distincts</div><div class="kv" id="dup-grp">0</div><div class="ks">réf. ou ID partagés</div></div>
     <div class="kc"><div class="kl">Impact revenu net</div><div class="kv" style="color:var(--re)" id="dup-net">0 MAD</div><div class="ks">doublon × net EUR</div></div>
     <div class="kc"><div class="kl">Groupes ignorés</div><div class="kv" id="dup-ignored-cnt">0</div><div class="ks">marqués "pas un doublon"</div></div>
+    <div class="kc"><div class="kl">Doublons techniques</div><div class="kv" style="color:var(--or)" id="dup-tech-total">0</div><div class="ks">orphelins sans smoobu_id</div></div>
   </div>
   <div style="background:var(--s);border:1px solid var(--br);border-radius:10px;padding:13px 15px;margin-bottom:14px;font-size:12px;color:var(--tm)">
     ℹ️ Les doublons sont <strong style="color:var(--tx)">détectés uniquement</strong>, jamais bloqués. Supprime manuellement les entrées superflues via le bouton ✕ ci-dessous, ou navigue dans <strong style="color:var(--gr)">Réservations</strong> pour éditer.
@@ -977,6 +978,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <tbody id="dup-tb"></tbody>
   </table><div class="empty hidden" id="dup-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté</div></div>
   <div id="dup-cards" class="dup-cards"></div>
+  <!-- Section doublons techniques — remplie dynamiquement par renderDoublons() -->
+  <div id="dup-tech-section"></div>
 </div>
 
 <!-- ═══ VIEW: LOGEMENTS ═══ -->
@@ -4800,17 +4803,67 @@ function detectDups() {
     return false;
   });
 
+  // ── Règle 5 : doublons techniques ────────────────────────────────────────────
+  // R5a : même ref (normalisée) + appart + checkin, avec ≥1 ligne orpheline (smoobu_id=null).
+  //        Inclut ANNULATION_NON_PAYEE et tous types — pas de filtre isFinDup.
+  //        Cible le cas : ligne saisie manuellement sans smoobu_id + ligne créée par sync API.
+  // R5b : même smoobu_id sur ≥2 records tous types confondus (si pas déjà couvert par R1).
+  var r5ByRef = {};
+  DB.resa.forEach(function(r) {
+    if (!r.ref || !r.appart || !r.checkin) return;
+    var refN = r.ref.replace(/^(AIR|BKG|DIR|VRB|SMB)-/i, '').toUpperCase();
+    if (!refN || /^\d+$/.test(refN)) return; // exclure refs purement numériques (smoobu_id fallback)
+    var rk = refN + '||' + r.appart + '||' + r.checkin;
+    if (!r5ByRef[rk]) r5ByRef[rk] = [];
+    r5ByRef[rk].push(r);
+  });
+  var r5BySid = {};
+  DB.resa.forEach(function(r) {
+    if (!r.smoobu_id) return;
+    if (!r5BySid[r.smoobu_id]) r5BySid[r.smoobu_id] = [];
+    r5BySid[r.smoobu_id].push(r);
+  });
+  var techId2Key = {}, techId2Label = {};
+  // R5a
+  Object.keys(r5ByRef).forEach(function(rk) {
+    var grp = r5ByRef[rk];
+    if (grp.length < 2) return;
+    if (!grp.some(function(r) { return !r.smoobu_id; })) return; // toutes ont smoobu_id → pas R5a
+    var tk = 'tech-ref:' + rk;
+    grp.forEach(function(r) {
+      techId2Key[r.id] = tk;
+      techId2Label[r.id] = 'Doublon technique — orphelin sans smoobu_id';
+    });
+  });
+  // R5b
+  Object.keys(r5BySid).forEach(function(sid) {
+    var grp = r5BySid[sid];
+    if (grp.length < 2) return;
+    if (grp.every(function(r) { return isFinDup(r); })) return; // déjà couvert par R1
+    var tk = 'tech-sid:' + sid;
+    grp.forEach(function(r) {
+      if (!techId2Key[r.id]) { // R5a prioritaire
+        techId2Key[r.id] = tk;
+        techId2Label[r.id] = 'Doublon technique — même Smoobu ID, types mixtes';
+      }
+    });
+  });
+  var techDups = DB.resa.filter(function(r) { return !!techId2Key[r.id]; });
+
   return { dups: dups, dupReasons: dupReasons, groupKey: groupKey,
-           smoobuCount: smoobuCount, refCount: refCount, r4Id2Key: r4Id2Key };
+           smoobuCount: smoobuCount, refCount: refCount, r4Id2Key: r4Id2Key,
+           techDups: techDups, techId2Key: techId2Key, techId2Label: techId2Label };
 }
 
 function renderDoublons() {
   var d = detectDups();
   var dups = d.dups, dupReasons = d.dupReasons, groupKey = d.groupKey, r4Id2Key = d.r4Id2Key || {};
+  var techDups = d.techDups || [], techId2Key = d.techId2Key || {}, techId2Label = d.techId2Label || {};
 
   // Nombre de groupes ignorés (toutes règles)
   var nbIgnored = Object.keys(DUP_IGNORED_GROUPS).length;
   set('dup-ignored-cnt', nbIgnored);
+  set('dup-tech-total', techDups.length);
   var btnClear = document.getElementById('btn-dup-clear-ignored');
   if (btnClear) btnClear.style.display = (nbIgnored > 0 && ROLE === 'admin') ? '' : 'none';
 
@@ -4830,25 +4883,38 @@ function renderDoublons() {
   set('dup-grp', nbGroups);
   set('dup-net', fmtE(netImpact));
 
-  // Badge sidebar
+  // Badge sidebar — somme doublons financiers + techniques
   var badge = document.getElementById('dup-badge');
   if(badge) {
-    if(dups.length > 0) { badge.textContent = dups.length; badge.classList.remove('hidden'); }
+    var badgeTotal = dups.length + techDups.length;
+    if(badgeTotal > 0) { badge.textContent = badgeTotal; badge.classList.remove('hidden'); }
     else badge.classList.add('hidden');
   }
 
   var tb = document.getElementById('dup-tb'), em = document.getElementById('dup-em');
   var cardsCont = document.getElementById('dup-cards');
   var mobile = isMobile();
-  if(!dups.length){
+
+  // État vide total : aucun doublon financier NI technique
+  if(!dups.length && !techDups.length){
     if(tb) tb.innerHTML='';
     var emMsg = '<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">✅</div>Aucun doublon détecté'+(nbIgnored?' <span style="font-size:11px;color:var(--tm);display:block;margin-top:6px">'+nbIgnored+' groupe'+(nbIgnored>1?'s':'')+' ignoré'+(nbIgnored>1?'s':'')+' — <a href="#" onclick="clearDupIgnored();return false" style="color:var(--bl)">réafficher</a></span>':'')+'</div>';
     if(cardsCont) cardsCont.innerHTML=emMsg;
     em.classList.remove('hidden');
+    var techSecE = document.getElementById('dup-tech-section');
+    if(techSecE) techSecE.innerHTML='';
     set('dup-pgbar','');
     DUP_SEL={}; updateDupSelBar(); return;
   }
-  em.classList.add('hidden');
+
+  // Doublons financiers : table / cartes
+  if(!dups.length) {
+    if(tb) tb.innerHTML='';
+    if(cardsCont) cardsCont.innerHTML='<div style="color:var(--tm);font-size:12px;padding:10px 0">Aucun doublon financier</div>';
+    em.classList.remove('hidden');
+  } else {
+    em.classList.add('hidden');
+  }
   var totalFiltered=dups.length;
   var totalPages=Math.max(1,Math.ceil(totalFiltered/DUP_PER));
   if(DUP_PAGE>totalPages) DUP_PAGE=totalPages;
@@ -4878,60 +4944,138 @@ function renderDoublons() {
     return '<button class="ba ba-ghost" style="padding:2px 6px;font-size:10px;color:var(--tm);margin-left:4px" onclick="ignoreDupGroup(this.dataset.gk)" data-gk="'+safeGk+'" title="Ce n\'est pas un doublon">🚫</button>';
   }
 
-  if(mobile) {
-    if(cardsCont) cardsCont.innerHTML=pageRows.map(function(r){
-      var checked=DUP_SEL[r.id]?' checked':'';
-      return '<div class="r-card r-card-ann">'+
-        '<div class="r-card-row1">'+
-          '<label class="r-card-chk"><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></label>'+
-          reasonChip(r.id)+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm);flex:1;overflow:hidden;text-overflow:ellipsis;margin-left:6px">'+(r.ref||'—')+'</span>'+
-          chip(r.statut||'',stClass(r.statut||''))+
-        '</div>'+
-        '<div class="r-card-row2">'+
-          '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
-          chip(r.source||'',srcClass(r.source||''))+
-          chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+
-        '</div>'+
-        '<div style="font-size:13px;color:var(--tm)">'+(r.voyageur||'—')+'</div>'+
-        '<div class="r-card-row3">'+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--td)">'+(r.checkin||'—')+'</span>'+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.brut||0)+' EUR</span>'+
-          '<span class="r-card-net">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</span>'+
-          '<div class="r-card-acts">'+actBtns('resa',r.id)+ignoreBtn(r)+'</div>'+
-        '</div>'+
-      '</div>';
-    }).join('');
-  } else {
-    if(cardsCont) cardsCont.innerHTML='';
-    tb.innerHTML = pageRows.map(function(r) {
-      var checked=DUP_SEL[r.id]?' checked':'';
-      return '<tr>'+
-        '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></td>'+
-        '<td>'+reasonChip(r.id)+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--td)">'+(r.smoobu_id||'—')+'</td>'+
-        '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
-        '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
-        '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
-        '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+(r.checkin||'—')+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tx)">'+(r.brut||0)+' EUR</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.date_paiement||'—')+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
-        '<td>'+chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+'</td>'+
-        '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
-        '<td>'+actBtns('resa',r.id)+ignoreBtn(r)+'</td>'+
-        '</tr>';
-    }).join('');
-    var allChk=document.getElementById('dup-chk-all');
-    if(allChk){var visIds=window._DUP_VISIBLE_IDS||[];var allSel=visIds.length>0&&visIds.every(function(id){return DUP_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return DUP_SEL[id];});}
+  // Rendu financier — conditionnel pour préserver le message "Aucun doublon financier"
+  if(dups.length) {
+    if(mobile) {
+      if(cardsCont) cardsCont.innerHTML=pageRows.map(function(r){
+        var checked=DUP_SEL[r.id]?' checked':'';
+        return '<div class="r-card r-card-ann">'+
+          '<div class="r-card-row1">'+
+            '<label class="r-card-chk"><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></label>'+
+            reasonChip(r.id)+
+            '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm);flex:1;overflow:hidden;text-overflow:ellipsis;margin-left:6px">'+(r.ref||'—')+'</span>'+
+            chip(r.statut||'',stClass(r.statut||''))+
+          '</div>'+
+          '<div class="r-card-row2">'+
+            '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
+            chip(r.source||'',srcClass(r.source||''))+
+            chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+
+          '</div>'+
+          '<div style="font-size:13px;color:var(--tm)">'+(r.voyageur||'—')+'</div>'+
+          '<div class="r-card-row3">'+
+            '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--td)">'+(r.checkin||'—')+'</span>'+
+            '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm)">'+(r.brut||0)+' EUR</span>'+
+            '<span class="r-card-net">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</span>'+
+            '<div class="r-card-acts">'+actBtns('resa',r.id)+ignoreBtn(r)+'</div>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+    } else {
+      if(cardsCont) cardsCont.innerHTML='';
+      tb.innerHTML = pageRows.map(function(r) {
+        var checked=DUP_SEL[r.id]?' checked':'';
+        return '<tr>'+
+          '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></td>'+
+          '<td>'+reasonChip(r.id)+'</td>'+
+          '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
+          '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--td)">'+(r.smoobu_id||'—')+'</td>'+
+          '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+          '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
+          '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
+          '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+(r.checkin||'—')+'</td>'+
+          '<td style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tx)">'+(r.brut||0)+' EUR</td>'+
+          '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.date_paiement||'—')+'</td>'+
+          '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+e2m(r.net||0).toLocaleString('fr-MA')+' MAD</td>'+
+          '<td>'+chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+'</td>'+
+          '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+          '<td>'+actBtns('resa',r.id)+ignoreBtn(r)+'</td>'+
+          '</tr>';
+      }).join('');
+      var allChk=document.getElementById('dup-chk-all');
+      if(allChk){var visIds=window._DUP_VISIBLE_IDS||[];var allSel=visIds.length>0&&visIds.every(function(id){return DUP_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return DUP_SEL[id];});}
+    }
   }
   mkPgBar(totalFiltered,pageRows.length,DUP_PER,DUP_PAGE,'dupPage','dupPer','dup-pgbar');
+
+  // ── Section doublons techniques (R5) ─────────────────────────────────────
+  window._DUP_TECH_IDS = techDups.map(function(r) { return r.id; });
+  var techSec = document.getElementById('dup-tech-section');
+  if (techSec) {
+    if (!techDups.length) {
+      techSec.innerHTML = '';
+    } else {
+      var techTableRows = techDups.map(function(r) {
+        var checked = DUP_SEL[r.id] ? ' checked' : '';
+        var lbl = techId2Label[r.id] || 'Doublon technique';
+        var hasS = !!r.smoobu_id;
+        var chip_tech = '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(200,119,58,.13);color:var(--or);white-space:nowrap">'+escHtml(lbl)+'</span>';
+        if (mobile) {
+          return '<div class="r-card r-card-ann">'+
+            '<div class="r-card-row1">'+
+              '<label class="r-card-chk"><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></label>'+
+              chip_tech+
+              '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--tm);flex:1;overflow:hidden;text-overflow:ellipsis;margin-left:6px">'+(r.ref||'—')+'</span>'+
+            '</div>'+
+            '<div class="r-card-row2">'+
+              '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
+              chip(r.source||'',srcClass(r.source||''))+
+              chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+
+              (hasS?'':'<span style="font-size:10px;color:var(--or);margin-left:4px">⚠️ sans smoobu_id</span>')+
+            '</div>'+
+            '<div style="font-size:13px;color:var(--tm)">'+(r.voyageur||'—')+'</div>'+
+            '<div class="r-card-row3">'+
+              '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--td)">'+(r.checkin||'—')+'</span>'+
+              '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
+            '</div>'+
+          '</div>';
+        } else {
+          return '<tr>'+
+            '<td><input type="checkbox" class="rcb" data-id="'+r.id+'"'+checked+' onchange="toggleDupSel(\''+r.id+'\',this.checked)"></td>'+
+            '<td>'+chip_tech+'</td>'+
+            '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--tm)">'+(r.ref||'—')+'</td>'+
+            '<td style="font-family:\'DM Mono\',monospace;font-size:10px;color:'+(hasS?'var(--td)':'var(--or)')+'">'+
+              (r.smoobu_id ? escHtml(r.smoobu_id) : '<em style="color:var(--or)">aucun ⚠️</em>')+'</td>'+
+            '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
+            '<td>'+chip(r.source||'',srcClass(r.source||''))+'</td>'+
+            '<td style="font-size:12px;color:var(--tm)">'+(r.voyageur||'—')+'</td>'+
+            '<td style="font-size:11px;font-family:\'DM Mono\',monospace">'+(r.checkin||'—')+'</td>'+
+            '<td>'+chip(r.type_norm||'',r.type_norm==='ANNULATION_NON_PAYEE'?'ann':'att')+'</td>'+
+            '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
+            '<td>'+actBtns('resa',r.id)+'</td>'+
+          '</tr>';
+        }
+      }).join('');
+
+      var techContent = mobile
+        ? '<div class="dup-cards">'+techTableRows+'</div>'
+        : '<div class="tw"><table>'+
+            '<thead><tr>'+
+              '<th style="width:32px"><input type="checkbox" class="rcb" id="dup-tech-chk-all" onchange="toggleDupTechAll(this.checked)" title="Tout sélectionner"></th>'+
+              '<th>Type détecté</th><th>Réf. plateforme</th><th>Smoobu ID</th><th>Appart</th><th>Source</th><th>Voyageur</th><th>Check-in</th><th>Type norm</th><th>Statut</th><th></th>'+
+            '</tr></thead>'+
+            '<tbody>'+techTableRows+'</tbody>'+
+          '</table></div>';
+
+      techSec.innerHTML =
+        '<div style="margin:22px 0 10px;display:flex;align-items:center;gap:10px">'+
+          '<div style="flex:1;height:1px;background:var(--br)"></div>'+
+          '<span style="font-size:12px;font-weight:700;color:var(--or);white-space:nowrap">🔧 Doublons techniques · '+techDups.length+' entrée'+(techDups.length>1?'s':'')+'</span>'+
+          '<div style="flex:1;height:1px;background:var(--br)"></div>'+
+        '</div>'+
+        '<div style="background:var(--s);border:1px solid rgba(200,119,58,.4);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--tm)">'+
+          '⚙️ Ligne(s) sans <code style="background:var(--s2);padding:1px 4px;border-radius:3px;font-size:11px">smoobu_id</code> coexistant avec une ligne issue de la sync API. '+
+          'Impact financier nul. Supprimer la ligne orpheline <em>(sans smoobu_id)</em> ou la ligne en doublon.'+
+        '</div>'+
+        techContent;
+    }
+  }
+
   updateDupSelBar();
 }
 
 function updateDupBadge() {
-  var cnt = detectDups().dups.length;
+  var d = detectDups();
+  var cnt = d.dups.length + (d.techDups || []).length;
   var badge = document.getElementById('dup-badge');
   if(badge) {
     if(cnt>0){ badge.textContent=cnt; badge.classList.remove('hidden'); }
@@ -4959,6 +5103,14 @@ function toggleDupAll(checked) {
   var visIds = window._DUP_VISIBLE_IDS||[];
   visIds.forEach(function(id){ if(checked) DUP_SEL[id]=true; else delete DUP_SEL[id]; });
   document.querySelectorAll('#dup-tb input[type=checkbox], #dup-cards input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateDupSelBar();
+}
+
+// Sélectionner / désélectionner tous les doublons techniques (R5)
+function toggleDupTechAll(checked) {
+  var ids = window._DUP_TECH_IDS || [];
+  ids.forEach(function(id){ if(checked) DUP_SEL[id]=true; else delete DUP_SEL[id]; });
+  document.querySelectorAll('#dup-tech-section input[type=checkbox]').forEach(function(cb){ cb.checked=checked; });
   updateDupSelBar();
 }
 

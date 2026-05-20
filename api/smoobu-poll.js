@@ -485,10 +485,58 @@ export default async function handler(req, res) {
       const rec = existingMap[smoobuId];
 
       if (!rec) {
-        // ── A. Nouvelle réservation → INSERT ──
-        await sbUpsert('resa', { ...mapped, id: uid() });
-        stats.upserted++;
-        console.log(`[poll] INSERT ${smoobuId}`);
+        // ── A. smoobu_id inconnu — fallback orphelin avant INSERT ──
+        // Chercher une ligne saisie manuellement (smoobu_id=null) avec même ref+appart+checkin.
+        // But : rattacher le smoobu_id plutôt que de créer un doublon technique.
+        let orphan = null;
+        if (mapped.ref && mapped.appart && mapped.checkin && !/^\d+$/.test(mapped.ref)) {
+          try {
+            const orphanRes = await sbGet(
+              `resa?ref=eq.${encodeURIComponent(mapped.ref)}&appart=eq.${encodeURIComponent(mapped.appart)}&checkin=eq.${encodeURIComponent(mapped.checkin)}&smoobu_id=is.null&limit=1&select=id,override_manual,type_norm`
+            );
+            orphan = Array.isArray(orphanRes) && orphanRes.length > 0 ? orphanRes[0] : null;
+          } catch (err) {
+            console.log(`[poll] WARN fallback lookup ${smoobuId}:`, err.message);
+          }
+        }
+
+        if (orphan) {
+          // ── A-ATTACH : rattacher smoobu_id à la ligne orpheline ──
+          const attachPatch = { smoobu_id: smoobuId };
+          if (orphan.override_manual) {
+            // Ligne verrouillée → calendaire + smoobu_id uniquement (finances protégées)
+            attachPatch.checkin      = mapped.checkin;
+            attachPatch.checkout     = mapped.checkout || null;
+            attachPatch.adults       = mapped.adults;
+            attachPatch.children     = mapped.children;
+            attachPatch.nb_personnes = mapped.nb_personnes;
+          } else if (datesOnly) {
+            // Mode datesOnly → dates + smoobu_id, finances inchangées
+            attachPatch.checkin       = mapped.checkin;
+            attachPatch.checkout      = mapped.checkout || null;
+            attachPatch.voyageur      = mapped.voyageur;
+            attachPatch.adults        = mapped.adults;
+            attachPatch.children      = mapped.children;
+            attachPatch.nb_personnes  = mapped.nb_personnes;
+            attachPatch.appart        = mapped.appart;
+            attachPatch.source        = mapped.source;
+            attachPatch.date_paiement = mapped.date_paiement;
+            attachPatch.mois_kpi      = mapped.mois_kpi;
+            attachPatch.statut        = mapped.statut;
+          } else {
+            // Mise à jour complète + smoobu_id (override_manual jamais transmis par poll)
+            const { id: _id, override_manual: _om, ...rest } = mapped;
+            Object.assign(attachPatch, rest);
+          }
+          await sbPatch('resa', orphan.id, attachPatch);
+          stats.upserted++;
+          console.log(`[poll] ORPHAN ATTACHED ${smoobuId} → id:${orphan.id} | protected:${!!orphan.override_manual}`);
+        } else {
+          // ── A-INSERT : vraiment nouvelle réservation ──
+          await sbUpsert('resa', { ...mapped, id: uid() });
+          stats.upserted++;
+          console.log(`[poll] INSERT ${smoobuId}`);
+        }
 
       } else if (rec.override_manual) {
         // ── B. Verrouillé → UPDATE calendaire uniquement ──

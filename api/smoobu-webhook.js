@@ -50,6 +50,42 @@ async function upsertResa(supabase, entry) {
 
   if (fetchErr) throw fetchErr;
 
+  // ── Fallback orphelin : si aucun match par smoobu_id, chercher une ligne saisie
+  // manuellement (smoobu_id=null) correspondant à ref + appart + checkin.
+  // But : éviter l'INSERT d'un doublon technique et rattacher le smoobu_id à la place.
+  if (!existing && entry.ref && entry.appart && entry.checkin) {
+    const { data: orphan, error: orphErr } = await supabase
+      .from('resa')
+      .select('id, override_manual, type_norm')
+      .eq('ref', entry.ref)
+      .eq('appart', entry.appart)
+      .eq('checkin', entry.checkin)
+      .is('smoobu_id', null)
+      .limit(1)
+      .maybeSingle();
+
+    if (!orphErr && orphan) {
+      // Rattachement technique du smoobu_id à la ligne orpheline existante.
+      // override_manual=true → calendaire + smoobu_id uniquement (finances protégées).
+      // override_manual=false → mise à jour complète + smoobu_id.
+      const attachPatch = { smoobu_id: sid };
+      if (orphan.override_manual) {
+        attachPatch.checkin      = entry.checkin;
+        attachPatch.checkout     = entry.checkout;
+        attachPatch.adults       = entry.adults;
+        attachPatch.children     = entry.children;
+        attachPatch.nb_personnes = entry.nb_personnes;
+      } else {
+        Object.assign(attachPatch, stripMeta(entry));
+      }
+      const { error: attachErr } = await supabase
+        .from('resa').update(attachPatch).eq('id', orphan.id);
+      if (attachErr) throw attachErr;
+      console.log(`[webhook] ORPHAN ATTACHED smoobu_id:${sid} → id:${orphan.id} | ref:${entry.ref} | protected:${!!orphan.override_manual}`);
+      return { ok: true, ref: entry.ref, type: entry.type_norm, orphan_attached: true, protected: !!orphan.override_manual };
+    }
+  }
+
   if (existing && existing.override_manual) {
     // 2. Verrouillé → UPDATE calendaire uniquement
     // RÈGLE ABSOLUE : si override_manual=true, seules les dates et le
