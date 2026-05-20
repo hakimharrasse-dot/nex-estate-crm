@@ -619,13 +619,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 
   <div class="kg">
-    <div class="kc"><div class="kl">CA encaissé</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="ks" id="d-net-att" style="color:var(--or)"></div><div class="kd" id="d-delta-net"></div></div>
-    <div class="kc" id="kc-res"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
+    <div class="kc"><div class="kl" id="d-kl-net">CA encaissé</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="ks" id="d-net-att" style="color:var(--or)"></div><div class="kd" id="d-delta-net"></div></div>
+    <div class="kc" id="kc-res"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks" id="d-ks-res">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
     <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div><div class="kd" id="d-delta-occ2"></div></div>
-    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
+    <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks" id="d-ks-adr">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="d-com">0 MAD</div></div>
+    <div class="kc" id="d-kc-com"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="d-com">0 MAD</div></div>
     <div class="kc" id="kc-dep"><div class="kl">Dépenses business</div><div class="kv" style="color:var(--or)" id="d-dep">0 MAD</div></div>
     <div class="kc"><div class="kl">RevPAN</div><div class="kv" style="color:var(--pu)" id="d-revpan">0 MAD</div><div class="ks">Revenus nets / nuit dispo</div><div class="kd" id="d-delta-revpan"></div></div>
     <div class="kc" id="kc-marge"><div class="kl">Marge</div><div class="kv" style="color:var(--bl)" id="d-marge">0 %</div><div class="ks">Résultat / Revenus nets</div><div class="kd" id="d-delta-marge2"></div></div>
@@ -634,7 +634,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div style="display:flex;align-items:center;gap:8px;margin:10px 0 2px;flex-wrap:wrap">
     <span style="font-size:12px;color:var(--td);font-weight:500">Vue complémentaire :</span>
     <select id="d-vue-compl" class="fdt" style="font-size:12px;padding:3px 8px;height:28px" onchange="setVueCompl(this.value)">
-      <option value="">Aucun</option>
+      <option value="">Défaut</option>
       <option value="ca-conso">CA consommé par nuits</option>
     </select>
   </div>
@@ -673,7 +673,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <!-- Sparklines -->
   <div class="spark-row">
     <div class="spark-card">
-      <div class="spark-lbl">CA encaissé — 6 derniers mois</div>
+      <div class="spark-lbl" id="d-spark-net-lbl">CA encaissé — 6 derniers mois</div>
       <svg class="spark-svg" id="d-spark-net" viewBox="0 0 260 48" preserveAspectRatio="none"></svg>
       <div class="spark-axis" id="d-spark-net-ax"></div>
     </div>
@@ -3193,25 +3193,25 @@ function occupNightsBiz(appart, pStart, pEnd) {
 
 // ── CA consommé par nuits : même ratio que l'occupation, appliqué au montant net ──
 var CA_CONSO_TYPES = ['RESERVATION','RELOCATION','DIRECT','ANNULATION_PAYEE'];
-function sumCaConsomme(pStart, pEnd, appart) {
-  var netConso = 0, nuitsConsо = 0;
+function sumCaConsomme(pStart, pEnd, appart, source) {
+  var netConso = 0, nuitsConso = 0;
   DB.resa.forEach(function(r) {
     if (CA_CONSO_TYPES.indexOf(r.type_norm) < 0) return;
     if (appart && r.appart !== appart) return;
+    if (source && r.source !== source) return;
     if (!r.checkin || !r.checkout) return;
     var overlap = nightsInPeriod(r.checkin, r.checkout, pStart, pEnd);
     if (overlap <= 0) return;
     var totalN = diffNuits(r.checkin, r.checkout);
     if (totalN <= 0) return;
     netConso  += rNetMAD(r) * overlap / totalN;
-    nuitsConsо += overlap;
+    nuitsConso += overlap;
   });
-  return { net: netConso, nuits: nuitsConsо };
+  return { net: netConso, nuits: nuitsConso };
 }
 function setVueCompl(v) {
   DASH_VUE_COMPL = v;
-  var el = document.getElementById('d-compl-block');
-  if (el) el.style.display = v ? '' : 'none';
+  renderDash();
 }
 
 // pBounds={start,end} optionnel pour occupation nuit/nuit ; appart optionnel pour filtre
@@ -3308,12 +3308,8 @@ function renderDash() {
   drawCircle('d-svg-marge', Math.max(0,cur.marge), 'var(--or)');
   set('d-circ-marge', Math.round(cur.marge)+' %');
 
-  // ── Vue complémentaire : CA consommé par nuits ──
+  // ── CA consommé par nuits — calcul partagé (utilisé par Mode 2) ──
   var cc = sumCaConsomme(pb.start, pb.end, fa||null);
-  set('d-ca-conso', fmt(cc.net));
-  set('d-ca-conso-det', Math.round(cc.nuits) + ' nuits réparties sur la période');
-  var complEl = document.getElementById('d-compl-block');
-  if (complEl) complEl.style.display = DASH_VUE_COMPL ? '' : 'none';
 
   // ── Calcul période précédente ──
   var prevRes=[], prevBiz=[], prevJours=joursDispo, prevLbl='préc.', prevBounds=null;
@@ -3479,6 +3475,94 @@ function renderDash() {
     var n=sumNetMAD(x);
     return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
+
+  // ── Mode 2 : CA consommé par nuits — vue analytique alternative ──
+  if (DASH_VUE_COMPL === 'ca-conso') {
+    var cc2res = cc.net - cur.dep;
+    var cc2adr = cur.nuitsSej > 0 ? cc.net / cur.nuitsSej : 0;
+    var cc2rvp = joursDispo > 0 ? cc.net / joursDispo : 0;
+    var cc2mar = cc.net > 0 ? cc2res / cc.net * 100 : 0;
+    // ── KPI principaux ──
+    set('d-kl-net', 'CA consommé 📐');
+    set('d-net', fmt(cc.net));
+    set('d-brut', '');
+    set('d-net-att', '');
+    set('d-delta-net', '');
+    set('d-res', fmt(cc2res));
+    set('d-ks-res', 'CA consommé − Dépenses business');
+    set('d-delta-res', '');
+    set('d-adr', fmt(cc2adr));
+    set('d-ks-adr', 'Prix moyen / nuit occupée');
+    set('d-delta-adr', '');
+    set('d-revpan', fmt(cc2rvp));
+    set('d-delta-revpan', '');
+    set('d-marge', Math.round(cc2mar) + ' %');
+    set('d-delta-marge2', '');
+    drawCircle('d-svg-marge', Math.max(0, cc2mar), 'var(--or)');
+    set('d-circ-marge', Math.round(cc2mar) + ' %');
+    set('d-delta-marge', '');
+    // ── Commissions masquées (pas de proratisation définie) ──
+    var comEl = document.getElementById('d-kc-com');
+    if (comEl) comEl.style.display = 'none';
+    // ── Sparkline CA consommé (6 mois) ──
+    var sp2 = [];
+    for (var sm2 = 5; sm2 >= 0; sm2--) {
+      var sm2d = new Date(); sm2d.setDate(1); sm2d.setMonth(sm2d.getMonth() - sm2);
+      var sm2y = sm2d.getFullYear(), sm2m = sm2d.getMonth();
+      var sm2s = sm2y + '-' + String(sm2m + 1).padStart(2, '0') + '-01';
+      var sm2e = new Date(Date.UTC(sm2y, sm2m + 1, 1)).toISOString().slice(0, 10);
+      sp2.push(sumCaConsomme(sm2s, sm2e, fa || null).net);
+    }
+    drawSparkline('d-spark-net', sp2, '#4caf7d');
+    set('d-spark-net-lbl', 'CA consommé — 6 derniers mois');
+    // ── Décisions rapides (CA consommé par appart et source) ──
+    var apCc = getAppartsForPeriod('d').map(function(ap) {
+      return { ap: ap, n: sumCaConsomme(pb.start, pb.end, ap).net };
+    }).sort(function(a, b) { return b.n - a.n; });
+    var srcCc = ['Airbnb','Booking.com','Direct','VRBO'].map(function(s) {
+      return { s: s, n: sumCaConsomme(pb.start, pb.end, fa||null, s).net };
+    }).filter(function(x) { return x.n > 0; }).sort(function(a, b) { return b.n - a.n; });
+    set('d-decisions',
+      (apCc[0]&&apCc[0].n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(apCc[0].ap)+'</div><div class="dec-sub">'+fmt(apCc[0].n)+'</div></div>':'')+
+      (srcCc[0]?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+srcCc[0].s+'</div><div class="dec-sub">'+fmt(srcCc[0].n)+'</div></div>':'')
+    );
+    // ── Performance par appartement (CA consommé) ──
+    set('d-recap-ap', getAppartsForPeriod('d').map(function(ap) {
+      var apCcNet = sumCaConsomme(pb.start, pb.end, ap).net;
+      var apNuits2 = pb.start ? occupNightsBiz(ap, pb.start, pb.end) : 0;
+      var apOcc2 = perf_days > 0 ? apNuits2 / perf_days * 100 : 0;
+      var badge, bdgCls;
+      if (apCcNet===0&&apNuits2===0){badge='—';bdgCls='';}
+      else if (apOcc2>=60){badge='🟢 Bon';bdgCls='badge-bon';}
+      else if (apOcc2>=35){badge='🟠 Moyen';bdgCls='badge-moyen';}
+      else{badge='🔴 Faible';bdgCls='badge-faible';}
+      var apEsc = ap.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return '<div class="ap-perf-card">'+
+        '<div class="ap-perf-top">'+
+          '<div class="ap-perf-name">'+aptShort(ap)+'</div>'+
+          (bdgCls?'<span class="ap-perf-badge '+bdgCls+'">'+badge+'</span>':'<span style="font-size:11px;color:var(--td)">—</span>')+
+        '</div>'+
+        '<div class="ap-perf-net">'+fmt(apCcNet)+'</div>'+
+        '<div class="ap-perf-occ">'+(apOcc2>0?Math.round(apOcc2)+'% · '+Math.round(apNuits2)+'/'+perf_days+' nuits':'Aucun séjour')+'</div>'+
+        '<button onclick="auditOccupUI(\''+apEsc+'\')" style="font-size:10px;background:none;border:none;color:var(--tm);cursor:pointer;padding:2px 0;text-align:left;margin-top:2px">🔍 voir détail</button>'+
+      '</div>';
+    }).join(''));
+    // ── Répartition par source (CA consommé, nuits en sous-ligne) ──
+    set('d-recap-src', ['Airbnb','Booking.com','Direct','VRBO'].map(function(src) {
+      var ccSrc = sumCaConsomme(pb.start, pb.end, fa||null, src);
+      if (!ccSrc.net) return '';
+      return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+Math.round(ccSrc.nuits)+' nuits</div></div><div class="rv" style="color:var(--or)">'+fmt(ccSrc.net)+'</div></div>';
+    }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
+
+  } else {
+    // ── Mode Défaut : restaure les labels si retour depuis Mode 2 ──
+    set('d-kl-net', 'CA encaissé');
+    set('d-ks-res', 'Revenus nets − Dépenses business');
+    set('d-ks-adr', 'Prix moyen / nuit facturée');
+    set('d-spark-net-lbl', 'CA encaissé — 6 derniers mois');
+    var comEl2 = document.getElementById('d-kc-com');
+    if (comEl2) comEl2.style.display = '';
+  }
 }
 
 function periodDays(k) {
