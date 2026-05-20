@@ -3252,8 +3252,10 @@ function renderDash() {
     if(r.cat==='Avance caisse'||r.cat==='Règlement terrain') return false;
     if(fa) return r.appart===fa&&r.scope!=='global'; return true;
   });
-  var joursDispo=periodDays('d')*nAp;
   var pb=periodBounds('d'); // bornes de la période pour calcul occupation nuit/nuit
+  // computeJoursDispo tient compte des date_debut/date_fin réelles de chaque logement.
+  // Quand fa est défini (appart unique sélectionné) → logement forcément actif, calcul simple.
+  var joursDispo = fa ? periodDays('d') : computeJoursDispo(pb.start, pb.end);
   var cur=computePeriodKPIs(allRes,bizRows,joursDispo,pb,fa||null);
   var _revPayeDash=allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
   var brutMad=_revPayeDash.reduce(function(s,r){return s+rBrutMAD(r);},0);
@@ -6877,6 +6879,27 @@ function getNbLogementsForPeriod(k) {
     }
   }
   return APPARTS.length;
+}
+
+// Calcule les jours-logement disponibles en tenant compte des dates réelles d'activité.
+// Résout le bug du dénominateur gonflé par les logements archivés sur une plage multi-mois :
+// ex. Studio Ocean (date_fin='2026-02-01') compte ~31 j sur Jan→Mai, pas 151.
+// pStart inclus, pEnd exclusif (convention periodBounds).
+function computeJoursDispo(pStart, pEnd) {
+  if (!DB.logements || DB.logements.length === 0) {
+    return diffNuits(pStart, pEnd) * APPARTS.length;
+  }
+  var total = 0;
+  DB.logements.forEach(function(l) {
+    if (!l.date_debut) return;
+    var fin = l.actif ? '9999-12-31' : (l.date_fin || null);
+    if (fin === null) return; // archivé sans date_fin → exclu
+    // Intersection [date_debut, fin[ avec [pStart, pEnd[
+    var from = l.date_debut > pStart ? l.date_debut : pStart;
+    var to   = fin < pEnd ? fin : pEnd;
+    if (from < to) total += diffNuits(from, to);
+  });
+  return total || 1; // garde-fou : jamais 0
 }
 
 // Charge la vue v_logements_actifs_par_mois → DB.logements_par_mois dict
