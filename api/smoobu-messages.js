@@ -190,8 +190,14 @@ function extractSmoobuMessageId(msg) {
 }
 
 // ── Détecter si un message vient du voyageur ─────────────────
+// Smoobu peut renvoyer type/sender comme string, number ou objet
 function isGuestMessage(msg) {
-  const sender = (msg.type || msg.sender || msg.from || msg.role || '').toLowerCase();
+  var candidate = msg.type || msg.sender || msg.from || msg.role;
+  // Si c'est un objet (ex: { id: 1, type: "guest" }), extraire le champ type/role
+  if (candidate && typeof candidate === 'object') {
+    candidate = candidate.type || candidate.role || candidate.name || '';
+  }
+  var sender = String(candidate == null ? '' : candidate).toLowerCase();
   return sender === 'guest' || sender === 'traveler' || sender === 'traveller';
 }
 
@@ -321,6 +327,11 @@ export default async function handler(req, res) {
       msgData?.data     ||
       (Array.isArray(msgData) ? msgData : [])
     );
+
+    // Log diagnostic : structure du premier message Smoobu (pour debug format)
+    if (allMessages.length > 0) {
+      console.log('[messages] nb_msgs:', allMessages.length, '| msg[0]:', JSON.stringify(allMessages[0]).slice(0, 400));
+    }
 
     // Trouver le dernier message du voyageur
     const guestMessages = allMessages.filter(isGuestMessage);
