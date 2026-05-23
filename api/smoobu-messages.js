@@ -244,18 +244,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages' });
   }
 
-  // ── Debug temporaire : voir le format raw Smoobu messages ─
-  // GET ?debug_booking=ID → retourne les messages bruts (à supprimer après diagnostic)
-  if (req.method === 'GET' && req.query?.debug_booking) {
-    if (!SMOOBU_KEY) return res.status(500).json({ error: 'SMOOBU_API_KEY manquante' });
-    try {
-      const raw = await getSmoobuMessages(req.query.debug_booking);
-      const all = raw?.messages || raw?.data || (Array.isArray(raw) ? raw : []);
-      return res.status(200).json({ count: all.length, first3: all.slice(0, 3), raw_keys: all[0] ? Object.keys(all[0]) : [] });
-    } catch (e) {
-      return res.status(500).json({ error: e.message });
-    }
-  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
