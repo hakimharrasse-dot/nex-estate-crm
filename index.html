@@ -10796,19 +10796,51 @@ async function renderMessages() {
     html += '</div>';
 
     if (!isError) {
-      // ── Message voyageur ──────────────────────────────────
+      // ── 1. Résumé en français (priorité) ──────────────────
+      if (m.client_summary_fr) {
+        html += '<div style="margin-bottom:12px;background:rgba(90,159,212,.08);border:1px solid rgba(90,159,212,.3);border-radius:8px;padding:10px 12px">';
+        html += '<div style="font-size:10px;font-weight:700;color:var(--bl);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Résumé en français</div>';
+        html += '<div style="font-size:13px;color:var(--tx);line-height:1.5">' + escHtml(m.client_summary_fr) + '</div>';
+        html += '</div>';
+      }
+
+      // ── 2. Message original (inline si FR/AR, toggle sinon) ──
+      var isFrOrAr = m.detected_language === 'fr' || m.detected_language === 'ar' || !m.detected_language;
       html += '<div style="margin-bottom:12px">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
-      html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+      if (isFrOrAr) {
+        html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
+        html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+      } else {
+        html += '<button id="orig-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgToggleOriginal(\'' + m.id + '\')">▼ Voir message original</button>';
+        html += '<div id="orig-' + m.id + '" style="display:none;margin-top:8px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+      }
       html += '</div>';
 
-      // ── Brouillon IA ───────────────────────────────────────
-      html += '<div style="margin-bottom:14px">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Brouillon IA — modifiable</div>';
+      // ── 3. Réponse proposée (dans la langue du client) ────
+      html += '<div style="margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">';
+      html += 'Réponse proposée <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(dans la langue du client)</span></div>';
       html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Brouillon IA non disponible — rédigez votre réponse ici avant d\'envoyer." style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
       html += '</div>';
 
-      // ── Actions ───────────────────────────────────────────
+      // ── 4. Traduction française de la réponse (Hakim only) ──
+      var hasDraftFr = !!m.ai_draft_fr;
+      html += '<div id="draft-fr-section-' + m.id + '" style="margin-bottom:12px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;' + (hasDraftFr ? '' : 'display:none') + '">';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">';
+      html += 'Traduction française de la réponse <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(ne sera pas envoyée)</span></div>';
+      html += '<div id="draft-fr-' + m.id + '" style="font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft_fr || '') + '</div>';
+      html += '</div>';
+
+      // ── 5 & 6. Instruction Hakim + Regénérer ──────────────
+      html += '<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px">';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--pu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Instruction Hakim</div>';
+      html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+      html += '<input id="instr-' + m.id + '" type="text" placeholder="ex : réponds plus court · demande le passeport · sois plus ferme · dis-lui qu\'il peut déposer les bagages à 12h30…" style="flex:1;min-width:180px;background:var(--s);border:1px solid var(--br);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--tx);font-family:inherit" value="' + escHtml(m.hakim_instruction || '') + '">';
+      html += '<button id="regen-btn-' + m.id + '" class="ba" style="background:var(--pu);color:#fff;border-color:var(--pu);white-space:nowrap;flex-shrink:0" onclick="msgRegenerate(\'' + m.id + '\')">🔄 Regénérer</button>';
+      html += '</div>';
+      html += '</div>';
+
+      // ── 7. Actions ────────────────────────────────────────
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
       html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
       html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
@@ -10895,6 +10927,55 @@ async function msgIgnore(messageId) {
   } catch (e) {
     if (card) card.style.opacity = '1';
     showToast('⚠ Erreur : ' + e.message);
+  }
+}
+
+function msgToggleOriginal(messageId) {
+  var el  = document.getElementById('orig-' + messageId);
+  var btn = document.getElementById('orig-btn-' + messageId);
+  if (!el) return;
+  var hidden = el.style.display === 'none';
+  el.style.display = hidden ? 'block' : 'none';
+  if (btn) btn.textContent = hidden ? '▲ Masquer le message original' : '▼ Voir message original';
+}
+
+async function msgRegenerate(messageId) {
+  var instrEl     = document.getElementById('instr-' + messageId);
+  var instruction = instrEl ? instrEl.value.trim() : '';
+  if (!instruction) {
+    showToast('⚠ Écrivez une instruction avant de regénérer.');
+    if (instrEl) instrEl.focus();
+    return;
+  }
+  var btn = document.getElementById('regen-btn-' + messageId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Génération…'; }
+
+  try {
+    var resp = await fetch('/api/smoobu-messages?regenerate=1', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message_id: messageId, hakim_instruction: instruction }),
+    });
+    var data;
+    try { data = await resp.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
+    if (!resp.ok || data.error) throw new Error(data.error || 'HTTP ' + resp.status);
+
+    // Mettre à jour la textarea avec le nouveau brouillon
+    var ta = document.getElementById('draft-' + messageId);
+    if (ta) ta.value = data.ai_draft || '';
+
+    // Mettre à jour la traduction française
+    var frEl      = document.getElementById('draft-fr-' + messageId);
+    var frSection = document.getElementById('draft-fr-section-' + messageId);
+    if (frEl) frEl.textContent = data.ai_draft_fr || '';
+    if (frSection) frSection.style.display = data.ai_draft_fr ? '' : 'none';
+
+    showToast('✅ Brouillon regénéré avec votre instruction.');
+  } catch (e) {
+    showToast('⚠ Erreur regénération : ' + e.message);
+    console.error('[messages] msgRegenerate error:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Regénérer'; }
   }
 }
 
