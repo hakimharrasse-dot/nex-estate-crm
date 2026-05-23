@@ -10805,7 +10805,7 @@ async function renderMessages() {
       // ── Brouillon IA ───────────────────────────────────────
       html += '<div style="margin-bottom:14px">';
       html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Brouillon IA — modifiable</div>';
-      html += '<textarea id="draft-' + m.id + '" rows="5" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
+      html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Brouillon IA non disponible — rédigez votre réponse ici avant d\'envoyer." style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
       html += '</div>';
 
       // ── Actions ───────────────────────────────────────────
