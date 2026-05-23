@@ -281,6 +281,24 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages', version: '2.0' });
   }
 
+  // ── Probe threads : GET ?threads=1 ────────────────────────
+  // Temporaire — permet d'explorer la structure GET /api/threads
+  // en production pour comprendre le format des messages pré-réservation.
+  if (req.method === 'GET' && req.query?.threads) {
+    if (!SMOOBU_KEY) return res.status(503).json({ error: 'SMOOBU_API_KEY manquante' });
+    try {
+      const page = req.query.page || 1;
+      const r = await fetch(`${SMOOBU_API}/threads?page_number=${page}&page_size=5`, {
+        headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
+      });
+      const raw = await r.text();
+      const data = raw ? JSON.parse(raw) : null;
+      return res.status(r.status).json({ smoobu_status: r.status, data });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
