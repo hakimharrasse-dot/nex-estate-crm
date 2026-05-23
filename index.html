@@ -10715,10 +10715,11 @@ var MSG_DATA = [];
 
 // Styles de classification (utilisés quand la colonne est renseignée)
 var MSG_CLASSIF = {
-  'simple':        { bg: 'rgba(76,175,125,.15)',  color: 'var(--gr)', label: 'Simple' },
-  'sensible':      { bg: 'rgba(200,119,58,.15)',  color: 'var(--or)', label: '⚠ Sensible' },
-  'conflit':       { bg: 'rgba(224,82,82,.15)',   color: 'var(--re)', label: '🚫 Conflit' },
-  'remboursement': { bg: 'rgba(90,159,212,.15)',  color: 'var(--bl)', label: 'Remboursement' },
+  'no_reply_needed': { bg: 'rgba(120,120,120,.1)', color: 'var(--td)', label: '💤 Sans réponse' },
+  'simple':          { bg: 'rgba(76,175,125,.15)',  color: 'var(--gr)', label: 'Simple' },
+  'sensible':        { bg: 'rgba(200,119,58,.15)',  color: 'var(--or)', label: '⚠ Sensible' },
+  'conflit':         { bg: 'rgba(224,82,82,.15)',   color: 'var(--re)', label: '🚫 Conflit' },
+  'remboursement':   { bg: 'rgba(90,159,212,.15)',  color: 'var(--bl)', label: 'Remboursement' },
 };
 
 async function renderMessages() {
@@ -10796,55 +10797,82 @@ async function renderMessages() {
     html += '</div>';
 
     if (!isError) {
-      // ── 1. Résumé en français (priorité) ──────────────────
-      if (m.client_summary_fr) {
-        html += '<div style="margin-bottom:12px;background:rgba(90,159,212,.08);border:1px solid rgba(90,159,212,.3);border-radius:8px;padding:10px 12px">';
-        html += '<div style="font-size:10px;font-weight:700;color:var(--bl);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Résumé en français</div>';
-        html += '<div style="font-size:13px;color:var(--tx);line-height:1.5">' + escHtml(m.client_summary_fr) + '</div>';
-        html += '</div>';
-      }
+      if (m.classification === 'no_reply_needed') {
+        // ── Carte "Sans réponse" — message trivial, pas de draft ──
 
-      // ── 2. Message original (inline si FR/AR, toggle sinon) ──
-      var isFrOrAr = m.detected_language === 'fr' || m.detected_language === 'ar' || !m.detected_language;
-      html += '<div style="margin-bottom:12px">';
-      if (isFrOrAr) {
+        // Message original (toujours visible, langue non importante)
+        html += '<div style="margin-bottom:12px">';
         html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
         html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+        html += '</div>';
+
+        // Bloc "Aucune réponse nécessaire"
+        html += '<div style="margin-bottom:12px;background:rgba(120,120,120,.06);border:1px solid rgba(120,120,120,.2);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">';
+        html += '<span style="font-size:22px;flex-shrink:0">💤</span>';
+        html += '<div>';
+        html += '<div style="font-size:12px;font-weight:700;color:var(--td)">Aucune réponse nécessaire</div>';
+        html += '<div style="font-size:11px;color:var(--tm);margin-top:3px">Message d\'accusé de réception ou de politesse — aucune action requise. Cliquez Ignorer pour archiver.</div>';
+        html += '</div></div>';
+
+        // Action unique : Ignorer
+        html += '<div style="display:flex;gap:8px">';
+        html += '<button class="ba ba-ghost" style="min-width:120px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
+        html += '</div>';
+
       } else {
-        html += '<button id="orig-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgToggleOriginal(\'' + m.id + '\')">▼ Voir message original</button>';
-        html += '<div id="orig-' + m.id + '" style="display:none;margin-top:8px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
-      }
-      html += '</div>';
+        // ── Carte normale — réponse IA requise ──
 
-      // ── 3. Réponse proposée (dans la langue du client) ────
-      html += '<div style="margin-bottom:10px">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">';
-      html += 'Réponse proposée <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(dans la langue du client)</span></div>';
-      html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Brouillon IA non disponible — rédigez votre réponse ici avant d\'envoyer." style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
-      html += '</div>';
+        // ── 1. Résumé en français (priorité) ──────────────────
+        if (m.client_summary_fr) {
+          html += '<div style="margin-bottom:12px;background:rgba(90,159,212,.08);border:1px solid rgba(90,159,212,.3);border-radius:8px;padding:10px 12px">';
+          html += '<div style="font-size:10px;font-weight:700;color:var(--bl);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Résumé en français</div>';
+          html += '<div style="font-size:13px;color:var(--tx);line-height:1.5">' + escHtml(m.client_summary_fr) + '</div>';
+          html += '</div>';
+        }
 
-      // ── 4. Traduction française de la réponse (Hakim only) ──
-      var hasDraftFr = !!m.ai_draft_fr;
-      html += '<div id="draft-fr-section-' + m.id + '" style="margin-bottom:12px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;' + (hasDraftFr ? '' : 'display:none') + '">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">';
-      html += 'Traduction française de la réponse <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(ne sera pas envoyée)</span></div>';
-      html += '<div id="draft-fr-' + m.id + '" style="font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft_fr || '') + '</div>';
-      html += '</div>';
+        // ── 2. Message original (inline si FR/AR, toggle sinon) ──
+        var isFrOrAr = m.detected_language === 'fr' || m.detected_language === 'ar' || !m.detected_language;
+        html += '<div style="margin-bottom:12px">';
+        if (isFrOrAr) {
+          html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
+          html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+        } else {
+          html += '<button id="orig-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgToggleOriginal(\'' + m.id + '\')">▼ Voir message original</button>';
+          html += '<div id="orig-' + m.id + '" style="display:none;margin-top:8px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+        }
+        html += '</div>';
 
-      // ── 5 & 6. Instruction Hakim + Regénérer ──────────────
-      html += '<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px">';
-      html += '<div style="font-size:10px;font-weight:700;color:var(--pu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Instruction Hakim</div>';
-      html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-      html += '<input id="instr-' + m.id + '" type="text" placeholder="ex : réponds plus court · demande le passeport · sois plus ferme · dis-lui qu\'il peut déposer les bagages à 12h30…" style="flex:1;min-width:180px;background:var(--s);border:1px solid var(--br);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--tx);font-family:inherit" value="' + escHtml(m.hakim_instruction || '') + '">';
-      html += '<button id="regen-btn-' + m.id + '" class="ba" style="background:var(--pu);color:#fff;border-color:var(--pu);white-space:nowrap;flex-shrink:0" onclick="msgRegenerate(\'' + m.id + '\')">🔄 Regénérer</button>';
-      html += '</div>';
-      html += '</div>';
+        // ── 3. Réponse proposée (dans la langue du client) ────
+        html += '<div style="margin-bottom:10px">';
+        html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">';
+        html += 'Réponse proposée <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(dans la langue du client)</span></div>';
+        html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Brouillon IA non disponible — rédigez votre réponse ici avant d\'envoyer." style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
+        html += '</div>';
 
-      // ── 7. Actions ────────────────────────────────────────
-      html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-      html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
-      html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
-      html += '</div>';
+        // ── 4. Traduction française de la réponse (Hakim only) ──
+        var hasDraftFr = !!m.ai_draft_fr;
+        html += '<div id="draft-fr-section-' + m.id + '" style="margin-bottom:12px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;' + (hasDraftFr ? '' : 'display:none') + '">';
+        html += '<div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">';
+        html += 'Traduction française de la réponse <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(ne sera pas envoyée)</span></div>';
+        html += '<div id="draft-fr-' + m.id + '" style="font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft_fr || '') + '</div>';
+        html += '</div>';
+
+        // ── 5 & 6. Instruction Hakim + Regénérer ──────────────
+        html += '<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px">';
+        html += '<div style="font-size:10px;font-weight:700;color:var(--pu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Instruction Hakim</div>';
+        html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+        html += '<input id="instr-' + m.id + '" type="text" placeholder="ex : réponds plus court · demande le passeport · sois plus ferme · dis-lui qu\'il peut déposer les bagages à 12h30…" style="flex:1;min-width:180px;background:var(--s);border:1px solid var(--br);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--tx);font-family:inherit" value="' + escHtml(m.hakim_instruction || '') + '">';
+        html += '<button id="regen-btn-' + m.id + '" class="ba" style="background:var(--pu);color:#fff;border-color:var(--pu);white-space:nowrap;flex-shrink:0" onclick="msgRegenerate(\'' + m.id + '\')">🔄 Regénérer</button>';
+        html += '</div>';
+        html += '</div>';
+
+        // ── 7. Actions ────────────────────────────────────────
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
+        html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
+        html += '</div>';
+
+      } // end else (carte normale)
     } else {
       // Carte erreur : seulement bouton Ignorer
       html += '<div style="display:flex;gap:8px">';

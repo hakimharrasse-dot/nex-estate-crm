@@ -108,6 +108,7 @@ async function generateFullAnalysis(ctx) {
     '- Si info manquante ou incertaine : écrire "je vérifie et reviens vers vous"\n' +
     '- Ne jamais confirmer définitivement sans vérification côté hôte\n\n' +
     'Règles pour classification :\n' +
+    '- "no_reply_needed" : message trivial sans action requise (merci, ok, bien reçu, emoji, confirmation sans question, j\'ai trouvé, à bientôt, bonne nuit, de rien, you\'re welcome) → ai_draft et ai_draft_fr doivent être des chaînes vides ""\n' +
     '- "simple" : demande standard, question, information\n' +
     '- "sensible" : invités non déclarés, couple non marié, avis négatif, plainte légère, demande inhabituelle\n' +
     '- "conflit" : situation clairement conflictuelle, menace, litige\n' +
@@ -160,13 +161,15 @@ async function generateFullAnalysis(ctx) {
 
   try {
     const parsed = JSON.parse(cleaned);
-    const allowed = ['simple', 'sensible', 'conflit', 'remboursement'];
+    const allowed = ['no_reply_needed', 'simple', 'sensible', 'conflit', 'remboursement'];
+    const classif = allowed.includes(parsed.classification) ? parsed.classification : 'simple';
     return {
       detected_language: String(parsed.detected_language || '').slice(0, 10).trim() || null,
       client_summary_fr: String(parsed.client_summary_fr || '').trim()              || null,
-      classification:    allowed.includes(parsed.classification) ? parsed.classification : 'simple',
-      ai_draft:          String(parsed.ai_draft   || '').trim()                     || null,
-      ai_draft_fr:       String(parsed.ai_draft_fr || '').trim()                    || null,
+      classification:    classif,
+      // Si no_reply_needed : pas de brouillon (Claude renvoie "" — on force null)
+      ai_draft:    classif === 'no_reply_needed' ? null : (String(parsed.ai_draft   || '').trim() || null),
+      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || null),
     };
   } catch (parseErr) {
     // Fallback si JSON invalide : retourner le texte brut comme ai_draft uniquement
@@ -246,6 +249,43 @@ function isGuestMessage(msg) {
          sender === 'received' || sender === 'customer';
 }
 
+// ── Détecte un message trivial ne nécessitant pas de réponse ──
+// Retourne true → classification no_reply_needed, Claude ignoré
+function isTrivialMessage(text) {
+  var t = (text || '').trim();
+  if (!t) return true;
+
+  // Message avec question → jamais trivial (réponse potentiellement requise)
+  if (t.indexOf('?') !== -1) return false;
+
+  var tl = t.toLowerCase();
+
+  // Mots-clés d'alerte → jamais trivial même si message court
+  var alertKeywords = [
+    'problème', 'problem', 'cassé', 'broken', 'sale', 'dirty', 'froid', 'cold',
+    'chaud', 'hot', 'bruit', 'noise', 'urgent', 'aide', 'help', 'manque',
+    'panne', 'erreur', 'error', 'pas reçu', "n'ai pas", 'ne marche', "doesn't work",
+    'annul', 'rembours', 'refund', 'cancel', 'plainte', 'complaint', 'dommage',
+  ];
+  if (alertKeywords.some(function(w) { return tl.indexOf(w) !== -1; })) return false;
+
+  // Court (≤ 30 chars) et sans alerte → très probablement trivial
+  if (tl.length <= 30) return true;
+
+  // Patterns triviaux connus au-delà de 30 chars
+  var trivialPatterns = [
+    /^(merci (beaucoup|infiniment|bien|mille fois|pour tout|pour (votre |ta )?(réponse|aide|message|retour|info|disponibilité)))[!.,\s🙏]*$/,
+    /^(thank you (so much|very much|for (your|the) (quick )?reply|for everything|for your help))[!.,\s]*$/,
+    /^(j'?ai (bien )?trouvé|found (it|the place|the apartment|your place))[!.,\s]*$/,
+    /^(à tout à l'heure|a tout (à )?l'heure|see you( (soon|later|then))?)[!.,\s]*$/,
+    /^(bonne (journée|soirée|nuit|route|continuation|fin de semaine))[!.,!\s]*$/,
+    /^(je vous en prie|no problem|no worries|pas de problème|pas de souci|c'est normal)[!.,\s]*$/,
+    /^(d'accord (pour|c'est|je serai|on se)[ \w]{0,25})[!.,\s]*$/,
+    /^(bien reçu[.,!]?\s*(merci)?)[!.,\s]*$/,
+  ];
+  return trivialPatterns.some(function(r) { return r.test(tl); });
+}
+
 // ── Générer un ID unique (même pattern que le CRM) ───────────
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -289,7 +329,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET' && req.query?.sync) {
     if (!SMOOBU_KEY) return res.status(503).json({ error: 'SMOOBU_API_KEY manquante' });
     try {
-      const hoursBack = Math.min(parseInt(req.query.hours || '24', 10) || 24, 72);
+      const hoursBack = Math.min(parseInt(req.query.hours || '48', 10) || 48, 48);
       const since = new Date(Date.now() - hoursBack * 3600 * 1000);
       console.log('[sync] démarrage — fenêtre:', hoursBack, 'h | since:', since.toISOString());
 
@@ -333,12 +373,28 @@ export default async function handler(req, res) {
           const msgData = await getSmoobuMessages(bookingId);
           const allMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
 
-          const guestMessages = allMessages.filter(function(m) {
-            return isGuestMessage(m) && extractMessageText(m).length > 0;
-          });
-          const lastMsg = guestMessages[guestMessages.length - 1];
-          if (!lastMsg) { skipped++; continue; }
+          // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC supposé)
+          let lastGuestIdx = -1;
+          for (let gi = allMessages.length - 1; gi >= 0; gi--) {
+            if (isGuestMessage(allMessages[gi]) && extractMessageText(allMessages[gi]).length > 0) {
+              lastGuestIdx = gi;
+              break;
+            }
+          }
+          if (lastGuestIdx === -1) { skipped++; continue; }
 
+          // ── FIX : vérifier si l'hôte a déjà répondu APRÈS le dernier message voyageur
+          // Si oui → conversation déjà traitée, on ne crée pas de ticket pending
+          const hostRepliedAfter = allMessages.slice(lastGuestIdx + 1).some(function(m) {
+            return !isGuestMessage(m) && extractMessageText(m).length > 0;
+          });
+          if (hostRepliedAfter) {
+            console.log('[sync] hôte a déjà répondu après voyageur — booking:', bookingId, '| skip');
+            skipped++;
+            continue;
+          }
+
+          const lastMsg         = allMessages[lastGuestIdx];
           const messageContent  = extractMessageText(lastMsg);
           const smoobuMessageId = extractSmoobuMessageId(lastMsg);
 
@@ -349,25 +405,38 @@ export default async function handler(req, res) {
           // Enrichir depuis resa CRM
           const resaCtx = await getResaContext(bookingId);
 
-          // Analyse IA complète (limitée à MAX_AI_PER_SYNC appels/run)
-          let analysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
-          if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
-            try {
-              analysis = await generateFullAnalysis({
-                appart:          resaCtx.appart   || appart,
-                voyageur:        resaCtx.voyageur || guestName,
-                checkin:         resaCtx.checkin  || '',
-                checkout:        resaCtx.checkout || '',
-                source:          resaCtx.source   || '',
-                message_content: messageContent,
-              });
-              aiUsed++;
-            } catch (claudeErr) {
-              console.error('[sync] Claude error booking', bookingId, ':', claudeErr.message);
-              analysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+          // ── Vérification message trivial (économise les tokens Claude)
+          const trivial = isTrivialMessage(messageContent);
+
+          // Analyse IA complète (limitée à MAX_AI_PER_SYNC appels/run, sautée si trivial)
+          let analysis = {
+            detected_language: null,
+            client_summary_fr: null,
+            classification:    trivial ? 'no_reply_needed' : null,
+            ai_draft:          null,
+            ai_draft_fr:       null,
+          };
+          if (!trivial) {
+            if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
+              try {
+                analysis = await generateFullAnalysis({
+                  appart:          resaCtx.appart   || appart,
+                  voyageur:        resaCtx.voyageur || guestName,
+                  checkin:         resaCtx.checkin  || '',
+                  checkout:        resaCtx.checkout || '',
+                  source:          resaCtx.source   || '',
+                  message_content: messageContent,
+                });
+                aiUsed++;
+              } catch (claudeErr) {
+                console.error('[sync] Claude error booking', bookingId, ':', claudeErr.message);
+                analysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+              }
+            } else if (aiUsed >= MAX_AI_PER_SYNC) {
+              console.log('[sync] cap IA atteint — booking', bookingId, 'inséré sans brouillon (sera traité au prochain run)');
             }
-          } else if (aiUsed >= MAX_AI_PER_SYNC) {
-            console.log('[sync] cap IA atteint — booking', bookingId, 'inséré sans brouillon (sera traité au prochain run)');
+          } else {
+            console.log('[sync] message trivial — booking:', bookingId, '| classification: no_reply_needed, Claude ignoré');
           }
 
           // Insérer dans messages
@@ -555,16 +624,30 @@ export default async function handler(req, res) {
 
     console.log('[messages] nb_msgs:', allMessages.length, '| booking:', booking.id);
 
-    // Trouver le dernier message du voyageur avec contenu non vide
-    const guestMessages = allMessages.filter(function(m) {
-      return isGuestMessage(m) && extractMessageText(m).length > 0;
-    });
-    const lastMsg = guestMessages[guestMessages.length - 1];
-
-    if (!lastMsg) {
+    // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC supposé)
+    let lastGuestIdxWh = -1;
+    for (let gi = allMessages.length - 1; gi >= 0; gi--) {
+      if (isGuestMessage(allMessages[gi]) && extractMessageText(allMessages[gi]).length > 0) {
+        lastGuestIdxWh = gi;
+        break;
+      }
+    }
+    if (lastGuestIdxWh === -1) {
       console.log('[messages] Aucun message voyageur — booking:', booking.id);
       return res.status(200).json({ ok: true, skipped: 'no_guest_message' });
     }
+
+    // ── FIX : vérifier si l'hôte a déjà répondu APRÈS le dernier message voyageur
+    // Cas typique : webhook déclenché par la réponse de l'hôte lui-même
+    const hostRepliedAfterWh = allMessages.slice(lastGuestIdxWh + 1).some(function(m) {
+      return !isGuestMessage(m) && extractMessageText(m).length > 0;
+    });
+    if (hostRepliedAfterWh) {
+      console.log('[messages] hôte a déjà répondu après voyageur — booking:', booking.id, '| skip');
+      return res.status(200).json({ ok: true, skipped: 'host_already_replied' });
+    }
+
+    const lastMsg = allMessages[lastGuestIdxWh];
 
     const messageContent  = extractMessageText(lastMsg);
     const smoobuMessageId = extractSmoobuMessageId(lastMsg);
@@ -590,9 +673,16 @@ export default async function handler(req, res) {
     const checkin = resaCtx.checkin  || booking.arrivalDate   || '';
     const checkout = resaCtx.checkout || booking.departureDate || '';
 
-    // 4. Analyse IA complète via Claude (résumé FR + brouillon + traduction + classification)
-    let analysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
-    if (CLAUDE_KEY) {
+    // 4. Vérification message trivial + Analyse IA via Claude
+    const trivialWh = isTrivialMessage(messageContent);
+    let analysis = {
+      detected_language: null,
+      client_summary_fr: null,
+      classification:    trivialWh ? 'no_reply_needed' : null,
+      ai_draft:          null,
+      ai_draft_fr:       null,
+    };
+    if (!trivialWh && CLAUDE_KEY) {
       try {
         analysis = await generateFullAnalysis({
           appart, voyageur: guestName, checkin, checkout, source,
@@ -603,6 +693,8 @@ export default async function handler(req, res) {
         console.error('[messages] Claude error:', claudeErr.message);
         analysis.ai_draft = '— Génération automatique échouée. Rédigez votre réponse ci-dessous. —';
       }
+    } else if (trivialWh) {
+      console.log('[messages] message trivial webhook — booking:', booking.id, '| no_reply_needed, Claude ignoré');
     } else {
       console.warn('[messages] ANTHROPIC_API_KEY non configurée — analyse IA ignorée');
     }
