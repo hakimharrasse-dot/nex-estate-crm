@@ -178,8 +178,10 @@ async function checkDuplicate(smoobuBookingId, messageContent, smoobuMessageId) 
 }
 
 // ── Extraire le texte brut d'un message Smoobu ───────────────
+// Smoobu retourne : message (plain) + htmlMessage (html) + content/body/text en fallback
 function extractMessageText(msg) {
-  return (msg.message || msg.content || msg.body || msg.text || '').trim();
+  var text = msg.message || msg.htmlMessage || msg.content || msg.body || msg.text || '';
+  return String(text).trim();
 }
 
 // ── Extraire l'ID natif Smoobu du message (si disponible) ────
@@ -190,15 +192,21 @@ function extractSmoobuMessageId(msg) {
 }
 
 // ── Détecter si un message vient du voyageur ─────────────────
-// Smoobu peut renvoyer type/sender comme string, number ou objet
+// Smoobu retourne type comme entier : 1 = guest, 2 = host
+// Fallback string pour d'autres versions d'API
 function isGuestMessage(msg) {
+  // Cas numérique Smoobu : type 1 = guest, type 2 = host
+  if (typeof msg.type === 'number') {
+    return msg.type === 1;
+  }
+  // Cas string / objet (autres formats API)
   var candidate = msg.type || msg.sender || msg.from || msg.role;
-  // Si c'est un objet (ex: { id: 1, type: "guest" }), extraire le champ type/role
   if (candidate && typeof candidate === 'object') {
     candidate = candidate.type || candidate.role || candidate.name || '';
   }
   var sender = String(candidate == null ? '' : candidate).toLowerCase();
-  return sender === 'guest' || sender === 'traveler' || sender === 'traveller';
+  return sender === 'guest' || sender === 'traveler' || sender === 'traveller' ||
+         sender === 'received' || sender === 'customer';
 }
 
 // ── Générer un ID unique (même pattern que le CRM) ───────────
@@ -341,14 +349,13 @@ export default async function handler(req, res) {
       (Array.isArray(msgData) ? msgData : [])
     );
 
-    // Log diagnostic : structure du premier message Smoobu (pour debug format)
-    if (allMessages.length > 0) {
-      console.log('[messages] nb_msgs:', allMessages.length, '| msg[0]:', JSON.stringify(allMessages[0]).slice(0, 400));
-    }
+    console.log('[messages] nb_msgs:', allMessages.length, '| booking:', booking.id);
 
-    // Trouver le dernier message du voyageur
-    const guestMessages = allMessages.filter(isGuestMessage);
-    const lastMsg       = guestMessages[guestMessages.length - 1];
+    // Trouver le dernier message du voyageur avec contenu non vide
+    const guestMessages = allMessages.filter(function(m) {
+      return isGuestMessage(m) && extractMessageText(m).length > 0;
+    });
+    const lastMsg = guestMessages[guestMessages.length - 1];
 
     if (!lastMsg) {
       console.log('[messages] Aucun message voyageur — booking:', booking.id);
