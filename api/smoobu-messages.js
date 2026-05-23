@@ -13,7 +13,7 @@
 //   SUPABASE_URL              → https://xxxx.supabase.co
 //   SUPABASE_SERVICE_ROLE_KEY → clé service_role (bypass RLS)
 //   SMOOBU_API_KEY            → clé API Smoobu
-//   ANTHROPIC_API_KEY         → clé Claude API (brouillon IA)
+//   OPENAI_API_KEY            → clé OpenAI API (brouillon IA)
 //
 // Configurer dans Smoobu :
 //   Settings → Advanced → API Keys → Webhook URLs
@@ -24,7 +24,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SMOOBU_KEY   = process.env.SMOOBU_API_KEY;
-const CLAUDE_KEY   = process.env.ANTHROPIC_API_KEY;
+const OPENAI_KEY   = process.env.OPENAI_API_KEY;
 const SMOOBU_API   = 'https://login.smoobu.com/api';
 
 // ── Supabase REST (service_role — bypass RLS) ─────────────────
@@ -89,7 +89,7 @@ async function sendSmoobuMessage(bookingId, text) {
   return res.json();
 }
 
-// ── Claude API : générer un brouillon de réponse ─────────────
+// ── OpenAI API : générer un brouillon de réponse ─────────────
 async function generateDraft(ctx) {
   const { appart, voyageur, checkin, checkout, source, message_content } = ctx;
 
@@ -110,28 +110,29 @@ async function generateDraft(ctx) {
     `Plateforme : ${source  || 'non précisé'}\n\n` +
     `Message du voyageur :\n${message_content}`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method:  'POST',
     headers: {
-      'x-api-key':         CLAUDE_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type':      'application/json',
+      'Authorization': `Bearer ${OPENAI_KEY}`,
+      'Content-Type':  'application/json',
     },
     body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
+      model:      'gpt-4o-mini',
       max_tokens: 512,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt   },
+      ],
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Claude API: ${res.status} ${err}`);
+    throw new Error(`OpenAI API: ${res.status} ${err}`);
   }
 
   const data = await res.json();
-  return data.content?.[0]?.text || '';
+  return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
 // ── Enrichir depuis la table resa (via smoobu_id) ────────────
@@ -358,20 +359,20 @@ export default async function handler(req, res) {
     const checkin = resaCtx.checkin  || booking.arrivalDate   || '';
     const checkout= resaCtx.checkout || booking.departureDate || '';
 
-    // 4. Générer le brouillon IA (erreur non bloquante)
+    // 4. Générer le brouillon IA via OpenAI (erreur non bloquante)
     let aiDraft = '';
-    if (CLAUDE_KEY) {
+    if (OPENAI_KEY) {
       try {
         aiDraft = await generateDraft({
           appart, voyageur: guestName, checkin, checkout, source,
           message_content: messageContent,
         });
-      } catch (claudeErr) {
-        console.error('[messages] Claude error:', claudeErr.message);
+      } catch (openaiErr) {
+        console.error('[messages] OpenAI error:', openaiErr.message);
         aiDraft = '— Génération automatique échouée. Rédigez votre réponse ci-dessous. —';
       }
     } else {
-      console.warn('[messages] ANTHROPIC_API_KEY non configurée — brouillon vide');
+      console.warn('[messages] OPENAI_API_KEY non configurée — brouillon vide');
     }
 
     // 5. INSERT dans la table messages (statut: pending)
