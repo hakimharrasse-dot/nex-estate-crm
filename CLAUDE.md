@@ -439,6 +439,11 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-18 | Fix(resa): tooltip MAD réel distingue "MAD réel Airbnb" vs "MAD réel Booking" selon r.source |
 | 2026-05-18 | **STABLE** : module Réconciliation Booking clôturé — CSV = vérité EUR, PDF = vérité MAD/taux, 4 logements réconciliés |
 | 2026-05-18 | Backup `nex-estate-crm-backup-2026-05-18-booking-stable` produit — suppression ancien backup 2026-05-17 |
+| 2026-05-21 | Feat(dashboard): vue CA consommé par nuits — `sumCaConsomme(pStart, pEnd, appart, source)` proratise `rNetMAD(r)` par `overlap/totalNights` ; mode 2 affichage dashboard (`791644b`, `130371f`) |
+| 2026-05-22 | Fix(dashboard): `computeJoursDispo(pStart, pEnd)` — corrige dénominateur taux occupation pour périodes multi-mois/custom ; Studio Ocean archivé compte 31j en janvier seulement, pas toute la période (`8b28047`) |
+| 2026-05-22 | Feat(doublons): Règle R5 doublons techniques — R5a (orphelin smoobu_id=null + même ref/appart/checkin) + R5b (même smoobu_id types mixtes) ; section orange séparée ; badge KPI ; `toggleDupTechAll()` ; sans impact KPIs financiers (`4d36171`) |
+| 2026-05-22 | Fix(sync): orphan fallback dans webhook (`upsertResa`) et poll (cas A) — si aucun match par smoobu_id → cherche ref+appart+checkin+smoobu_id=null → PATCH smoobu_id au lieu de créer doublon ; protège override_manual (`4d36171`) |
+| 2026-05-22 | Backup `nex-estate-crm-backup-2026-05-22` produit — suppression ancien backup 2026-05-18-booking-stable |
 
 ---
 

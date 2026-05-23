@@ -524,6 +524,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ni manager-plus" id="ni-doublons" onclick="goTo('doublons')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Doublons <span id="dup-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-logements" onclick="goTo('logements')"><span class="dot" style="background:var(--bl)"></span>Logements</div>
     <div class="ni admin-only" id="ni-reconcil" onclick="goTo('reconcil')" style="position:relative"><span class="dot" style="background:var(--te)"></span>Réconciliation <span id="reconcil-badge" class="hidden" style="background:var(--or);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
+    <div class="ni admin-only" id="ni-messages" onclick="goTo('messages')" style="position:relative"><span class="dot" style="background:var(--bl)"></span>Messages IA <span id="msg-badge" class="hidden" style="background:var(--bl);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-qualite" onclick="goTo('qualite')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Contrôle qualité <span id="qualite-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-recur" onclick="goTo('recur')"><span class="dot" style="background:var(--or)"></span>Charges récurrentes</div>
   </div>
@@ -1358,6 +1359,23 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="empty hidden" id="recur-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🔄</div>Aucune charge récurrente</div></div>
 </div>
 
+
+<!-- ═══ VIEW: MESSAGES IA ═══ -->
+<div class="vw" id="vw-messages">
+  <div class="vh">
+    <div>
+      <div class="vt" style="background:linear-gradient(135deg,var(--bl),var(--pu));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Messages IA</div>
+      <div class="vsub">Brouillons générés par Claude — valider avant envoi</div>
+    </div>
+    <button class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="renderMessages()">↻ Actualiser</button>
+  </div>
+  <div class="empty hidden" id="msg-empty" style="padding:40px 0">
+    <div style="font-size:32px;opacity:.4;margin-bottom:10px">💬</div>
+    <div style="color:var(--tm);font-size:14px">Aucun message en attente de validation</div>
+  </div>
+  <div id="msg-list"></div>
+</div>
+
 </div><!-- /content -->
 </div><!-- /layout -->
 
@@ -1380,6 +1398,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt manager-plus" id="mn-logements" onclick="goTo('logements');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🏘️</span>Logements</div>
   <div class="mbt manager-plus" id="mn-qualite" onclick="goTo('qualite');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">✅</span>Qualité</div>
   <div class="mbt admin-only" id="mn-reconcil" onclick="goTo('reconcil');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🔍</span>Réconcil.</div>
+  <div class="mbt admin-only" id="mn-messages" onclick="goTo('messages');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">💬</span>Messages</div>
   <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">👥</span>Équipe</div>
   <div class="mbt admin-only" id="mn-admin" onclick="goTo('admin');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">⚙️</span>Utilisateurs</div>
   <div class="mbt" id="mn-logout" onclick="closeMobMore();doLogout()" style="gap:4px;padding:6px 16px;color:var(--td);border-color:var(--br)"><span class="mic">🔒</span>Déconnexion</div>
@@ -3057,7 +3076,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
@@ -3065,7 +3084,7 @@ function goTo(name) {
   if(mn){mn.classList.add(cls);}
   // Highlight "Plus" button when a drawer page is active
   var moreBtn = document.getElementById('mn-more');
-  if (moreBtn && ['admin','team','recur'].indexOf(name) !== -1) {
+  if (moreBtn && ['admin','team','recur','messages'].indexOf(name) !== -1) {
     moreBtn.classList.add('on-admin');
   }
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
@@ -3076,6 +3095,7 @@ function goTo(name) {
   if (name === 'logements') { renderLogements();  return; }
   if (name === 'reconcil')  { renderReconcil();   return; }
   if (name === 'qualite')   { renderQualite();    return; }
+  if (name === 'messages')  { renderMessages();   return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
@@ -10686,6 +10706,210 @@ async function finDoApply(items) {
   document.getElementById('fin-audit-ov').style.display='none';
   showToast(errors ? '⚠ '+done+' corrigée(s), '+errors+' erreur(s)' : '✅ '+done+' réservation(s) corrigée(s)');
   renderResa(); renderDash();
+}
+
+// ============================================================
+// MODULE MESSAGES IA — brouillons Smoobu validés avant envoi
+// ============================================================
+var MSG_DATA = [];
+
+// Styles de classification (utilisés quand la colonne est renseignée)
+var MSG_CLASSIF = {
+  'simple':        { bg: 'rgba(76,175,125,.15)',  color: 'var(--gr)', label: 'Simple' },
+  'sensible':      { bg: 'rgba(200,119,58,.15)',  color: 'var(--or)', label: '⚠ Sensible' },
+  'conflit':       { bg: 'rgba(224,82,82,.15)',   color: 'var(--re)', label: '🚫 Conflit' },
+  'remboursement': { bg: 'rgba(90,159,212,.15)',  color: 'var(--bl)', label: 'Remboursement' },
+};
+
+async function renderMessages() {
+  if (!SUPA) return;
+  var el = document.getElementById('msg-list');
+  var em = document.getElementById('msg-empty');
+  if (!el) return;
+
+  el.innerHTML = '<div style="color:var(--tm);font-size:13px;padding:30px 0;text-align:center">⏳ Chargement…</div>';
+  if (em) em.classList.add('hidden');
+
+  try {
+    // Récupérer pending ET error (pour que les échecs soient visibles)
+    var res = await SUPA.from('messages').select('*')
+      .in('statut', ['pending', 'error'])
+      .order('created_at', { ascending: false });
+    if (res.error) throw res.error;
+    MSG_DATA = res.data || [];
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--re);padding:20px 0;font-size:13px">⚠ Erreur chargement : ' + escHtml(e.message) + '</div>';
+    return;
+  }
+
+  msgUpdateBadge();
+
+  if (MSG_DATA.length === 0) {
+    el.innerHTML = '';
+    if (em) em.classList.remove('hidden');
+    return;
+  }
+
+  var html = '';
+  MSG_DATA.forEach(function(m) {
+    var isError = m.statut === 'error';
+    var ts = m.created_at
+      ? new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    // Bordure rouge pour les records en erreur
+    var cardBorder = isError ? '1px solid var(--re)' : '1px solid var(--br)';
+    html += '<div class="msg-card" id="msgcard-' + m.id + '" style="background:var(--s);border:' + cardBorder + ';border-radius:12px;padding:16px 18px;margin-bottom:14px;transition:opacity .2s">';
+
+    // ── Bannière erreur ──────────────────────────────────────
+    if (isError) {
+      html += '<div style="background:rgba(224,82,82,.1);border:1px solid var(--re);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--re)">';
+      html += '⚠ Erreur de traitement webhook';
+      if (m.error_message) html += ' : ' + escHtml(m.error_message);
+      html += '</div>';
+    }
+
+    // ── En-tête ─────────────────────────────────────────────
+    html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+    html += '<div style="display:flex;flex-direction:column;gap:5px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    html += '<span style="font-weight:700;font-size:14px;color:var(--tx)">' + escHtml(m.voyageur || '(voyageur inconnu)') + '</span>';
+    // Badge classification si disponible
+    if (m.classification && MSG_CLASSIF[m.classification]) {
+      var cl = MSG_CLASSIF[m.classification];
+      html += '<span style="background:' + cl.bg + ';color:' + cl.color + ';border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">' + cl.label + '</span>';
+    }
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">';
+    if (m.appart) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.appart) + '</span>';
+    if (m.source) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.source) + '</span>';
+    if (ts)       html += '<span style="color:var(--td)">' + ts + '</span>';
+    // Indicateur si réservation CRM liée
+    if (m.reservation_id) {
+      html += '<span style="color:var(--gr);font-size:10px" title="Réservation CRM liée">● lié</span>';
+    } else {
+      html += '<span style="color:var(--td);font-size:10px" title="Réservation non trouvée dans le CRM">○ non lié</span>';
+    }
+    html += '</div>';
+    html += '</div>';
+    html += '<span style="font-size:10px;background:rgba(90,159,212,.15);color:var(--bl);border-radius:6px;padding:3px 8px;font-weight:600;white-space:nowrap">booking #' + m.smoobu_booking_id + '</span>';
+    html += '</div>';
+
+    if (!isError) {
+      // ── Message voyageur ──────────────────────────────────
+      html += '<div style="margin-bottom:12px">';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
+      html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
+      html += '</div>';
+
+      // ── Brouillon IA ───────────────────────────────────────
+      html += '<div style="margin-bottom:14px">';
+      html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Brouillon IA — modifiable</div>';
+      html += '<textarea id="draft-' + m.id + '" rows="5" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
+      html += '</div>';
+
+      // ── Actions ───────────────────────────────────────────
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+      html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
+      html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
+      html += '</div>';
+    } else {
+      // Carte erreur : seulement bouton Ignorer
+      html += '<div style="display:flex;gap:8px">';
+      html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🗑 Effacer</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+function msgUpdateBadge() {
+  var badge = document.getElementById('msg-badge');
+  if (!badge) return;
+  // Le badge compte uniquement les pending (pas les error)
+  var n = MSG_DATA.filter(function(m) { return m.statut === 'pending'; }).length;
+  if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
+  else        { badge.classList.add('hidden'); }
+}
+
+async function msgSend(messageId, bookingId) {
+  var card    = document.getElementById('msgcard-' + messageId);
+  var sendBtn = card ? card.querySelector('.msg-send-btn') : null;
+  var ta      = document.getElementById('draft-' + messageId);
+  if (!ta) return;
+
+  var text = ta.value.trim();
+  // C3 : guard texte vide — double protection (backend bloque aussi)
+  if (!text) {
+    showToast('⚠ Brouillon vide — rédigez une réponse avant d\'envoyer.');
+    return;
+  }
+  if (!confirm('Envoyer ce message au voyageur via Smoobu ?')) return;
+
+  // C3 : désactiver le bouton immédiatement — protection anti double-clic
+  if (sendBtn) {
+    sendBtn.disabled    = true;
+    sendBtn.textContent = '⏳ Envoi en cours…';
+  }
+  if (card) card.style.opacity = '0.5';
+
+  try {
+    var resp = await fetch('/api/smoobu-messages?send=1', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message_id: messageId, text: text }),
+    });
+    var data;
+    try { data = await resp.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
+    if (!resp.ok || data.error) throw new Error(data.error || 'HTTP ' + resp.status);
+
+    showToast('✅ Message envoyé au voyageur !');
+    msgRemoveCard(messageId);
+  } catch (e) {
+    // Ré-activer le bouton en cas d'erreur
+    if (sendBtn) {
+      sendBtn.disabled   = false;
+      sendBtn.innerHTML  = '✅ Valider &amp; Envoyer';
+    }
+    if (card) card.style.opacity = '1';
+    showToast('⚠ Erreur envoi : ' + e.message);
+    console.error('[messages] msgSend error:', e);
+  }
+}
+
+async function msgIgnore(messageId) {
+  if (!confirm('Ignorer ce message ? Il ne sera plus affiché.')) return;
+
+  var card = document.getElementById('msgcard-' + messageId);
+  if (card) card.style.opacity = '0.4';
+
+  try {
+    var now = new Date().toISOString();
+    var res = await SUPA.from('messages').update({ statut: 'ignored', updated_at: now }).eq('id', messageId);
+    if (res.error) throw res.error;
+    showToast('Message ignoré.');
+    msgRemoveCard(messageId);
+  } catch (e) {
+    if (card) card.style.opacity = '1';
+    showToast('⚠ Erreur : ' + e.message);
+  }
+}
+
+function msgRemoveCard(messageId) {
+  var card = document.getElementById('msgcard-' + messageId);
+  if (card) card.remove();
+  MSG_DATA = MSG_DATA.filter(function(m) { return m.id !== messageId; });
+  msgUpdateBadge();
+  var em = document.getElementById('msg-empty');
+  var el = document.getElementById('msg-list');
+  // Afficher l'état vide seulement si plus aucun message (ni pending ni error)
+  if (em && el && MSG_DATA.length === 0) {
+    el.innerHTML = '';
+    em.classList.remove('hidden');
+  }
 }
 
 // Lancer

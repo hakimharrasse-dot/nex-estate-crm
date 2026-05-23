@@ -9,6 +9,9 @@
     },
     "api/admin-users.js": {
       "maxDuration": 10
+    },
+    "api/smoobu-messages.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
