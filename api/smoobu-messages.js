@@ -281,21 +281,138 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages', version: '2.0' });
   }
 
-  // ── Probe threads : GET ?threads=1 ────────────────────────
-  // Temporaire — permet d'explorer la structure GET /api/threads
-  // en production pour comprendre le format des messages pré-réservation.
-  if (req.method === 'GET' && req.query?.threads) {
+  // ── Sync threads : GET ?sync=1 ────────────────────────────
+  // Appel périodique (cron Vercel) ou manuel.
+  // Récupère les threads Smoobu récents et insère dans `messages`
+  // les messages voyageurs non encore capturés (filet de sécurité webhook).
+  // Paramètre optionnel : ?hours=N (défaut 24) — fenêtre de recherche.
+  if (req.method === 'GET' && req.query?.sync) {
     if (!SMOOBU_KEY) return res.status(503).json({ error: 'SMOOBU_API_KEY manquante' });
     try {
-      const page = req.query.page || 1;
-      const r = await fetch(`${SMOOBU_API}/threads?page_number=${page}&page_size=5`, {
-        headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
-      });
-      const raw = await r.text();
-      const data = raw ? JSON.parse(raw) : null;
-      return res.status(r.status).json({ smoobu_status: r.status, data });
-    } catch (e) {
-      return res.status(500).json({ error: e.message });
+      const hoursBack = Math.min(parseInt(req.query.hours || '24', 10) || 24, 72);
+      const since = new Date(Date.now() - hoursBack * 3600 * 1000);
+      console.log('[sync] démarrage — fenêtre:', hoursBack, 'h | since:', since.toISOString());
+
+      // ── 1. Collecter les threads récents (pagination) ─────
+      const recentThreads = [];
+      let page = 1;
+      let done = false;
+
+      while (!done) {
+        const r = await fetch(`${SMOOBU_API}/threads?page_number=${page}&page_size=20`, {
+          headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
+        });
+        if (!r.ok) break;
+        const data = await r.json();
+        const threads = data.threads || [];
+        if (!threads.length) break;
+
+        for (const t of threads) {
+          const msgAt = t.latest_message?.created_at ? new Date(t.latest_message.created_at) : null;
+          // Les threads sont triés par latest_message DESC — dès qu'on tombe sous le seuil, stop
+          if (msgAt && msgAt < since) { done = true; break; }
+          if (t.booking?.id) recentThreads.push(t);
+        }
+        if (page >= (data.page_count || 1)) break;
+        page++;
+      }
+
+      console.log('[sync] threads récents:', recentThreads.length);
+
+      // ── 2. Traiter chaque thread (cap 10 AI/run) ──────────
+      let processed = 0, skipped = 0, errors = 0, aiUsed = 0;
+      const MAX_AI_PER_SYNC = 10; // cap sécurité : 10 appels Claude max par run (~30s)
+
+      for (const thread of recentThreads) {
+        const bookingId  = thread.booking.id;
+        const guestName  = thread.booking.guest_name || '';
+        const appart     = thread.apartment?.name    || '';
+
+        try {
+          // Lire les messages complets de la réservation
+          const msgData = await getSmoobuMessages(bookingId);
+          const allMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+
+          const guestMessages = allMessages.filter(function(m) {
+            return isGuestMessage(m) && extractMessageText(m).length > 0;
+          });
+          const lastMsg = guestMessages[guestMessages.length - 1];
+          if (!lastMsg) { skipped++; continue; }
+
+          const messageContent  = extractMessageText(lastMsg);
+          const smoobuMessageId = extractSmoobuMessageId(lastMsg);
+
+          // Déduplication — évite d'insérer un message déjà traité par le webhook
+          const isDup = await checkDuplicate(bookingId, messageContent, smoobuMessageId);
+          if (isDup) { skipped++; continue; }
+
+          // Enrichir depuis resa CRM
+          const resaCtx = await getResaContext(bookingId);
+
+          // Analyse IA complète (limitée à MAX_AI_PER_SYNC appels/run)
+          let analysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
+          if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
+            try {
+              analysis = await generateFullAnalysis({
+                appart:          resaCtx.appart   || appart,
+                voyageur:        resaCtx.voyageur || guestName,
+                checkin:         resaCtx.checkin  || '',
+                checkout:        resaCtx.checkout || '',
+                source:          resaCtx.source   || '',
+                message_content: messageContent,
+              });
+              aiUsed++;
+            } catch (claudeErr) {
+              console.error('[sync] Claude error booking', bookingId, ':', claudeErr.message);
+              analysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+            }
+          } else if (aiUsed >= MAX_AI_PER_SYNC) {
+            console.log('[sync] cap IA atteint — booking', bookingId, 'inséré sans brouillon (sera traité au prochain run)');
+          }
+
+          // Insérer dans messages
+          const now = new Date().toISOString();
+          await sbInsert('messages', {
+            id:                uid(),
+            smoobu_booking_id: bookingId,
+            reservation_id:    resaCtx.id                 || null,
+            appart:            resaCtx.appart   || appart || null,
+            voyageur:          resaCtx.voyageur || guestName || null,
+            source:            resaCtx.source               || null,
+            sender:            'guest',
+            message_content:   messageContent,
+            detected_language: analysis.detected_language   || null,
+            client_summary_fr: analysis.client_summary_fr   || null,
+            classification:    analysis.classification       || null,
+            ai_draft:          analysis.ai_draft             || null,
+            ai_draft_fr:       analysis.ai_draft_fr          || null,
+            smoobu_message_id: smoobuMessageId               || null,
+            raw_payload:       { booking_id: bookingId, thread },
+            statut:            'pending',
+            created_at:        now,
+            updated_at:        now,
+          });
+
+          console.log('[sync] INSERT OK — booking:', bookingId, '| voyageur:', guestName, '| lang:', analysis.detected_language);
+          processed++;
+
+        } catch (threadErr) {
+          // Doublon DB (UNIQUE smoobu_message_id) → pas une vraie erreur
+          if (threadErr.message.includes('23505') || threadErr.message.toLowerCase().includes('unique')) {
+            skipped++;
+          } else {
+            console.error('[sync] erreur booking', bookingId, ':', threadErr.message);
+            errors++;
+          }
+        }
+      }
+
+      console.log('[sync] terminé — processed:', processed, '| skipped:', skipped, '| errors:', errors, '| ai_calls:', aiUsed);
+      return res.status(200).json({ ok: true, sync: true, hoursBack, threads_checked: recentThreads.length, processed, skipped, errors, ai_calls: aiUsed });
+
+    } catch (syncErr) {
+      console.error('[sync] erreur globale:', syncErr.message);
+      return res.status(500).json({ error: syncErr.message });
     }
   }
 

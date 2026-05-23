@@ -1,23 +1,13 @@
 {
   "version": 2,
   "functions": {
-    "api/smoobu-webhook.js": {
-      "maxDuration": 10
-    },
-    "api/smoobu-poll.js": {
-      "maxDuration": 30
-    },
-    "api/admin-users.js": {
-      "maxDuration": 10
-    },
-    "api/smoobu-messages.js": {
-      "maxDuration": 30
-    }
+    "api/smoobu-webhook.js": { "maxDuration": 10 },
+    "api/smoobu-poll.js":    { "maxDuration": 30 },
+    "api/admin-users.js":    { "maxDuration": 10 },
+    "api/smoobu-messages.js":{ "maxDuration": 60 }
   },
   "crons": [
-    {
-      "path": "/api/smoobu-poll",
-      "schedule": "0 12 * * *"
-    }
+    { "path": "/api/smoobu-poll",             "schedule": "0 12 * * *" },
+    { "path": "/api/smoobu-messages?sync=1",  "schedule": "0 */4 * * *" }
   ]
 }

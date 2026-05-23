@@ -10784,11 +10784,11 @@ async function renderMessages() {
     if (m.appart) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.appart) + '</span>';
     if (m.source) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.source) + '</span>';
     if (ts)       html += '<span style="color:var(--td)">' + ts + '</span>';
-    // Indicateur si réservation CRM liée
+    // Indicateur réservation CRM liée / prospect
     if (m.reservation_id) {
       html += '<span style="color:var(--gr);font-size:10px" title="Réservation CRM liée">● lié</span>';
     } else {
-      html += '<span style="color:var(--td);font-size:10px" title="Réservation non trouvée dans le CRM">○ non lié</span>';
+      html += '<span style="background:rgba(200,119,58,.15);color:var(--or);border:1px solid rgba(200,119,58,.3);border-radius:5px;font-size:10px;font-weight:700;padding:1px 6px" title="Aucune réservation confirmée dans le CRM — message prospect ou avant réservation">Prospect</span>';
     }
     html += '</div>';
     html += '</div>';
