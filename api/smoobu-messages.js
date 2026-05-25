@@ -599,7 +599,7 @@ export default async function handler(req, res) {
       let allPendingInDb = [];
       try {
         allPendingInDb = await sbGet(
-          'messages?statut=eq.pending&select=id,smoobu_booking_id,smoobu_message_id,message_content,created_at&order=created_at.desc&limit=300'
+          'messages?statut=eq.pending&select=id,smoobu_booking_id,smoobu_message_id,message_content,created_at,is_stale,updated_at&order=created_at.desc&limit=300'
         ) || [];
       } catch (batchErr) {
         console.warn('[sync] impossible de pré-charger les pending:', batchErr.message);
@@ -621,6 +621,34 @@ export default async function handler(req, res) {
         const appart     = thread.apartment?.name    || '';
 
         try {
+          // ── Layer 1 : détection au niveau du thread (signal plus fiable que type individuel)
+          // Smoobu /reservations/{id}/messages retourne TOUS les messages avec type=1 (guest)
+          // → latest_message.type (1=guest, ≠1=host) et unread_messages_count=0 sont les vrais signaux
+          const latestMsgType = thread.latest_message?.type;
+          const unreadCount   = thread.unread_messages_count ?? thread.unreadMessagesCount ?? null;
+          const hostHandledAtThreadLevel =
+            (typeof latestMsgType === 'number' && latestMsgType !== 1) ||
+            (unreadCount !== null && Number(unreadCount) === 0);
+
+          if (hostHandledAtThreadLevel) {
+            const existingPendingTL = pendingByBooking[String(bookingId)] || [];
+            if (existingPendingTL.length > 0) {
+              const now = new Date().toISOString();
+              for (const ep of existingPendingTL) {
+                await sbPatch('messages', `id=eq.${encodeURIComponent(ep.id)}`, {
+                  statut:     'resolved',
+                  updated_at: now,
+                });
+              }
+              resolved += existingPendingTL.length;
+              console.log('[sync] thread-level auto-resolved', existingPendingTL.length,
+                'pending — booking:', bookingId,
+                '| latestMsgType:', latestMsgType, '| unread:', unreadCount);
+            }
+            skipped++;
+            continue;
+          }
+
           // Lire les messages complets de la réservation
           const msgData    = await getSmoobuMessages(bookingId);
           const rawMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
@@ -670,8 +698,25 @@ export default async function handler(req, res) {
               continue;
             }
 
-            // Même message MAIS record stale → re-générer le brouillon pour nettoyer le stale
+            // Même message MAIS record stale → auto-expire 48h ou re-générer le brouillon
             if (isSameMessage(mostRecent, smoobuMessageId, messageContent) && mostRecent.is_stale) {
+              // Layer 2 : si le record stale a plus de 48h → auto-résoudre (conversation traitée entre temps)
+              const STALE_MAX_AGE_MS = 48 * 3600 * 1000;
+              const staleSince = mostRecent.updated_at
+                ? Date.now() - new Date(mostRecent.updated_at).getTime()
+                : Infinity;
+              if (staleSince > STALE_MAX_AGE_MS) {
+                const now = new Date().toISOString();
+                await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                  statut:     'resolved',
+                  updated_at: now,
+                });
+                resolved++;
+                console.log('[sync] stale 48h auto-expire → resolved — booking:', bookingId,
+                  '| age:', Math.round(staleSince / 3600000), 'h');
+                continue;
+              }
+
               if (!trivial && CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
                 const now = new Date().toISOString();
                 let freshAnalysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };

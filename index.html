@@ -10911,6 +10911,7 @@ async function renderMessages() {
           html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
         }
         html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
+        html += '<button class="ba ba-ghost" style="min-width:120px;color:var(--gr);border-color:var(--gr)" onclick="msgResolve(\'' + m.id + '\')">✓ Traité</button>';
         html += '</div>';
 
       } // end else (carte normale)
@@ -11005,6 +11006,22 @@ async function msgIgnore(messageId) {
     var res = await SUPA.from('messages').update({ statut: 'ignored', updated_at: now }).eq('id', messageId);
     if (res.error) throw res.error;
     showToast('Message ignoré.');
+    msgRemoveCard(messageId);
+  } catch (e) {
+    if (card) card.style.opacity = '1';
+    showToast('⚠ Erreur : ' + e.message);
+  }
+}
+
+async function msgResolve(messageId) {
+  if (!confirm('Marquer cette conversation comme traitée ? La carte sera supprimée.')) return;
+  var card = document.getElementById('msgcard-' + messageId);
+  if (card) card.style.opacity = '0.4';
+  try {
+    var now = new Date().toISOString();
+    var res = await SUPA.from('messages').update({ statut: 'resolved', updated_at: now }).eq('id', messageId);
+    if (res.error) throw res.error;
+    showToast('✅ Conversation marquée comme traitée.');
     msgRemoveCard(messageId);
   } catch (e) {
     if (card) card.style.opacity = '1';
