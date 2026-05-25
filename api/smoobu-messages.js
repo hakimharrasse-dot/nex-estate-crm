@@ -94,7 +94,8 @@ async function sendSmoobuMessage(bookingId, text) {
 // ── Claude API : analyse complète en un seul appel ────────────
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
-  const { appart, voyageur, checkin, checkout, source, message_content, hakim_instruction } = ctx;
+  const { appart, voyageur, checkin, checkout, source, message_content, hakim_instruction,
+          reservation_confirmed, days_until_checkin_ctx } = ctx;
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
@@ -113,6 +114,11 @@ async function generateFullAnalysis(ctx) {
     '- "sensible" : invités non déclarés, couple non marié, avis négatif, plainte légère, demande inhabituelle\n' +
     '- "conflit" : situation clairement conflictuelle, menace, litige\n' +
     '- "remboursement" : demande de remboursement ou annulation\n\n' +
+    'Règles contextuelles supplémentaires :\n' +
+    '- Si "Réservation confirmée = Oui" → ne jamais écrire "après confirmation de votre réservation" — la réservation EST déjà confirmée\n' +
+    '- Si "Jours avant arrivée ≤ 1" → ne jamais promettre d\'envoyer les infos "24h avant" ni utiliser cette formulation — écrire simplement "je vous envoie les détails d\'accès avant votre arrivée"\n' +
+    '- Si "Jours avant arrivée ≤ 0" → le voyageur arrive aujourd\'hui ou est déjà là — répondre avec urgence\n' +
+    '- Codes d\'accès / instructions d\'arrivée / adresse : si l\'information exacte n\'est pas dans le contexte → écrire UNIQUEMENT "je vous envoie les détails d\'accès avant votre arrivée" — JAMAIS inventer un code, une adresse ou un horaire\n\n' +
     'Règles pour ai_draft_fr :\n' +
     '- Traduction fidèle de ai_draft en français\n' +
     '- Usage Hakim uniquement — ne jamais envoyer au voyageur';
@@ -121,13 +127,19 @@ async function generateFullAnalysis(ctx) {
     ? `\n\nInstruction de Hakim pour cette réponse : ${hakim_instruction}`
     : '';
 
+  const resaLine   = `Réservation confirmée : ${reservation_confirmed === true ? 'Oui' : reservation_confirmed === false ? 'Non' : 'non précisé'}\n`;
+  const daysLine   = (days_until_checkin_ctx !== null && days_until_checkin_ctx !== undefined)
+    ? `Jours avant arrivée : ${days_until_checkin_ctx}\n`
+    : '';
+
   const userPrompt =
     `Logement : ${appart    || 'non précisé'}\n` +
     `Voyageur : ${voyageur  || 'non précisé'}\n` +
     `Check-in : ${checkin   || 'non précisé'}\n` +
     `Check-out : ${checkout || 'non précisé'}\n` +
-    `Plateforme : ${source  || 'non précisé'}\n\n` +
-    `Message du voyageur :\n${message_content}` +
+    `Plateforme : ${source  || 'non précisé'}\n` +
+    resaLine + daysLine +
+    `\nMessage du voyageur :\n${message_content}` +
     instrNote;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -286,6 +298,30 @@ function isTrivialMessage(text) {
   return trivialPatterns.some(function(r) { return r.test(tl); });
 }
 
+// ── Calcule le nombre de jours jusqu'au check-in ─────────────
+// Retourne un entier (négatif = passé, 0 = aujourd'hui, null si date invalide)
+function daysUntilCheckin(checkinStr) {
+  if (!checkinStr) return null;
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(checkinStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return null;
+    return Math.round((d - today) / 86400000);
+  } catch { return null; }
+}
+
+// ── Vérifie si le message Smoobu actuel === celui déjà en DB ──
+// Compare par smoobu_message_id si dispo, sinon par préfixe contenu
+function isSameMessage(existingRecord, currentSmoobuMsgId, currentContent) {
+  if (existingRecord.smoobu_message_id && currentSmoobuMsgId) {
+    return existingRecord.smoobu_message_id === String(currentSmoobuMsgId);
+  }
+  const a = (existingRecord.message_content || '').trim().slice(0, 200);
+  const b = (currentContent || '').trim().slice(0, 200);
+  return a === b;
+}
+
 // ── Générer un ID unique (même pattern que le CRM) ───────────
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -359,9 +395,26 @@ export default async function handler(req, res) {
 
       console.log('[sync] threads récents:', recentThreads.length);
 
-      // ── 2. Traiter chaque thread (cap 10 AI/run) ──────────
-      let processed = 0, skipped = 0, errors = 0, aiUsed = 0;
-      const MAX_AI_PER_SYNC = 10; // cap sécurité : 10 appels Claude max par run (~30s)
+      // ── 2. Pré-charger tous les pending existants en DB (1 seule requête batch) ──
+      // Évite N requêtes individuelles par thread — accès O(1) par booking_id
+      let allPendingInDb = [];
+      try {
+        allPendingInDb = await sbGet(
+          'messages?statut=eq.pending&select=id,smoobu_booking_id,smoobu_message_id,message_content,created_at&order=created_at.desc&limit=300'
+        ) || [];
+      } catch (batchErr) {
+        console.warn('[sync] impossible de pré-charger les pending:', batchErr.message);
+      }
+      const pendingByBooking = {};
+      for (const p of allPendingInDb) {
+        const bid = String(p.smoobu_booking_id);
+        if (!pendingByBooking[bid]) pendingByBooking[bid] = [];
+        pendingByBooking[bid].push(p); // déjà triés desc par created_at
+      }
+
+      // ── 3. Traiter chaque thread (cap 10 AI/run) ──────────
+      let processed = 0, skipped = 0, resolved = 0, errors = 0, aiUsed = 0;
+      const MAX_AI_PER_SYNC = 10;
 
       for (const thread of recentThreads) {
         const bookingId  = thread.booking.id;
@@ -381,15 +434,30 @@ export default async function handler(req, res) {
               break;
             }
           }
-          if (lastGuestIdx === -1) { skipped++; continue; }
 
-          // ── FIX : vérifier si l'hôte a déjà répondu APRÈS le dernier message voyageur
-          // Si oui → conversation déjà traitée, on ne crée pas de ticket pending
-          const hostRepliedAfter = allMessages.slice(lastGuestIdx + 1).some(function(m) {
+          // Vérifier si l'hôte a répondu après le dernier message voyageur
+          const hostRepliedAfter = lastGuestIdx !== -1 && allMessages.slice(lastGuestIdx + 1).some(function(m) {
             return !isGuestMessage(m) && extractMessageText(m).length > 0;
           });
-          if (hostRepliedAfter) {
-            console.log('[sync] hôte a déjà répondu après voyageur — booking:', bookingId, '| skip');
+
+          // Pending existants pour ce booking (depuis le batch pré-chargé)
+          const existingPending = pendingByBooking[String(bookingId)] || [];
+
+          // ── Cas A : hôte a répondu OU pas de message voyageur
+          // → Auto-résoudre les pending existants et passer au thread suivant
+          if (hostRepliedAfter || lastGuestIdx === -1) {
+            if (existingPending.length > 0) {
+              const now = new Date().toISOString();
+              for (const ep of existingPending) {
+                await sbPatch('messages', `id=eq.${encodeURIComponent(ep.id)}`, {
+                  statut:     'resolved',
+                  updated_at: now,
+                });
+              }
+              resolved += existingPending.length;
+              console.log('[sync] auto-resolved', existingPending.length, 'pending — booking:', bookingId,
+                hostRepliedAfter ? '(host replied)' : '(no guest msg)');
+            }
             skipped++;
             continue;
           }
@@ -397,18 +465,87 @@ export default async function handler(req, res) {
           const lastMsg         = allMessages[lastGuestIdx];
           const messageContent  = extractMessageText(lastMsg);
           const smoobuMessageId = extractSmoobuMessageId(lastMsg);
+          const resaCtx         = await getResaContext(bookingId);
+          const trivial         = isTrivialMessage(messageContent);
+          const resaConfirmed   = !!(resaCtx.id);
+          const daysCheckin     = daysUntilCheckin(resaCtx.checkin || '');
 
-          // Déduplication — évite d'insérer un message déjà traité par le webhook
+          // ── Cas B : un pending existe déjà pour ce booking
+          if (existingPending.length > 0) {
+            const mostRecent = existingPending[0]; // premier = plus récent (tri desc)
+
+            // Même message → rien à faire
+            if (isSameMessage(mostRecent, smoobuMessageId, messageContent)) {
+              skipped++;
+              continue;
+            }
+
+            // Conversation évoluée : nouveau message guest → mise à jour du record existant
+            console.log('[sync] conversation évoluée — booking:', bookingId, '| update pending:', mostRecent.id);
+            const now = new Date().toISOString();
+
+            if (trivial) {
+              await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                message_content:   messageContent,
+                smoobu_message_id: smoobuMessageId  || null,
+                classification:    'no_reply_needed',
+                ai_draft:          null,
+                ai_draft_fr:       null,
+                client_summary_fr: null,
+                is_stale:          false,
+                updated_at:        now,
+              });
+              console.log('[sync] UPDATE trivial — booking:', bookingId);
+            } else if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
+              let newAnalysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
+              try {
+                newAnalysis = await generateFullAnalysis({
+                  appart:                 resaCtx.appart   || appart,
+                  voyageur:               resaCtx.voyageur || guestName,
+                  checkin:                resaCtx.checkin  || '',
+                  checkout:               resaCtx.checkout || '',
+                  source:                 resaCtx.source   || '',
+                  message_content:        messageContent,
+                  reservation_confirmed:  resaConfirmed,
+                  days_until_checkin_ctx: daysCheckin,
+                });
+                aiUsed++;
+              } catch (claudeErr) {
+                console.error('[sync] Claude error (update) booking', bookingId, ':', claudeErr.message);
+                newAnalysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+              }
+              await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                message_content:   messageContent,
+                smoobu_message_id: smoobuMessageId              || null,
+                detected_language: newAnalysis.detected_language || null,
+                client_summary_fr: newAnalysis.client_summary_fr || null,
+                classification:    newAnalysis.classification    || null,
+                ai_draft:          newAnalysis.ai_draft          || null,
+                ai_draft_fr:       newAnalysis.ai_draft_fr       || null,
+                is_stale:          false,
+                updated_at:        now,
+              });
+              console.log('[sync] UPDATE + nouveau brouillon — booking:', bookingId, '| lang:', newAnalysis.detected_language);
+            } else {
+              // Cap IA atteint : mettre à jour le message mais marquer stale (brouillon effacé)
+              await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                message_content:   messageContent,
+                smoobu_message_id: smoobuMessageId || null,
+                ai_draft:          null,
+                ai_draft_fr:       null,
+                is_stale:          true,
+                updated_at:        now,
+              });
+              console.log('[sync] UPDATE stale (cap IA) — booking:', bookingId);
+            }
+            processed++;
+            continue;
+          }
+
+          // ── Cas C : aucun pending existant → INSERT nouveau record
           const isDup = await checkDuplicate(bookingId, messageContent, smoobuMessageId);
           if (isDup) { skipped++; continue; }
 
-          // Enrichir depuis resa CRM
-          const resaCtx = await getResaContext(bookingId);
-
-          // ── Vérification message trivial (économise les tokens Claude)
-          const trivial = isTrivialMessage(messageContent);
-
-          // Analyse IA complète (limitée à MAX_AI_PER_SYNC appels/run, sautée si trivial)
           let analysis = {
             detected_language: null,
             client_summary_fr: null,
@@ -420,12 +557,14 @@ export default async function handler(req, res) {
             if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
               try {
                 analysis = await generateFullAnalysis({
-                  appart:          resaCtx.appart   || appart,
-                  voyageur:        resaCtx.voyageur || guestName,
-                  checkin:         resaCtx.checkin  || '',
-                  checkout:        resaCtx.checkout || '',
-                  source:          resaCtx.source   || '',
-                  message_content: messageContent,
+                  appart:                 resaCtx.appart   || appart,
+                  voyageur:               resaCtx.voyageur || guestName,
+                  checkin:                resaCtx.checkin  || '',
+                  checkout:               resaCtx.checkout || '',
+                  source:                 resaCtx.source   || '',
+                  message_content:        messageContent,
+                  reservation_confirmed:  resaConfirmed,
+                  days_until_checkin_ctx: daysCheckin,
                 });
                 aiUsed++;
               } catch (claudeErr) {
@@ -433,29 +572,29 @@ export default async function handler(req, res) {
                 analysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
               }
             } else if (aiUsed >= MAX_AI_PER_SYNC) {
-              console.log('[sync] cap IA atteint — booking', bookingId, 'inséré sans brouillon (sera traité au prochain run)');
+              console.log('[sync] cap IA atteint — booking', bookingId, 'inséré sans brouillon');
             }
           } else {
-            console.log('[sync] message trivial — booking:', bookingId, '| classification: no_reply_needed, Claude ignoré');
+            console.log('[sync] message trivial — booking:', bookingId, '| no_reply_needed');
           }
 
-          // Insérer dans messages
           const now = new Date().toISOString();
           await sbInsert('messages', {
             id:                uid(),
             smoobu_booking_id: bookingId,
-            reservation_id:    resaCtx.id                 || null,
-            appart:            resaCtx.appart   || appart || null,
+            reservation_id:    resaCtx.id              || null,
+            appart:            resaCtx.appart || appart || null,
             voyageur:          resaCtx.voyageur || guestName || null,
-            source:            resaCtx.source               || null,
+            source:            resaCtx.source          || null,
             sender:            'guest',
             message_content:   messageContent,
-            detected_language: analysis.detected_language   || null,
-            client_summary_fr: analysis.client_summary_fr   || null,
-            classification:    analysis.classification       || null,
-            ai_draft:          analysis.ai_draft             || null,
-            ai_draft_fr:       analysis.ai_draft_fr          || null,
-            smoobu_message_id: smoobuMessageId               || null,
+            detected_language: analysis.detected_language || null,
+            client_summary_fr: analysis.client_summary_fr || null,
+            classification:    analysis.classification    || null,
+            ai_draft:          analysis.ai_draft          || null,
+            ai_draft_fr:       analysis.ai_draft_fr       || null,
+            smoobu_message_id: smoobuMessageId            || null,
+            is_stale:          false,
             raw_payload:       { booking_id: bookingId, thread },
             statut:            'pending',
             created_at:        now,
@@ -466,7 +605,6 @@ export default async function handler(req, res) {
           processed++;
 
         } catch (threadErr) {
-          // Doublon DB (UNIQUE smoobu_message_id) → pas une vraie erreur
           if (threadErr.message.includes('23505') || threadErr.message.toLowerCase().includes('unique')) {
             skipped++;
           } else {
@@ -476,8 +614,8 @@ export default async function handler(req, res) {
         }
       }
 
-      console.log('[sync] terminé — processed:', processed, '| skipped:', skipped, '| errors:', errors, '| ai_calls:', aiUsed);
-      return res.status(200).json({ ok: true, sync: true, hoursBack, threads_checked: recentThreads.length, processed, skipped, errors, ai_calls: aiUsed });
+      console.log('[sync] terminé — processed:', processed, '| skipped:', skipped, '| resolved:', resolved, '| errors:', errors, '| ai_calls:', aiUsed);
+      return res.status(200).json({ ok: true, sync: true, hoursBack, threads_checked: recentThreads.length, processed, skipped, resolved, errors, ai_calls: aiUsed });
 
     } catch (syncErr) {
       console.error('[sync] erreur globale:', syncErr.message);
@@ -514,7 +652,7 @@ export default async function handler(req, res) {
 
       // Lire le message en base (contexte complet)
       const rows = await sbGet(
-        `messages?id=eq.${encodeURIComponent(message_id)}&select=id,smoobu_booking_id,message_content,appart,voyageur,source,statut&limit=1`
+        `messages?id=eq.${encodeURIComponent(message_id)}&select=id,smoobu_booking_id,message_content,appart,voyageur,source,statut,reservation_id&limit=1`
       );
       const msg = rows?.[0];
       if (!msg) return res.status(404).json({ error: 'Message introuvable' });
@@ -524,13 +662,15 @@ export default async function handler(req, res) {
       const resaCtx = await getResaContext(msg.smoobu_booking_id);
 
       const analysis = await generateFullAnalysis({
-        appart:            msg.appart   || resaCtx.appart   || '',
-        voyageur:          msg.voyageur || resaCtx.voyageur || '',
-        checkin:           resaCtx.checkin  || '',
-        checkout:          resaCtx.checkout || '',
-        source:            msg.source   || resaCtx.source   || '',
-        message_content:   msg.message_content,
-        hakim_instruction: String(hakim_instruction).trim(),
+        appart:                 msg.appart   || resaCtx.appart   || '',
+        voyageur:               msg.voyageur || resaCtx.voyageur || '',
+        checkin:                resaCtx.checkin  || '',
+        checkout:               resaCtx.checkout || '',
+        source:                 msg.source   || resaCtx.source   || '',
+        message_content:        msg.message_content,
+        hakim_instruction:      String(hakim_instruction).trim(),
+        reservation_confirmed:  !!(msg.reservation_id || resaCtx.id),
+        days_until_checkin_ctx: daysUntilCheckin(resaCtx.checkin || ''),
       });
 
       const now = new Date().toISOString();
@@ -538,6 +678,7 @@ export default async function handler(req, res) {
         ai_draft:          analysis.ai_draft    || null,
         ai_draft_fr:       analysis.ai_draft_fr || null,
         hakim_instruction: String(hakim_instruction).trim(),
+        is_stale:          false,
         updated_at:        now,
       });
 
@@ -656,7 +797,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'empty_message' });
     }
 
-    // 2. Déduplication
+    // 2. Déduplication (même message déjà en base)
     const isDup = await checkDuplicate(booking.id, messageContent, smoobuMessageId);
     if (isDup) {
       console.log('[messages] Doublon détecté — booking:', booking.id, '| skipped');
@@ -668,10 +809,21 @@ export default async function handler(req, res) {
     const guestName = resaCtx.voyageur ||
       [booking.guest?.firstname, booking.guest?.lastname].filter(Boolean).join(' ') ||
       booking.guestName || '';
-    const appart  = resaCtx.appart   || booking.apartment?.name || '';
-    const source  = resaCtx.source   || '';
-    const checkin = resaCtx.checkin  || booking.arrivalDate   || '';
+    const appart   = resaCtx.appart   || booking.apartment?.name || '';
+    const source   = resaCtx.source   || '';
+    const checkin  = resaCtx.checkin  || booking.arrivalDate   || '';
     const checkout = resaCtx.checkout || booking.departureDate || '';
+    const resaConfirmedWh   = !!(resaCtx.id);
+    const daysCheckinWh     = daysUntilCheckin(checkin);
+
+    // 3b. Chercher un pending existant pour ce booking (conversation peut avoir évolué)
+    let existingPendingIdWh = null;
+    try {
+      const epRows = await sbGet(
+        `messages?smoobu_booking_id=eq.${booking.id}&statut=eq.pending&select=id&order=created_at.desc&limit=1`
+      );
+      existingPendingIdWh = epRows?.[0]?.id || null;
+    } catch { /* ignore — on insère normalement si échec */ }
 
     // 4. Vérification message trivial + Analyse IA via Claude
     const trivialWh = isTrivialMessage(messageContent);
@@ -686,7 +838,9 @@ export default async function handler(req, res) {
       try {
         analysis = await generateFullAnalysis({
           appart, voyageur: guestName, checkin, checkout, source,
-          message_content: messageContent,
+          message_content:        messageContent,
+          reservation_confirmed:  resaConfirmedWh,
+          days_until_checkin_ctx: daysCheckinWh,
         });
         console.log('[messages] Claude OK — lang:', analysis.detected_language, '| classif:', analysis.classification);
       } catch (claudeErr) {
@@ -699,8 +853,26 @@ export default async function handler(req, res) {
       console.warn('[messages] ANTHROPIC_API_KEY non configurée — analyse IA ignorée');
     }
 
-    // 5. INSERT dans la table messages
+    // 5. UPDATE le pending existant ou INSERT nouveau record
     const now = new Date().toISOString();
+
+    if (existingPendingIdWh) {
+      // Conversation évoluée : mettre à jour le pending existant au lieu de dupliquer
+      await sbPatch('messages', `id=eq.${encodeURIComponent(existingPendingIdWh)}`, {
+        message_content:   messageContent,
+        smoobu_message_id: smoobuMessageId              || null,
+        detected_language: analysis.detected_language   || null,
+        client_summary_fr: analysis.client_summary_fr   || null,
+        classification:    analysis.classification      || null,
+        ai_draft:          analysis.ai_draft            || null,
+        ai_draft_fr:       analysis.ai_draft_fr         || null,
+        is_stale:          false,
+        updated_at:        now,
+      });
+      console.log('[messages] UPDATE existing pending — booking:', booking.id, '| id:', existingPendingIdWh, '| lang:', analysis.detected_language);
+      return res.status(200).json({ ok: true, action, message_id: existingPendingIdWh, updated: true });
+    }
+
     const newMsg = {
       id:                uid(),
       smoobu_booking_id: booking.id,
@@ -716,6 +888,7 @@ export default async function handler(req, res) {
       ai_draft:          analysis.ai_draft          || null,
       ai_draft_fr:       analysis.ai_draft_fr       || null,
       smoobu_message_id: smoobuMessageId     || null,
+      is_stale:          false,
       raw_payload:       booking             || null,
       statut:            'pending',
       created_at:        now,

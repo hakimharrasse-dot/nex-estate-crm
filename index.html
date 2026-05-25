@@ -10797,6 +10797,16 @@ async function renderMessages() {
     html += '</div>';
 
     if (!isError) {
+      // ── Bannière "conversation mise à jour" si brouillon périmé ──
+      if (m.is_stale) {
+        html += '<div style="margin-bottom:12px;background:rgba(200,119,58,.1);border:1px solid rgba(200,119,58,.4);border-radius:8px;padding:9px 13px;display:flex;align-items:flex-start;gap:10px">';
+        html += '<span style="font-size:18px;flex-shrink:0">⚠️</span>';
+        html += '<div>';
+        html += '<div style="font-size:12px;font-weight:700;color:var(--or)">Conversation mise à jour après génération</div>';
+        html += '<div style="font-size:11px;color:var(--tm);margin-top:2px">Le nouveau message du voyageur est affiché ci-dessous. Le brouillon précédent a été effacé — cliquez <strong>Regénérer</strong> avec une instruction pour obtenir une réponse à jour.</div>';
+        html += '</div></div>';
+      }
+
       if (m.classification === 'no_reply_needed') {
         // ── Carte "Sans réponse" — message trivial, pas de draft ──
 
@@ -10997,6 +11007,19 @@ async function msgRegenerate(messageId) {
     var frSection = document.getElementById('draft-fr-section-' + messageId);
     if (frEl) frEl.textContent = data.ai_draft_fr || '';
     if (frSection) frSection.style.display = data.ai_draft_fr ? '' : 'none';
+
+    // Effacer la bannière "conversation mise à jour" si présente (is_stale nettoyé côté serveur)
+    var card = document.getElementById('msgcard-' + messageId);
+    if (card) {
+      var staleBanner = card.querySelector('[data-stale-banner]');
+      if (!staleBanner) {
+        // Chercher par contenu (bannière orange ajoutée dynamiquement)
+        var banners = card.querySelectorAll('div[style*="rgba(200,119,58"]');
+        banners.forEach(function(b) {
+          if (b.textContent.indexOf('Conversation mise à jour') !== -1) b.remove();
+        });
+      }
+    }
 
     showToast('✅ Brouillon regénéré avec votre instruction.');
   } catch (e) {
