@@ -1367,7 +1367,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div class="vt" style="background:linear-gradient(135deg,var(--bl),var(--pu));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Messages IA</div>
       <div class="vsub">Brouillons générés par Claude — valider avant envoi</div>
     </div>
-    <button class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="renderMessages()">↻ Actualiser</button>
+    <button id="msg-refresh-btn" class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="msgRefreshAndSync()">↻ Actualiser</button>
   </div>
   <div class="empty hidden" id="msg-empty" style="padding:40px 0">
     <div style="font-size:32px;opacity:.4;margin-bottom:10px">💬</div>
@@ -10723,6 +10723,43 @@ var MSG_CLASSIF = {
   'conflit':         { bg: 'rgba(224,82,82,.15)',   color: 'var(--re)', label: '🚫 Conflit' },
   'remboursement':   { bg: 'rgba(90,159,212,.15)',  color: 'var(--bl)', label: 'Remboursement' },
 };
+
+// Actualiser : déclenche un vrai sync Smoobu backend puis recharge l'affichage
+// Le bouton Actualiser appelle cette fonction — renderMessages() seule ne contacte pas Smoobu.
+async function msgRefreshAndSync() {
+  var btn = document.getElementById('msg-refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sync…'; }
+
+  try {
+    var r = await fetch('/api/smoobu-messages?sync=1');
+    var data;
+    try { data = await r.json(); } catch (e) { data = {}; }
+    if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+
+    // Construire un toast lisible avec les chiffres du sync
+    var p  = data.processed || 0;
+    var rs = data.resolved  || 0;
+    var ai = data.ai_calls  || 0;
+    var tc = data.threads_checked || 0;
+    var parts = [];
+    if (p  > 0) parts.push(p  + ' nouveau' + (p  > 1 ? 'x' : ''));
+    if (rs > 0) parts.push(rs + ' résolu'  + (rs > 1 ? 's' : ''));
+    if (ai > 0) parts.push(ai + ' brouillon' + (ai > 1 ? 's IA' : ' IA'));
+    var msg = parts.length ? parts.join(' · ') : 'Aucun nouveau message';
+    msg += ' — ' + tc + ' thread' + (tc > 1 ? 's' : '') + ' vérifiés';
+    showToast('✅ ' + msg);
+  } catch (e) {
+    showToast('⚠ Sync échoué : ' + e.message);
+  }
+
+  // Dans tous les cas, recharger l'affichage depuis Supabase
+  await renderMessages();
+
+  // Restaurer le bouton (renderMessages peut le recréer si la vue est rechargée,
+  // on utilise getElementById qui retrouve le bon element après re-render)
+  var btn2 = document.getElementById('msg-refresh-btn');
+  if (btn2) { btn2.disabled = false; btn2.innerHTML = '↻ Actualiser'; }
+}
 
 async function renderMessages() {
   if (!SUPA) return;
