@@ -1367,7 +1367,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div class="vt" style="background:linear-gradient(135deg,var(--bl),var(--pu));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Messages IA</div>
       <div class="vsub">Brouillons générés par Claude — valider avant envoi</div>
     </div>
-    <button id="msg-refresh-btn" class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="msgRefreshAndSync()">↻ Actualiser</button>
+    <div style="display:flex;gap:8px">
+      <button class="ba ba-ghost" style="font-size:13px" onclick="msgShowSentHistory()">📤 Envois</button>
+      <button id="msg-refresh-btn" class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="msgRefreshAndSync()">↻ Actualiser</button>
+    </div>
   </div>
   <div class="empty hidden" id="msg-empty" style="padding:40px 0">
     <div style="font-size:32px;opacity:.4;margin-bottom:10px">💬</div>
@@ -10761,6 +10764,76 @@ async function msgRefreshAndSync() {
   if (btn2) { btn2.disabled = false; btn2.innerHTML = '↻ Actualiser'; }
 }
 
+// ── Historique des envois récents ────────────────────────────
+// Ouvre un overlay avec les messages envoyés depuis le CRM (24h)
+// Appelle GET /api/smoobu-messages?sentHistory=1 — zéro appel Claude
+async function msgShowSentHistory() {
+  // Créer ou réutiliser l'overlay
+  var ov = document.getElementById('msg-sent-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'msg-sent-ov';
+    ov.className = 'ov';
+    ov.style.cssText = 'display:none;z-index:950';
+    ov.onclick = function(e) { if (e.target === ov) ov.style.display = 'none'; };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div class="mbox" style="max-width:700px;max-height:80vh;overflow-y:auto">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+    + '<div style="font-weight:700;font-size:16px">📤 Envois récents (24h)</div>'
+    + '<button class="ba ba-ghost" onclick="document.getElementById(\'msg-sent-ov\').style.display=\'none\'">✕ Fermer</button>'
+    + '</div>'
+    + '<div id="msg-sent-body" style="color:var(--tm);font-size:13px">⏳ Chargement…</div>'
+    + '</div>';
+  ov.style.display = 'flex';
+
+  try {
+    var r = await fetch('/api/smoobu-messages?sentHistory=1');
+    var data;
+    try { data = await r.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
+    if (!r.ok || data.error) throw new Error(data.error || 'HTTP ' + r.status);
+
+    var body = document.getElementById('msg-sent-body');
+    if (!body) return;
+
+    if (!data.sent || data.sent.length === 0) {
+      body.innerHTML = '<div style="padding:20px 0;text-align:center;opacity:.5">Aucun message envoyé depuis le CRM ces dernières 24h.</div>';
+      return;
+    }
+
+    var html = '<div style="font-size:12px;color:var(--tm);margin-bottom:12px">'
+      + data.count + ' envoi' + (data.count > 1 ? 's' : '') + ' — ' + data.hours + 'h'
+      + '</div>';
+
+    data.sent.forEach(function(m) {
+      var dt = m.sent_at ? new Date(m.sent_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+      var confirmed = m.smoobu_confirmed;
+      var confirmBadge = confirmed
+        ? '<span style="background:rgba(40,167,69,.15);color:var(--gr);border:1px solid var(--gr);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">✓ Smoobu id ' + escHtml(String(m.smoobu_msg_id || '')) + '</span>'
+        : '<span style="background:rgba(220,53,69,.12);color:var(--re);border:1px solid var(--re);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">⚠ Non confirmé</span>';
+      html += '<div style="background:var(--s);border:1px solid var(--br);border-radius:10px;padding:13px 15px;margin-bottom:10px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">';
+      html += '<div><span style="font-weight:600">' + escHtml(m.voyageur || '—') + '</span>'
+            + ' <span style="color:var(--tm);font-size:12px">· ' + escHtml(m.appart || '') + ' · booking ' + m.booking_id + '</span></div>';
+      html += '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0">' + confirmBadge
+            + '<span style="color:var(--tm);font-size:11px">' + dt + '</span></div>';
+      html += '</div>';
+      html += '<div style="font-size:12px;color:var(--tx);background:var(--bg);border-radius:6px;padding:8px 10px;white-space:pre-wrap;word-break:break-word">'
+            + escHtml((m.sent_text || '').slice(0, 300)) + ((m.sent_text || '').length > 300 ? '…' : '')
+            + '</div>';
+      if (m.error) {
+        html += '<div style="margin-top:6px;font-size:11px;color:var(--re)">⚠ ' + escHtml(m.error) + '</div>';
+      }
+      html += '</div>';
+    });
+
+    body.innerHTML = html;
+  } catch (e) {
+    var body2 = document.getElementById('msg-sent-body');
+    if (body2) body2.innerHTML = '<div style="color:var(--re);padding:20px 0">⚠ Erreur : ' + escHtml(e.message) + '</div>';
+  }
+}
+
 async function renderMessages() {
   if (!SUPA) return;
   var el     = document.getElementById('msg-list');
@@ -11018,7 +11091,12 @@ async function msgSend(messageId, bookingId) {
     try { data = await resp.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
     if (!resp.ok || data.error) throw new Error(data.error || 'HTTP ' + resp.status);
 
-    showToast('✅ Message envoyé au voyageur !');
+    if (data.warning) {
+      // Smoobu HTTP 200 mais pas de confirmation d'id — avertissement visible
+      showToast('⚠ ' + data.warning, 6000);
+    } else {
+      showToast('✅ Message envoyé — confirmé par Smoobu (id ' + (data.smoobu_msg_id || '?') + ')');
+    }
     msgRemoveCard(messageId);
   } catch (e) {
     // Ré-activer le bouton en cas d'erreur

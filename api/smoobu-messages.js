@@ -78,17 +78,24 @@ async function getSmoobuMessages(bookingId) {
 }
 
 // ── Smoobu : envoyer un message au voyageur ───────────────────
+// Retourne { httpStatus, body, rawText, confirmed }
+// confirmed = true si Smoobu a retourné un objet avec id (preuve de création)
 async function sendSmoobuMessage(bookingId, text) {
   const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages`, {
     method:  'POST',
     headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
     body:    JSON.stringify({ message: text, to: 'guest' }),
   });
+  const rawText = await res.text();
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Smoobu POST message [${bookingId}]: ${res.status} ${err}`);
+    throw new Error(`Smoobu POST message [${bookingId}]: ${res.status} ${rawText}`);
   }
-  return res.json();
+  let body;
+  try { body = JSON.parse(rawText); } catch { body = { raw: rawText }; }
+  // Smoobu confirme avec un id dans la réponse (data.id ou id direct)
+  const msgId = body?.id ?? body?.data?.id ?? null;
+  const confirmed = msgId !== null && msgId !== undefined;
+  return { httpStatus: res.status, body, rawText, confirmed, msgId };
 }
 
 // ── Claude API : analyse complète en un seul appel ────────────
@@ -1047,21 +1054,83 @@ export default async function handler(req, res) {
       if (msg.statut === 'sent')    return res.status(409).json({ error: 'Message déjà envoyé — doublon bloqué' });
       if (msg.statut === 'ignored') return res.status(409).json({ error: 'Message ignoré — impossible d\'envoyer' });
 
-      await sendSmoobuMessage(msg.smoobu_booking_id, String(text).trim());
+      const smoobuResult = await sendSmoobuMessage(msg.smoobu_booking_id, String(text).trim());
 
-      const now = new Date().toISOString();
+      // Smoobu doit confirmer avec un id dans la réponse.
+      // Si confirmed=false → Smoobu a répondu 200 mais sans id → statut error, pas sent.
+      const confirmed    = smoobuResult.confirmed;
+      const now          = new Date().toISOString();
+      const apiRespStr   = JSON.stringify(smoobuResult.body);
+
       await sbPatch('messages', `id=eq.${encodeURIComponent(message_id)}`, {
-        statut:     'sent',
-        ai_draft:   String(text).trim(),
-        sent_at:    now,
-        updated_at: now,
+        statut:               confirmed ? 'sent'  : 'error',
+        ai_draft:             String(text).trim(),
+        sent_at:              confirmed ? now     : null,
+        updated_at:           now,
+        smoobu_api_response:  apiRespStr,
+        error_message:        confirmed ? null    : `Smoobu HTTP ${smoobuResult.httpStatus} — réponse sans id: ${apiRespStr}`,
       });
 
-      console.log('[messages] sent OK — message_id:', message_id, '| booking_id:', msg.smoobu_booking_id);
-      return res.status(200).json({ ok: true, sent: true, message_id });
+      console.log('[messages] send result — message_id:', message_id,
+        '| booking_id:', msg.smoobu_booking_id,
+        '| smoobu_http:', smoobuResult.httpStatus,
+        '| confirmed:', confirmed,
+        '| smoobu_msg_id:', smoobuResult.msgId,
+        '| body:', apiRespStr.slice(0, 200));
+
+      if (!confirmed) {
+        return res.status(200).json({
+          ok:      false,
+          sent:    false,
+          message_id,
+          warning: 'Smoobu a répondu 200 mais sans identifiant de message — vérifiez manuellement dans Smoobu',
+          smoobu_http: smoobuResult.httpStatus,
+        });
+      }
+      return res.status(200).json({ ok: true, sent: true, message_id, smoobu_msg_id: smoobuResult.msgId });
 
     } catch (err) {
       console.error('[messages] send error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Historique des envois : GET ?sentHistory=1 ────────────
+  // Retourne les messages envoyés depuis le CRM sur les dernières 24h
+  // (ou ?sentHours=N pour une fenêtre différente, max 168h)
+  // Aucun appel Claude — lecture DB pure
+  if (req.method === 'GET' && req.query?.sentHistory) {
+    try {
+      const hours = Math.min(parseInt(req.query.sentHours || '24', 10) || 24, 168);
+      const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+      const rows  = await sbGet(
+        `messages?statut=eq.sent&sent_at=gte.${encodeURIComponent(since)}` +
+        `&select=id,smoobu_booking_id,voyageur,appart,source,classification,` +
+        `ai_draft,sent_at,smoobu_api_response,updated_at,error_message` +
+        `&order=sent_at.desc&limit=100`
+      );
+      const sent = (rows || []).map(function(r) {
+        let apiResp = null;
+        try { apiResp = r.smoobu_api_response ? JSON.parse(r.smoobu_api_response) : null; } catch {}
+        const smoobuMsgId = apiResp?.id ?? apiResp?.data?.id ?? null;
+        return {
+          id:             r.id,
+          booking_id:     r.smoobu_booking_id,
+          voyageur:       r.voyageur,
+          appart:         r.appart,
+          source:         r.source,
+          classification: r.classification,
+          sent_text:      r.ai_draft,
+          sent_at:        r.sent_at,
+          smoobu_msg_id:  smoobuMsgId,
+          smoobu_confirmed: smoobuMsgId !== null,
+          smoobu_raw:     apiResp,
+          error:          r.error_message || null,
+        };
+      });
+      return res.status(200).json({ ok: true, hours, count: sent.length, sent });
+    } catch (err) {
+      console.error('[sentHistory] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
