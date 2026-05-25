@@ -246,6 +246,39 @@ function extractSmoobuMessageId(msg) {
   return str || null;
 }
 
+// ── Extraire la date d'un message Smoobu ─────────────────────
+// Smoobu peut utiliser différents noms de champ selon la version API
+function extractMessageDate(msg) {
+  const raw = msg.created_at || msg.createdAt || msg.sentAt || msg.sent_at
+            || msg.date || msg.timestamp || msg.updatedAt || '';
+  if (!raw) return null;
+  try {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  } catch { return null; }
+}
+
+// ── Trier les messages chronologiquement (ASC = plus ancien en premier) ──
+// Smoobu peut retourner les messages en ASC ou en DESC selon la version API.
+// On trie par date si disponible. Si moins de la moitié des messages ont
+// une date valide, on conserve l'ordre API original (cas rare).
+function sortMessagesChronologically(messages) {
+  if (!messages || messages.length < 2) return messages || [];
+  const dated = messages.map(function(m, i) {
+    return { msg: m, d: extractMessageDate(m), i: i };
+  });
+  const withDateCount = dated.filter(function(x) { return x.d !== null; }).length;
+  // Pas assez de dates exploitables → garder l'ordre API tel quel
+  if (withDateCount < Math.ceil(messages.length / 2)) return messages.slice();
+  dated.sort(function(a, b) {
+    if (!a.d && !b.d) return a.i - b.i; // stabiliser par index original
+    if (!a.d) return 1;
+    if (!b.d) return -1;
+    return a.d.getTime() - b.d.getTime(); // ASC : plus ancien = index plus bas
+  });
+  return dated.map(function(x) { return x.msg; });
+}
+
 // ── Détecter si un message vient du voyageur ─────────────────
 // Smoobu retourne type comme entier : 1 = guest, 2 = host
 function isGuestMessage(msg) {
@@ -424,9 +457,11 @@ export default async function handler(req, res) {
         try {
           // Lire les messages complets de la réservation
           const msgData = await getSmoobuMessages(bookingId);
-          const allMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+          const rawMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+          // Trier chronologiquement ASC (Smoobu peut retourner DESC)
+          const allMessages = sortMessagesChronologically(rawMessages);
 
-          // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC supposé)
+          // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC garanti)
           let lastGuestIdx = -1;
           for (let gi = allMessages.length - 1; gi >= 0; gi--) {
             if (isGuestMessage(allMessages[gi]) && extractMessageText(allMessages[gi]).length > 0) {
@@ -435,10 +470,34 @@ export default async function handler(req, res) {
             }
           }
 
-          // Vérifier si l'hôte a répondu après le dernier message voyageur
+          // Vérifier si l'hôte a répondu APRÈS le dernier message voyageur
           const hostRepliedAfter = lastGuestIdx !== -1 && allMessages.slice(lastGuestIdx + 1).some(function(m) {
             return !isGuestMessage(m) && extractMessageText(m).length > 0;
           });
+
+          // ── LOG DEBUG (temporaire) : état de la conversation ──
+          {
+            const dbgGuest = lastGuestIdx !== -1 ? allMessages[lastGuestIdx] : null;
+            let dbgHost = null;
+            for (let dhi = allMessages.length - 1; dhi >= 0; dhi--) {
+              if (!isGuestMessage(allMessages[dhi]) && extractMessageText(allMessages[dhi]).length > 0) {
+                dbgHost = allMessages[dhi]; break;
+              }
+            }
+            const hasDates = rawMessages.some(function(m) { return !!extractMessageDate(m); });
+            console.log('[sync:dbg] booking:', bookingId,
+              '| msgs:', rawMessages.length, '(sorted_by_date:', hasDates, ')',
+              '| last_guest:', dbgGuest
+                ? `"${extractMessageText(dbgGuest).slice(0, 40)}" [${extractMessageDate(dbgGuest)?.toISOString().slice(0, 16) || 'no-date'}]`
+                : 'NONE',
+              '| last_host:', dbgHost
+                ? `"${extractMessageText(dbgHost).slice(0, 40)}" [${extractMessageDate(dbgHost)?.toISOString().slice(0, 16) || 'no-date'}]`
+                : 'NONE',
+              '| host_after_guest:', hostRepliedAfter,
+              '| decision:', (hostRepliedAfter || lastGuestIdx === -1)
+                ? 'AUTO-RESOLVE' : (pendingByBooking[String(bookingId)]?.length ? 'UPDATE' : 'INSERT')
+            );
+          }
 
           // Pending existants pour ce booking (depuis le batch pré-chargé)
           const existingPending = pendingByBooking[String(bookingId)] || [];
@@ -670,7 +729,8 @@ export default async function handler(req, res) {
       let contentUpdated   = false;
       try {
         const freshData  = await getSmoobuMessages(msg.smoobu_booking_id);
-        const freshMsgs  = freshData?.messages || freshData?.data || (Array.isArray(freshData) ? freshData : []);
+        const freshRaw   = freshData?.messages || freshData?.data || (Array.isArray(freshData) ? freshData : []);
+        const freshMsgs  = sortMessagesChronologically(freshRaw); // trier ASC
         let freshLastIdx = -1;
         for (let gi = freshMsgs.length - 1; gi >= 0; gi--) {
           if (isGuestMessage(freshMsgs[gi]) && extractMessageText(freshMsgs[gi]).length > 0) {
@@ -798,15 +858,17 @@ export default async function handler(req, res) {
   try {
     // 1. Lire les messages complets de la réservation via Smoobu
     const msgData = await getSmoobuMessages(booking.id);
-    const allMessages = (
+    const rawMessagesWh = (
       msgData?.messages ||
       msgData?.data     ||
       (Array.isArray(msgData) ? msgData : [])
     );
+    // Trier chronologiquement ASC (Smoobu peut retourner DESC)
+    const allMessages = sortMessagesChronologically(rawMessagesWh);
 
     console.log('[messages] nb_msgs:', allMessages.length, '| booking:', booking.id);
 
-    // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC supposé)
+    // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC garanti)
     let lastGuestIdxWh = -1;
     for (let gi = allMessages.length - 1; gi >= 0; gi--) {
       if (isGuestMessage(allMessages[gi]) && extractMessageText(allMessages[gi]).length > 0) {
@@ -819,13 +881,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'no_guest_message' });
     }
 
-    // ── FIX : vérifier si l'hôte a déjà répondu APRÈS le dernier message voyageur
+    // Vérifier si l'hôte a déjà répondu APRÈS le dernier message voyageur
     // Cas typique : webhook déclenché par la réponse de l'hôte lui-même
     const hostRepliedAfterWh = allMessages.slice(lastGuestIdxWh + 1).some(function(m) {
       return !isGuestMessage(m) && extractMessageText(m).length > 0;
     });
     if (hostRepliedAfterWh) {
       console.log('[messages] hôte a déjà répondu après voyageur — booking:', booking.id, '| skip');
+      // Auto-resolve si un pending existe
+      try {
+        const epWh = await sbGet(
+          `messages?smoobu_booking_id=eq.${booking.id}&statut=eq.pending&select=id&order=created_at.desc&limit=5`
+        );
+        if (epWh?.length) {
+          const nowWh = new Date().toISOString();
+          for (const ep of epWh) {
+            await sbPatch('messages', `id=eq.${encodeURIComponent(ep.id)}`, { statut: 'resolved', updated_at: nowWh });
+          }
+          console.log('[messages] webhook auto-resolved', epWh.length, 'pending — booking:', booking.id);
+        }
+      } catch (resolveErr) {
+        console.warn('[messages] webhook auto-resolve failed:', resolveErr.message);
+      }
       return res.status(200).json({ ok: true, skipped: 'host_already_replied' });
     }
 
