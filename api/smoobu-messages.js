@@ -80,11 +80,14 @@ async function getSmoobuMessages(bookingId) {
 // ── Smoobu : envoyer un message au voyageur ───────────────────
 // Retourne { httpStatus, body, rawText, confirmed }
 // confirmed = true si Smoobu a retourné un objet avec id (preuve de création)
+// Endpoint officiel Smoobu (doc v2) :
+//   POST /api/reservations/{id}/messages/send-message-to-guest
+//   Body : { messageBody: "...", subject: "..." (optionnel) }
 async function sendSmoobuMessage(bookingId, text) {
-  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages`, {
+  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages/send-message-to-guest`, {
     method:  'POST',
     headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ message: text, to: 'guest' }),
+    body:    JSON.stringify({ messageBody: text }),
   });
   const rawText = await res.text();
   if (!res.ok) {
@@ -911,8 +914,158 @@ export default async function handler(req, res) {
         }
       }
 
-      console.log('[sync] terminé — processed:', processed, '| skipped:', skipped, '| resolved:', resolved, '| errors:', errors, '| ai_calls:', aiUsed);
-      return res.status(200).json({ ok: true, sync: true, hoursBack, threads_checked: recentThreads.length, processed, skipped, resolved, errors, ai_calls: aiUsed });
+      console.log('[sync] threads terminé — processed:', processed, '| skipped:', skipped, '| resolved:', resolved, '| errors:', errors, '| ai_calls:', aiUsed);
+
+      // ── 4. Scan Booking.com direct ────────────────────────────
+      // Booking.com ne remonte pas automatiquement dans GET /api/threads.
+      // Smoobu importe les messages Booking.com seulement à la demande
+      // (visite de la page réservation dans l'interface, ou appel API direct).
+      // On interroge donc GET /api/reservations/{id}/messages sur chaque
+      // réservation Booking.com récente connue dans la table resa.
+      // IDs déjà traités via threads → ignorés (évite doublons)
+      const processedViaThreads = new Set(recentThreads.map(function(t) { return String(t.booking?.id); }));
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      let bookingResaList = [];
+      try {
+        bookingResaList = await sbGet(
+          `resa?source=eq.Booking.com&smoobu_id=not.is.null&checkout=gte.${fourteenDaysAgo}` +
+          `&select=smoobu_id,appart,voyageur,source,checkin,checkout,id&order=checkout.desc&limit=30`
+        ) || [];
+      } catch (resaErr) {
+        console.warn('[sync] Booking.com resa query failed:', resaErr.message);
+      }
+
+      let bcom_processed = 0, bcom_skipped = 0, bcom_resolved = 0, bcom_errors = 0;
+
+      for (const resa of bookingResaList) {
+        const bookingId = parseInt(String(resa.smoobu_id), 10);
+        if (!bookingId || isNaN(bookingId)) { bcom_skipped++; continue; }
+        // Déjà traité via threads ? (peu probable pour Booking.com mais prudence)
+        if (processedViaThreads.has(String(bookingId))) { bcom_skipped++; continue; }
+
+        try {
+          const msgData     = await getSmoobuMessages(bookingId);
+          const rawMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+          const allMessages = sortMessagesChronologically(rawMessages);
+
+          if (!allMessages.length) { bcom_skipped++; continue; }
+
+          const { lastGuestIdx, hostRepliedAfter } = analyzeConversation(allMessages);
+          const existingPending = pendingByBooking[String(bookingId)] || [];
+
+          // Cas A : hôte a répondu ou pas de message voyageur → auto-résoudre
+          if (hostRepliedAfter || lastGuestIdx === -1) {
+            if (existingPending.length > 0) {
+              const now = new Date().toISOString();
+              for (const ep of existingPending) {
+                await sbPatch('messages', `id=eq.${encodeURIComponent(ep.id)}`, { statut: 'resolved', updated_at: now });
+              }
+              bcom_resolved += existingPending.length;
+              console.log('[sync] Booking.com auto-resolved', existingPending.length, '— booking:', bookingId);
+            }
+            bcom_skipped++;
+            continue;
+          }
+
+          const lastMsg        = allMessages[lastGuestIdx];
+          const messageContent = extractMessageText(lastMsg);
+          const smoobuMsgId    = extractSmoobuMessageId(lastMsg);
+          if (!messageContent) { bcom_skipped++; continue; }
+
+          // Cas B : pending existant, même message → skip (pas de stale pour scan direct)
+          if (existingPending.length > 0 && isSameMessage(existingPending[0], smoobuMsgId, messageContent)) {
+            bcom_skipped++;
+            continue;
+          }
+
+          // Cas C : vérif doublons puis INSERT
+          const isDupBc = await checkDuplicate(bookingId, messageContent, smoobuMsgId);
+          if (isDupBc) { bcom_skipped++; continue; }
+
+          const trivialBc = isTrivialMessage(messageContent);
+          let analysisBc = {
+            detected_language: null, client_summary_fr: null,
+            classification:    trivialBc ? 'no_reply_needed' : null,
+            ai_draft:          null, ai_draft_fr: null,
+          };
+          if (!trivialBc && CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
+            try {
+              analysisBc = await generateFullAnalysis({
+                appart:                 resa.appart   || '',
+                voyageur:               resa.voyageur || '',
+                checkin:                resa.checkin  || '',
+                checkout:               resa.checkout || '',
+                source:                 'Booking.com',
+                message_content:        messageContent,
+                reservation_confirmed:  true,
+                days_until_checkin_ctx: daysUntilCheckin(resa.checkin || ''),
+              });
+              aiUsed++;
+            } catch (claudeErr) {
+              console.error('[sync] Claude error Booking.com', bookingId, ':', claudeErr.message);
+              analysisBc.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+            }
+          } else if (!trivialBc && aiUsed >= MAX_AI_PER_SYNC) {
+            console.log('[sync] Booking.com cap IA — booking:', bookingId, '| inséré sans brouillon');
+          }
+
+          const now = new Date().toISOString();
+          await sbInsert('messages', {
+            id:                uid(),
+            smoobu_booking_id: bookingId,
+            reservation_id:    resa.id              || null,
+            appart:            resa.appart          || null,
+            voyageur:          resa.voyageur        || null,
+            source:            'Booking.com',
+            sender:            'guest',
+            message_content:   messageContent,
+            detected_language: analysisBc.detected_language || null,
+            client_summary_fr: analysisBc.client_summary_fr || null,
+            classification:    analysisBc.classification    || null,
+            ai_draft:          analysisBc.ai_draft          || null,
+            ai_draft_fr:       analysisBc.ai_draft_fr       || null,
+            smoobu_message_id: smoobuMsgId                  || null,
+            is_stale:          false,
+            raw_payload:       { booking_id: bookingId, source: 'booking_com_direct_scan' },
+            statut:            trivialBc ? 'ignored' : 'pending',
+            created_at:        now,
+            updated_at:        now,
+          });
+          console.log('[sync] Booking.com INSERT — booking:', bookingId, '| voyageur:', resa.voyageur, '| lang:', analysisBc.detected_language);
+          bcom_processed++;
+
+        } catch (bcErr) {
+          if (bcErr.message.includes('23505') || bcErr.message.toLowerCase().includes('unique')) {
+            bcom_skipped++;
+          } else {
+            console.error('[sync] Booking.com resa', bookingId, ':', bcErr.message);
+            bcom_errors++;
+          }
+        }
+      }
+
+      if (bcom_processed + bcom_resolved + bcom_errors > 0 || bookingResaList.length > 0) {
+        console.log('[sync] Booking.com direct —', bcom_processed, 'insérés |', bcom_resolved, 'résolus |',
+          bcom_skipped, 'skipped |', bcom_errors, 'erreurs | resas_vérifiées:', bookingResaList.length);
+      }
+
+      const totalProcessed = processed + bcom_processed;
+      const totalResolved  = resolved  + bcom_resolved;
+      const totalErrors    = errors    + bcom_errors;
+
+      return res.status(200).json({
+        ok: true, sync: true, hoursBack,
+        threads_checked: recentThreads.length,
+        processed: totalProcessed, skipped, resolved: totalResolved, errors: totalErrors,
+        ai_calls:  aiUsed,
+        booking_com: {
+          resas_checked: bookingResaList.length,
+          processed:     bcom_processed,
+          resolved:      bcom_resolved,
+          skipped:       bcom_skipped,
+          errors:        bcom_errors,
+        },
+      });
 
     } catch (syncErr) {
       console.error('[sync] erreur globale:', syncErr.message);
@@ -1069,6 +1222,50 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[messages] regenerate error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Brouillon IA manuel : POST ?manualDraft=1 ────────────────
+  // Génère un brouillon sans lien à une réservation Smoobu existante.
+  // Usage : WhatsApp, Booking.com hors Smoobu, prospects, etc.
+  // Aucune écriture en base — aucun envoi automatique.
+  if (req.query?.manualDraft) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { message, source, appart, instruction } = body || {};
+
+      if (!message || !String(message).trim()) {
+        return res.status(400).json({ error: 'message requis' });
+      }
+      if (!CLAUDE_KEY) {
+        return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
+      }
+
+      const analysis = await generateFullAnalysis({
+        appart:                 String(appart      || '').trim(),
+        voyageur:               '',
+        checkin:                '',
+        checkout:               '',
+        source:                 String(source      || '').trim(),
+        message_content:        String(message).trim(),
+        hakim_instruction:      String(instruction || '').trim() || undefined,
+        reservation_confirmed:  false,
+        days_until_checkin_ctx: null,
+      });
+
+      console.log('[manualDraft] OK | lang:', analysis.detected_language, '| classif:', analysis.classification, '| source:', source || '–');
+      return res.status(200).json({
+        ok:                true,
+        classification:    analysis.classification,
+        detected_language: analysis.detected_language,
+        client_summary_fr: analysis.client_summary_fr,
+        ai_draft:          analysis.ai_draft    || '',
+        ai_draft_fr:       analysis.ai_draft_fr || '',
+      });
+
+    } catch (err) {
+      console.error('[manualDraft] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
