@@ -662,13 +662,46 @@ export default async function handler(req, res) {
       // Récupérer checkin/checkout depuis resa via smoobu_booking_id
       const resaCtx = await getResaContext(msg.smoobu_booking_id);
 
+      // ── Re-fetch Smoobu pour avoir le dernier état réel de la conversation ──
+      // Si la conversation a évolué depuis la dernière capture, on utilise le
+      // dernier message voyageur actuel, pas celui figé en DB.
+      let latestContent    = msg.message_content;
+      let latestMsgId      = null;
+      let contentUpdated   = false;
+      try {
+        const freshData  = await getSmoobuMessages(msg.smoobu_booking_id);
+        const freshMsgs  = freshData?.messages || freshData?.data || (Array.isArray(freshData) ? freshData : []);
+        let freshLastIdx = -1;
+        for (let gi = freshMsgs.length - 1; gi >= 0; gi--) {
+          if (isGuestMessage(freshMsgs[gi]) && extractMessageText(freshMsgs[gi]).length > 0) {
+            freshLastIdx = gi;
+            break;
+          }
+        }
+        if (freshLastIdx !== -1) {
+          const fc = extractMessageText(freshMsgs[freshLastIdx]);
+          if (fc) {
+            latestMsgId    = extractSmoobuMessageId(freshMsgs[freshLastIdx]);
+            contentUpdated = fc.trim() !== (msg.message_content || '').trim();
+            latestContent  = fc;
+            if (contentUpdated) {
+              console.log('[regenerate] contenu mis à jour depuis Smoobu — booking:', msg.smoobu_booking_id,
+                '| ancien:', String(msg.message_content).slice(0, 60),
+                '| nouveau:', fc.slice(0, 60));
+            }
+          }
+        }
+      } catch (smoobuErr) {
+        console.warn('[regenerate] Smoobu fetch échoué — utilisation du contenu en DB:', smoobuErr.message);
+      }
+
       const analysis = await generateFullAnalysis({
         appart:                 msg.appart   || resaCtx.appart   || '',
         voyageur:               msg.voyageur || resaCtx.voyageur || '',
         checkin:                resaCtx.checkin  || '',
         checkout:               resaCtx.checkout || '',
         source:                 msg.source   || resaCtx.source   || '',
-        message_content:        msg.message_content,
+        message_content:        latestContent,
         hakim_instruction:      String(hakim_instruction).trim(),
         reservation_confirmed:  !!(msg.reservation_id || resaCtx.id),
         days_until_checkin_ctx: daysUntilCheckin(resaCtx.checkin || ''),
@@ -678,16 +711,23 @@ export default async function handler(req, res) {
       await sbPatch('messages', `id=eq.${encodeURIComponent(message_id)}`, {
         ai_draft:          analysis.ai_draft    || null,
         ai_draft_fr:       analysis.ai_draft_fr || null,
+        classification:    analysis.classification || null,
         hakim_instruction: String(hakim_instruction).trim(),
         is_stale:          false,
         updated_at:        now,
+        // Si le message a évolué depuis Smoobu, mettre à jour le contenu en DB
+        ...(contentUpdated ? {
+          message_content:   latestContent,
+          smoobu_message_id: latestMsgId || null,
+        } : {}),
       });
 
-      console.log('[messages] regenerate OK — message_id:', message_id, '| instruction:', String(hakim_instruction).slice(0, 60));
+      console.log('[messages] regenerate OK — message_id:', message_id, '| instruction:', String(hakim_instruction).slice(0, 60), '| content_updated:', contentUpdated);
       return res.status(200).json({
-        ok:         true,
-        ai_draft:   analysis.ai_draft    || '',
-        ai_draft_fr: analysis.ai_draft_fr || '',
+        ok:                      true,
+        ai_draft:                analysis.ai_draft    || '',
+        ai_draft_fr:             analysis.ai_draft_fr || '',
+        message_content_updated: contentUpdated ? latestContent : null,
       });
 
     } catch (err) {

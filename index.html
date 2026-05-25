@@ -10904,7 +10904,12 @@ async function renderMessages() {
 
         // ── 7. Actions ────────────────────────────────────────
         html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-        html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
+        if (m.is_stale) {
+          // Brouillon obsolète : envoi bloqué jusqu'à regénération
+          html += '<button class="ba msg-send-btn" disabled style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px;opacity:.35;cursor:not-allowed" title="Regénérez le brouillon avant d\'envoyer — le contenu est obsolète">✅ Valider &amp; Envoyer</button>';
+        } else {
+          html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
+        }
         html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
         html += '</div>';
 
@@ -10938,6 +10943,13 @@ function msgUpdateBadge() {
 }
 
 async function msgSend(messageId, bookingId) {
+  // Garde stale — ne jamais envoyer un brouillon obsolète
+  var msgRec = MSG_DATA.find(function(m) { return m.id === messageId; });
+  if (msgRec && msgRec.is_stale) {
+    showToast('⚠ Brouillon obsolète — regénérez d\'abord.');
+    return;
+  }
+
   var card    = document.getElementById('msgcard-' + messageId);
   var sendBtn = card ? card.querySelector('.msg-send-btn') : null;
   var ta      = document.getElementById('draft-' + messageId);
@@ -11030,34 +11042,17 @@ async function msgRegenerate(messageId) {
     try { data = await resp.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
     if (!resp.ok || data.error) throw new Error(data.error || 'HTTP ' + resp.status);
 
-    // Mettre à jour la textarea avec le nouveau brouillon
-    var ta = document.getElementById('draft-' + messageId);
-    if (ta) ta.value = data.ai_draft || '';
-
-    // Mettre à jour la traduction française
-    var frEl      = document.getElementById('draft-fr-' + messageId);
-    var frSection = document.getElementById('draft-fr-section-' + messageId);
-    if (frEl) frEl.textContent = data.ai_draft_fr || '';
-    if (frSection) frSection.style.display = data.ai_draft_fr ? '' : 'none';
-
-    // Effacer la bannière "conversation mise à jour" si présente (is_stale nettoyé côté serveur)
-    var card = document.getElementById('msgcard-' + messageId);
-    if (card) {
-      var staleBanner = card.querySelector('[data-stale-banner]');
-      if (!staleBanner) {
-        // Chercher par contenu (bannière orange ajoutée dynamiquement)
-        var banners = card.querySelectorAll('div[style*="rgba(200,119,58"]');
-        banners.forEach(function(b) {
-          if (b.textContent.indexOf('Conversation mise à jour') !== -1) b.remove();
-        });
-      }
-    }
-
-    showToast('✅ Brouillon regénéré avec votre instruction.');
+    // Re-render complet : is_stale vidé, message_content potentiellement mis à jour,
+    // send button ré-activé, bannière stale disparue — tout est cohérent avec la DB
+    var toast = data.message_content_updated
+      ? '✅ Brouillon regénéré — message mis à jour depuis Smoobu.'
+      : '✅ Brouillon regénéré avec votre instruction.';
+    showToast(toast);
+    await renderMessages();
   } catch (e) {
     showToast('⚠ Erreur regénération : ' + e.message);
     console.error('[messages] msgRegenerate error:', e);
-  } finally {
+    // Ré-activer le bouton uniquement en cas d'erreur (succès = re-render le retire)
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Regénérer'; }
   }
 }
