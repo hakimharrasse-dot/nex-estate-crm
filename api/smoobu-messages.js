@@ -260,23 +260,67 @@ function extractMessageDate(msg) {
 
 // ── Trier les messages chronologiquement (ASC = plus ancien en premier) ──
 // Smoobu peut retourner les messages en ASC ou en DESC selon la version API.
-// On trie par date si disponible. Si moins de la moitié des messages ont
-// une date valide, on conserve l'ordre API original (cas rare).
+// Stratégie 1 : tri par date si disponible (champ created_at / sentAt / ...).
+// Stratégie 2 : tri par ID numérique Smoobu (ID plus grand = message plus récent).
+// Stratégie 3 : pas de critère → garder l'ordre API (risque de DESC).
 function sortMessagesChronologically(messages) {
   if (!messages || messages.length < 2) return messages || [];
-  const dated = messages.map(function(m, i) {
+
+  // Stratégie 1 — dates
+  const withDates = messages.map(function(m, i) {
     return { msg: m, d: extractMessageDate(m), i: i };
   });
-  const withDateCount = dated.filter(function(x) { return x.d !== null; }).length;
-  // Pas assez de dates exploitables → garder l'ordre API tel quel
-  if (withDateCount < Math.ceil(messages.length / 2)) return messages.slice();
-  dated.sort(function(a, b) {
-    if (!a.d && !b.d) return a.i - b.i; // stabiliser par index original
-    if (!a.d) return 1;
-    if (!b.d) return -1;
-    return a.d.getTime() - b.d.getTime(); // ASC : plus ancien = index plus bas
+  const dateCount = withDates.filter(function(x) { return x.d !== null; }).length;
+  if (dateCount >= Math.ceil(messages.length / 2)) {
+    withDates.sort(function(a, b) {
+      if (!a.d && !b.d) return a.i - b.i;
+      if (!a.d) return 1;
+      if (!b.d) return -1;
+      return a.d.getTime() - b.d.getTime();
+    });
+    return withDates.map(function(x) { return x.msg; });
+  }
+
+  // Stratégie 2 — IDs numériques Smoobu (séquentiels croissants)
+  const withIds = messages.map(function(m, i) {
+    const raw = m.id || m.messageId || m.message_id || m.messageID || '';
+    const n = parseInt(String(raw), 10);
+    return { msg: m, id: isNaN(n) ? null : n, i: i };
   });
-  return dated.map(function(x) { return x.msg; });
+  const idCount = withIds.filter(function(x) { return x.id !== null; }).length;
+  if (idCount >= Math.ceil(messages.length / 2)) {
+    withIds.sort(function(a, b) {
+      if (a.id === null && b.id === null) return a.i - b.i;
+      if (a.id === null) return 1;
+      if (b.id === null) return -1;
+      return a.id - b.id; // ASC : ID plus bas = plus ancien
+    });
+    return withIds.map(function(x) { return x.msg; });
+  }
+
+  // Stratégie 3 — aucun critère détectable
+  return messages.slice();
+}
+
+// ── Analyser l'état de la conversation (utilisé par sync ET debug) ──
+function analyzeConversation(sortedMessages) {
+  let lastGuestIdx = -1;
+  let lastHostIdx  = -1;
+  for (let i = sortedMessages.length - 1; i >= 0; i--) {
+    const txt = extractMessageText(sortedMessages[i]);
+    if (!txt) continue;
+    if (isGuestMessage(sortedMessages[i])) {
+      if (lastGuestIdx === -1) lastGuestIdx = i;
+    } else {
+      if (lastHostIdx  === -1) lastHostIdx  = i;
+    }
+    if (lastGuestIdx !== -1 && lastHostIdx !== -1) break;
+  }
+  const hostRepliedAfter = lastGuestIdx !== -1 &&
+    sortedMessages.slice(lastGuestIdx + 1).some(function(m) {
+      return !isGuestMessage(m) && extractMessageText(m).length > 0;
+    });
+  return { lastGuestIdx, lastHostIdx, hostRepliedAfter };
 }
 
 // ── Détecter si un message vient du voyageur ─────────────────
@@ -390,6 +434,128 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages', version: '2.0' });
   }
 
+  // ── Debug booking : GET ?debugBooking=ID ─────────────────
+  // Retourne l'état complet de la conversation Smoobu + décision sync
+  // pour un booking donné — sans modifier aucune donnée.
+  if (req.method === 'GET' && req.query?.debugBooking) {
+    const bookingId = parseInt(req.query.debugBooking, 10);
+    if (!bookingId || isNaN(bookingId)) {
+      return res.status(400).json({ error: 'debugBooking: ID numérique requis' });
+    }
+    if (!SMOOBU_KEY) return res.status(503).json({ error: 'SMOOBU_API_KEY manquante' });
+    try {
+      // 1. État en DB
+      const dbRows = await sbGet(
+        `messages?smoobu_booking_id=eq.${bookingId}&select=id,statut,classification,is_stale,message_content,smoobu_message_id,created_at,updated_at&order=created_at.desc`
+      );
+
+      // 2. Messages Smoobu bruts
+      const msgData  = await getSmoobuMessages(bookingId);
+      const rawMsgs  = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+
+      // 3. Inspecter chaque message brut (tous les champs)
+      const rawInspect = rawMsgs.map(function(m, i) {
+        return {
+          api_index:        i,
+          raw_id:           m.id ?? m.messageId ?? m.message_id ?? null,
+          raw_type:         m.type,
+          raw_sender:       m.sender,
+          raw_date_fields:  {
+            created_at: m.created_at ?? null,
+            sentAt:     m.sentAt     ?? null,
+            date:       m.date       ?? null,
+            timestamp:  m.timestamp  ?? null,
+            updatedAt:  m.updatedAt  ?? null,
+          },
+          all_keys:         Object.keys(m),
+          detected_date:    extractMessageDate(m)?.toISOString() ?? null,
+          detected_sender:  isGuestMessage(m) ? 'guest' : 'host',
+          content_preview:  extractMessageText(m).slice(0, 100),
+        };
+      });
+
+      // 4. Déterminer la stratégie de tri
+      const dateCount = rawMsgs.filter(function(m) { return extractMessageDate(m) !== null; }).length;
+      const idCount   = rawMsgs.filter(function(m) {
+        const n = parseInt(String(m.id || m.messageId || m.message_id || ''), 10);
+        return !isNaN(n);
+      }).length;
+      const sortStrategy = dateCount >= Math.ceil(rawMsgs.length / 2) ? 'date_asc'
+        : idCount >= Math.ceil(rawMsgs.length / 2) ? 'id_asc'
+        : 'api_order_unchanged';
+
+      // 5. Trier et analyser
+      const sorted = sortMessagesChronologically(rawMsgs);
+      const { lastGuestIdx, lastHostIdx, hostRepliedAfter } = analyzeConversation(sorted);
+
+      const lastGuestMsg = lastGuestIdx !== -1 ? sorted[lastGuestIdx] : null;
+      const lastHostMsg  = lastHostIdx  !== -1 ? sorted[lastHostIdx]  : null;
+
+      const sortedInspect = sorted.map(function(m, i) {
+        return {
+          sorted_index:    i,
+          raw_id:          m.id ?? m.messageId ?? m.message_id ?? null,
+          detected_sender: isGuestMessage(m) ? 'guest' : 'host',
+          detected_date:   extractMessageDate(m)?.toISOString() ?? null,
+          content_preview: extractMessageText(m).slice(0, 100),
+        };
+      });
+
+      // 6. Décision attendue
+      const pendingInDb = (dbRows || []).filter(function(r) { return r.statut === 'pending'; });
+      let decision, reason;
+      if (lastGuestIdx === -1) {
+        decision = 'SKIP_NO_GUEST_MESSAGE';
+        reason   = 'Aucun message voyageur avec contenu dans la conversation';
+      } else if (hostRepliedAfter) {
+        decision = pendingInDb.length > 0 ? 'AUTO_RESOLVE' : 'SKIP_NO_PENDING';
+        reason   = pendingInDb.length > 0
+          ? `${pendingInDb.length} record(s) pending seront passés en resolved`
+          : 'Hôte a répondu mais aucun pending en DB';
+      } else {
+        const isStale = pendingInDb.some(function(r) { return r.is_stale; });
+        decision = pendingInDb.length > 0
+          ? (isStale ? 'UPDATE_STALE_REGEN' : 'SKIP_SAME_OR_UPDATE')
+          : 'INSERT_NEW';
+        reason = pendingInDb.length > 0
+          ? (isStale ? 'Record stale + même message → Claude regénérera le brouillon au prochain sync'
+            : 'isSameMessage sera évalué : skip si identique, sinon update')
+          : 'Nouveau record sera inséré';
+      }
+
+      return res.status(200).json({
+        booking_id: bookingId,
+        db_records: dbRows || [],
+        smoobu: {
+          raw_count:      rawMsgs.length,
+          sort_strategy:  sortStrategy,
+          sort_note:      { date_asc: 'trié par date ASC', id_asc: 'trié par ID numérique ASC', api_order_unchanged: '⚠ pas de date ni d\'ID numérique — ordre API conservé (peut être DESC)' }[sortStrategy],
+          raw_messages:   rawInspect,
+          sorted_messages: sortedInspect,
+        },
+        analysis: {
+          last_guest_message: lastGuestMsg ? {
+            sorted_index:    lastGuestIdx,
+            content:         extractMessageText(lastGuestMsg),
+            date:            extractMessageDate(lastGuestMsg)?.toISOString() ?? null,
+            raw_id:          lastGuestMsg.id ?? lastGuestMsg.messageId ?? null,
+          } : null,
+          last_host_message: lastHostMsg ? {
+            sorted_index:    lastHostIdx,
+            content:         extractMessageText(lastHostMsg),
+            date:            extractMessageDate(lastHostMsg)?.toISOString() ?? null,
+            raw_id:          lastHostMsg.id ?? lastHostMsg.messageId ?? null,
+          } : null,
+          host_replied_after: hostRepliedAfter,
+          decision,
+          reason,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0,5) });
+    }
+  }
+
   // ── Sync threads : GET ?sync=1 ────────────────────────────
   // Appel périodique (cron Vercel) ou manuel.
   // Récupère les threads Smoobu récents et insère dans `messages`
@@ -456,48 +622,13 @@ export default async function handler(req, res) {
 
         try {
           // Lire les messages complets de la réservation
-          const msgData = await getSmoobuMessages(bookingId);
+          const msgData    = await getSmoobuMessages(bookingId);
           const rawMessages = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
           // Trier chronologiquement ASC (Smoobu peut retourner DESC)
           const allMessages = sortMessagesChronologically(rawMessages);
 
-          // Trouver l'index du DERNIER message voyageur avec contenu (ordre chrono ASC garanti)
-          let lastGuestIdx = -1;
-          for (let gi = allMessages.length - 1; gi >= 0; gi--) {
-            if (isGuestMessage(allMessages[gi]) && extractMessageText(allMessages[gi]).length > 0) {
-              lastGuestIdx = gi;
-              break;
-            }
-          }
-
-          // Vérifier si l'hôte a répondu APRÈS le dernier message voyageur
-          const hostRepliedAfter = lastGuestIdx !== -1 && allMessages.slice(lastGuestIdx + 1).some(function(m) {
-            return !isGuestMessage(m) && extractMessageText(m).length > 0;
-          });
-
-          // ── LOG DEBUG (temporaire) : état de la conversation ──
-          {
-            const dbgGuest = lastGuestIdx !== -1 ? allMessages[lastGuestIdx] : null;
-            let dbgHost = null;
-            for (let dhi = allMessages.length - 1; dhi >= 0; dhi--) {
-              if (!isGuestMessage(allMessages[dhi]) && extractMessageText(allMessages[dhi]).length > 0) {
-                dbgHost = allMessages[dhi]; break;
-              }
-            }
-            const hasDates = rawMessages.some(function(m) { return !!extractMessageDate(m); });
-            console.log('[sync:dbg] booking:', bookingId,
-              '| msgs:', rawMessages.length, '(sorted_by_date:', hasDates, ')',
-              '| last_guest:', dbgGuest
-                ? `"${extractMessageText(dbgGuest).slice(0, 40)}" [${extractMessageDate(dbgGuest)?.toISOString().slice(0, 16) || 'no-date'}]`
-                : 'NONE',
-              '| last_host:', dbgHost
-                ? `"${extractMessageText(dbgHost).slice(0, 40)}" [${extractMessageDate(dbgHost)?.toISOString().slice(0, 16) || 'no-date'}]`
-                : 'NONE',
-              '| host_after_guest:', hostRepliedAfter,
-              '| decision:', (hostRepliedAfter || lastGuestIdx === -1)
-                ? 'AUTO-RESOLVE' : (pendingByBooking[String(bookingId)]?.length ? 'UPDATE' : 'INSERT')
-            );
-          }
+          // Analyser l'état de la conversation
+          const { lastGuestIdx, hostRepliedAfter } = analyzeConversation(allMessages);
 
           // Pending existants pour ce booking (depuis le batch pré-chargé)
           const existingPending = pendingByBooking[String(bookingId)] || [];
@@ -533,9 +664,63 @@ export default async function handler(req, res) {
           if (existingPending.length > 0) {
             const mostRecent = existingPending[0]; // premier = plus récent (tri desc)
 
-            // Même message → rien à faire
-            if (isSameMessage(mostRecent, smoobuMessageId, messageContent)) {
+            // Même message ET pas stale → rien à faire
+            if (isSameMessage(mostRecent, smoobuMessageId, messageContent) && !mostRecent.is_stale) {
               skipped++;
+              continue;
+            }
+
+            // Même message MAIS record stale → re-générer le brouillon pour nettoyer le stale
+            if (isSameMessage(mostRecent, smoobuMessageId, messageContent) && mostRecent.is_stale) {
+              if (!trivial && CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
+                const now = new Date().toISOString();
+                let freshAnalysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
+                try {
+                  freshAnalysis = await generateFullAnalysis({
+                    appart:                 resaCtx?.appart   || appart,
+                    voyageur:               resaCtx?.voyageur || guestName,
+                    checkin:                resaCtx?.checkin  || '',
+                    checkout:               resaCtx?.checkout || '',
+                    source:                 resaCtx?.source   || '',
+                    message_content:        messageContent,
+                    reservation_confirmed:  !!(resaCtx?.id),
+                    days_until_checkin_ctx: daysUntilCheckin(resaCtx?.checkin || ''),
+                  });
+                  aiUsed++;
+                } catch (claudeErr) {
+                  console.error('[sync] Claude error (stale regen) booking', bookingId, ':', claudeErr.message);
+                  freshAnalysis.ai_draft = '— Génération IA échouée — cliquez Regénérer pour réessayer. —';
+                }
+                await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                  detected_language: freshAnalysis.detected_language || null,
+                  client_summary_fr: freshAnalysis.client_summary_fr || null,
+                  classification:    freshAnalysis.classification    || null,
+                  ai_draft:          freshAnalysis.ai_draft          || null,
+                  ai_draft_fr:       freshAnalysis.ai_draft_fr       || null,
+                  is_stale:          false,
+                  updated_at:        now,
+                });
+                console.log('[sync] stale AUTO-REGEN OK — booking:', bookingId, '| lang:', freshAnalysis.detected_language);
+                processed++;
+              } else {
+                // Trivial stale → ignorer directement
+                if (trivial) {
+                  const now = new Date().toISOString();
+                  await sbPatch('messages', `id=eq.${encodeURIComponent(mostRecent.id)}`, {
+                    classification: 'no_reply_needed',
+                    statut:         'ignored',
+                    ai_draft:       null,
+                    ai_draft_fr:    null,
+                    is_stale:       false,
+                    updated_at:     now,
+                  });
+                  console.log('[sync] stale trivial → ignored — booking:', bookingId);
+                  processed++;
+                } else {
+                  // Cap IA — laisser stale pour l'instant
+                  skipped++;
+                }
+              }
               continue;
             }
 
