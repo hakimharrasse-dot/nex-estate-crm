@@ -1374,6 +1374,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div style="color:var(--tm);font-size:14px">Aucun message en attente de validation</div>
   </div>
   <div id="msg-list"></div>
+  <div id="msg-nrn-bar" style="display:none;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--br);margin-top:4px"></div>
 </div>
 
 </div><!-- /content -->
@@ -10712,6 +10713,7 @@ async function finDoApply(items) {
 // MODULE MESSAGES IA — brouillons Smoobu validés avant envoi
 // ============================================================
 var MSG_DATA = [];
+var MSG_SHOW_NO_REPLY = false; // masquer les no_reply_needed par défaut
 
 // Styles de classification (utilisés quand la colonne est renseignée)
 var MSG_CLASSIF = {
@@ -10724,12 +10726,14 @@ var MSG_CLASSIF = {
 
 async function renderMessages() {
   if (!SUPA) return;
-  var el = document.getElementById('msg-list');
-  var em = document.getElementById('msg-empty');
+  var el     = document.getElementById('msg-list');
+  var em     = document.getElementById('msg-empty');
+  var nrnBar = document.getElementById('msg-nrn-bar');
   if (!el) return;
 
   el.innerHTML = '<div style="color:var(--tm);font-size:13px;padding:30px 0;text-align:center">⏳ Chargement…</div>';
-  if (em) em.classList.add('hidden');
+  if (em)     em.classList.add('hidden');
+  if (nrnBar) nrnBar.style.display = 'none';
 
   try {
     // Récupérer pending ET error (pour que les échecs soient visibles)
@@ -10745,14 +10749,36 @@ async function renderMessages() {
 
   msgUpdateBadge();
 
-  if (MSG_DATA.length === 0) {
+  // Séparer les "sans réponse" (masqués par défaut)
+  var nrnHidden  = MSG_SHOW_NO_REPLY ? [] : MSG_DATA.filter(function(m) { return m.classification === 'no_reply_needed'; });
+  var displayData = MSG_SHOW_NO_REPLY ? MSG_DATA : MSG_DATA.filter(function(m) { return m.classification !== 'no_reply_needed'; });
+
+  // Helper interne : mettre à jour la barre "sans réponse masqués"
+  function updateNrnBar() {
+    if (!nrnBar) return;
+    var n = nrnHidden.length;
+    if (n > 0 && !MSG_SHOW_NO_REPLY) {
+      nrnBar.innerHTML =
+        '<span style="color:var(--td);font-size:12px">💤 ' + n + ' message' + (n > 1 ? 's' : '') + ' sans réponse masqué' + (n > 1 ? 's' : '') + '</span>' +
+        '<button class="ba ba-ghost" style="font-size:11px;padding:3px 9px" onclick="msgToggleNoReply()">Afficher</button>';
+      nrnBar.style.display = 'flex';
+    } else if (MSG_SHOW_NO_REPLY) {
+      nrnBar.innerHTML = '<button class="ba ba-ghost" style="font-size:11px;padding:3px 9px" onclick="msgToggleNoReply()">✕ Masquer les sans réponse</button>';
+      nrnBar.style.display = 'flex';
+    } else {
+      nrnBar.style.display = 'none';
+    }
+  }
+
+  if (displayData.length === 0) {
     el.innerHTML = '';
     if (em) em.classList.remove('hidden');
+    updateNrnBar();
     return;
   }
 
   var html = '';
-  MSG_DATA.forEach(function(m) {
+  displayData.forEach(function(m) {
     var isError = m.statut === 'error';
     var ts = m.created_at
       ? new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -10894,13 +10920,19 @@ async function renderMessages() {
   });
 
   el.innerHTML = html;
+  updateNrnBar();
+}
+
+function msgToggleNoReply() {
+  MSG_SHOW_NO_REPLY = !MSG_SHOW_NO_REPLY;
+  renderMessages();
 }
 
 function msgUpdateBadge() {
   var badge = document.getElementById('msg-badge');
   if (!badge) return;
-  // Le badge compte uniquement les pending (pas les error)
-  var n = MSG_DATA.filter(function(m) { return m.statut === 'pending'; }).length;
+  // Le badge compte les pending nécessitant une réponse (hors no_reply_needed, hors error)
+  var n = MSG_DATA.filter(function(m) { return m.statut === 'pending' && m.classification !== 'no_reply_needed'; }).length;
   if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
   else        { badge.classList.add('hidden'); }
 }
@@ -11035,12 +11067,28 @@ function msgRemoveCard(messageId) {
   if (card) card.remove();
   MSG_DATA = MSG_DATA.filter(function(m) { return m.id !== messageId; });
   msgUpdateBadge();
-  var em = document.getElementById('msg-empty');
-  var el = document.getElementById('msg-list');
-  // Afficher l'état vide seulement si plus aucun message (ni pending ni error)
-  if (em && el && MSG_DATA.length === 0) {
+  var em     = document.getElementById('msg-empty');
+  var el     = document.getElementById('msg-list');
+  var nrnBar = document.getElementById('msg-nrn-bar');
+  // Empty state : prendre en compte le filtre no_reply_needed
+  var visibleLeft = MSG_SHOW_NO_REPLY
+    ? MSG_DATA.length
+    : MSG_DATA.filter(function(m) { return m.classification !== 'no_reply_needed'; }).length;
+  if (em && el && visibleLeft === 0) {
     el.innerHTML = '';
     em.classList.remove('hidden');
+  }
+  // Mettre à jour la barre "sans réponse masqués" si le filtre est actif
+  if (nrnBar && !MSG_SHOW_NO_REPLY) {
+    var nrnCount = MSG_DATA.filter(function(m) { return m.classification === 'no_reply_needed'; }).length;
+    if (nrnCount > 0) {
+      nrnBar.innerHTML =
+        '<span style="color:var(--td);font-size:12px">💤 ' + nrnCount + ' message' + (nrnCount > 1 ? 's' : '') + ' sans réponse masqué' + (nrnCount > 1 ? 's' : '') + '</span>' +
+        '<button class="ba ba-ghost" style="font-size:11px;padding:3px 9px" onclick="msgToggleNoReply()">Afficher</button>';
+      nrnBar.style.display = 'flex';
+    } else {
+      nrnBar.style.display = 'none';
+    }
   }
 }
 

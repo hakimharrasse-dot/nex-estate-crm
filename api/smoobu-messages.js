@@ -489,13 +489,14 @@ export default async function handler(req, res) {
                 message_content:   messageContent,
                 smoobu_message_id: smoobuMessageId  || null,
                 classification:    'no_reply_needed',
+                statut:            'ignored',
                 ai_draft:          null,
                 ai_draft_fr:       null,
                 client_summary_fr: null,
                 is_stale:          false,
                 updated_at:        now,
               });
-              console.log('[sync] UPDATE trivial — booking:', bookingId);
+              console.log('[sync] UPDATE trivial → ignored — booking:', bookingId);
             } else if (CLAUDE_KEY && aiUsed < MAX_AI_PER_SYNC) {
               let newAnalysis = { detected_language: null, client_summary_fr: null, classification: null, ai_draft: null, ai_draft_fr: null };
               try {
@@ -596,7 +597,7 @@ export default async function handler(req, res) {
             smoobu_message_id: smoobuMessageId            || null,
             is_stale:          false,
             raw_payload:       { booking_id: bookingId, thread },
-            statut:            'pending',
+            statut:            trivial ? 'ignored' : 'pending',
             created_at:        now,
             updated_at:        now,
           });
@@ -866,6 +867,7 @@ export default async function handler(req, res) {
         classification:    analysis.classification      || null,
         ai_draft:          analysis.ai_draft            || null,
         ai_draft_fr:       analysis.ai_draft_fr         || null,
+        ...(trivialWh ? { statut: 'ignored' } : {}),
         is_stale:          false,
         updated_at:        now,
       });
@@ -890,7 +892,7 @@ export default async function handler(req, res) {
       smoobu_message_id: smoobuMessageId     || null,
       is_stale:          false,
       raw_payload:       booking             || null,
-      statut:            'pending',
+      statut:            trivialWh ? 'ignored' : 'pending',
       created_at:        now,
       updated_at:        now,
     };
