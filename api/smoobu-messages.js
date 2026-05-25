@@ -920,6 +920,46 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Historique des envois : GET ?sentHistory=1 ────────────
+  // Retourne les messages envoyés depuis le CRM sur les dernières 24h
+  // (ou ?sentHours=N pour une fenêtre différente, max 168h)
+  // Aucun appel Claude — lecture DB pure
+  if (req.method === 'GET' && req.query?.sentHistory) {
+    try {
+      const hours = Math.min(parseInt(req.query.sentHours || '24', 10) || 24, 168);
+      const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+      const rows  = await sbGet(
+        `messages?statut=eq.sent&sent_at=gte.${encodeURIComponent(since)}` +
+        `&select=id,smoobu_booking_id,voyageur,appart,source,classification,` +
+        `ai_draft,sent_at,smoobu_api_response,updated_at,error_message` +
+        `&order=sent_at.desc&limit=100`
+      );
+      const sent = (rows || []).map(function(r) {
+        let apiResp = null;
+        try { apiResp = r.smoobu_api_response ? JSON.parse(r.smoobu_api_response) : null; } catch {}
+        const smoobuMsgId = apiResp?.id ?? apiResp?.data?.id ?? null;
+        return {
+          id:             r.id,
+          booking_id:     r.smoobu_booking_id,
+          voyageur:       r.voyageur,
+          appart:         r.appart,
+          source:         r.source,
+          classification: r.classification,
+          sent_text:      r.ai_draft,
+          sent_at:        r.sent_at,
+          smoobu_msg_id:  smoobuMsgId,
+          smoobu_confirmed: smoobuMsgId !== null,
+          smoobu_raw:     apiResp,
+          error:          r.error_message || null,
+        };
+      });
+      return res.status(200).json({ ok: true, hours, count: sent.length, sent });
+    } catch (err) {
+      console.error('[sentHistory] erreur:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -1091,46 +1131,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[messages] send error:', err.message);
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  // ── Historique des envois : GET ?sentHistory=1 ────────────
-  // Retourne les messages envoyés depuis le CRM sur les dernières 24h
-  // (ou ?sentHours=N pour une fenêtre différente, max 168h)
-  // Aucun appel Claude — lecture DB pure
-  if (req.method === 'GET' && req.query?.sentHistory) {
-    try {
-      const hours = Math.min(parseInt(req.query.sentHours || '24', 10) || 24, 168);
-      const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
-      const rows  = await sbGet(
-        `messages?statut=eq.sent&sent_at=gte.${encodeURIComponent(since)}` +
-        `&select=id,smoobu_booking_id,voyageur,appart,source,classification,` +
-        `ai_draft,sent_at,smoobu_api_response,updated_at,error_message` +
-        `&order=sent_at.desc&limit=100`
-      );
-      const sent = (rows || []).map(function(r) {
-        let apiResp = null;
-        try { apiResp = r.smoobu_api_response ? JSON.parse(r.smoobu_api_response) : null; } catch {}
-        const smoobuMsgId = apiResp?.id ?? apiResp?.data?.id ?? null;
-        return {
-          id:             r.id,
-          booking_id:     r.smoobu_booking_id,
-          voyageur:       r.voyageur,
-          appart:         r.appart,
-          source:         r.source,
-          classification: r.classification,
-          sent_text:      r.ai_draft,
-          sent_at:        r.sent_at,
-          smoobu_msg_id:  smoobuMsgId,
-          smoobu_confirmed: smoobuMsgId !== null,
-          smoobu_raw:     apiResp,
-          error:          r.error_message || null,
-        };
-      });
-      return res.status(200).json({ ok: true, hours, count: sent.length, sent });
-    } catch (err) {
-      console.error('[sentHistory] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
