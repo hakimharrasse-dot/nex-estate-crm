@@ -10717,6 +10717,8 @@ async function finDoApply(items) {
 // ============================================================
 var MSG_DATA = [];
 var MSG_SHOW_NO_REPLY = false; // masquer les no_reply_needed par défaut
+var MSG_VOICE_REC    = null;  // instance SpeechRecognition active
+var MSG_VOICE_REC_ID = null;  // messageId en cours d'enregistrement
 
 // Styles de classification (utilisés quand la colonne est renseignée)
 var MSG_CLASSIF = {
@@ -11008,6 +11010,7 @@ async function renderMessages() {
         html += '<div style="font-size:10px;font-weight:700;color:var(--pu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Instruction Hakim</div>';
         html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
         html += '<input id="instr-' + m.id + '" type="text" placeholder="ex : réponds plus court · demande le passeport · sois plus ferme · dis-lui qu\'il peut déposer les bagages à 12h30…" style="flex:1;min-width:180px;background:var(--s);border:1px solid var(--br);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--tx);font-family:inherit" value="' + escHtml(m.hakim_instruction || '') + '">';
+        html += '<button id="mic-btn-' + m.id + '" class="ba ba-ghost" style="flex-shrink:0;padding:7px 11px;font-size:15px;line-height:1" onclick="msgToggleMic(\'' + m.id + '\')" title="Dicter votre instruction à voix haute">🎤</button>';
         html += '<button id="regen-btn-' + m.id + '" class="ba" style="background:var(--pu);color:#fff;border-color:var(--pu);white-space:nowrap;flex-shrink:0" onclick="msgRegenerate(\'' + m.id + '\')">🔄 Regénérer</button>';
         html += '</div>';
         html += '</div>';
@@ -11151,6 +11154,102 @@ function msgToggleOriginal(messageId) {
   var hidden = el.style.display === 'none';
   el.style.display = hidden ? 'block' : 'none';
   if (btn) btn.textContent = hidden ? '▲ Masquer le message original' : '▼ Voir message original';
+}
+
+// ── Dictée vocale pour le champ "Instruction Hakim" ──────────
+// Utilise l'API Web Speech (native, gratuite, zéro appel serveur).
+// Compatibilité : Chrome ✓ · Edge ✓ · Safari iOS 14.5+ ✓ · Firefox ✗
+// Aucun appel IA automatique — Regénérer reste manuel.
+function msgToggleMic(messageId) {
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    showToast('⚠ Dictée vocale non supportée sur ce navigateur. Utilisez Chrome ou Safari pour cette fonctionnalité.');
+    return;
+  }
+
+  // Si un enregistrement est actif sur une autre carte → l'annuler d'abord
+  if (MSG_VOICE_REC && MSG_VOICE_REC_ID !== messageId) {
+    try { MSG_VOICE_REC.abort(); } catch(e) {}
+    msgMicSetIdle(MSG_VOICE_REC_ID);
+    MSG_VOICE_REC    = null;
+    MSG_VOICE_REC_ID = null;
+  }
+
+  // Si déjà actif sur cette carte → arrêter
+  if (MSG_VOICE_REC && MSG_VOICE_REC_ID === messageId) {
+    try { MSG_VOICE_REC.stop(); } catch(e) {}
+    return;
+  }
+
+  var instrEl = document.getElementById('instr-' + messageId);
+  var micBtn  = document.getElementById('mic-btn-' + messageId);
+
+  var rec = new SpeechRec();
+  rec.lang            = 'fr-FR';
+  rec.continuous      = false;
+  rec.interimResults  = true;
+  rec.maxAlternatives = 1;
+
+  rec.onstart = function() {
+    MSG_VOICE_REC    = rec;
+    MSG_VOICE_REC_ID = messageId;
+    if (micBtn) {
+      micBtn.innerHTML         = '🔴';
+      micBtn.title             = 'Enregistrement… cliquez pour arrêter';
+      micBtn.style.background  = 'rgba(220,53,69,.12)';
+      micBtn.style.borderColor = 'var(--re)';
+      micBtn.style.color       = 'var(--re)';
+    }
+  };
+
+  rec.onresult = function(e) {
+    // Afficher les résultats intermédiaires + final dans l'input
+    var transcript = '';
+    for (var i = 0; i < e.results.length; i++) {
+      transcript += e.results[i][0].transcript;
+    }
+    if (instrEl) instrEl.value = transcript;
+  };
+
+  rec.onerror = function(e) {
+    if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+      showToast('⚠ Microphone refusé — autorisez l\'accès dans les paramètres de votre navigateur.');
+    } else if (e.error === 'no-speech') {
+      showToast('Aucune voix détectée — réessayez.');
+    } else if (e.error !== 'aborted') {
+      showToast('⚠ Erreur microphone : ' + e.error);
+    }
+    msgMicSetIdle(messageId);
+    MSG_VOICE_REC    = null;
+    MSG_VOICE_REC_ID = null;
+  };
+
+  rec.onend = function() {
+    msgMicSetIdle(messageId);
+    MSG_VOICE_REC    = null;
+    MSG_VOICE_REC_ID = null;
+    // Mettre le focus sur l'input pour corriger si besoin
+    if (instrEl && instrEl.value.trim()) instrEl.focus();
+  };
+
+  try {
+    rec.start();
+  } catch(startErr) {
+    showToast('⚠ Impossible de démarrer le microphone : ' + startErr.message);
+    MSG_VOICE_REC    = null;
+    MSG_VOICE_REC_ID = null;
+  }
+}
+
+// Remet le bouton mic à son état neutre (appelé après fin / erreur / abort)
+function msgMicSetIdle(messageId) {
+  var micBtn = document.getElementById('mic-btn-' + messageId);
+  if (!micBtn) return;
+  micBtn.innerHTML         = '🎤';
+  micBtn.title             = 'Dicter votre instruction à voix haute';
+  micBtn.style.background  = '';
+  micBtn.style.borderColor = '';
+  micBtn.style.color       = '';
 }
 
 async function msgRegenerate(messageId) {
