@@ -9509,6 +9509,30 @@ function runReconciliation(parsed) {
           : 'Versement de résolution absent du CRM — créer une ligne AJUSTEMENT manuellement')
       : 'Montant versement résolution différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
 
+    // Check D serv : avant de marquer "absent du CRM", vérifier si ce versement
+    // résolution correspond à un service additionnel déjà saisi dans serv.
+    // Uniquement quand !crmAc (vrai absent) — si crmAc existe mais montant erroné,
+    // c'est une vraie anomalie à corriger manuellement.
+    if (!crmAc) {
+      var _dServCsv = { net: res.net, checkin: res.date, voyageur: res.voyageur };
+      var _dServHit = findServMatch(_dServCsv);
+      if (_dServHit) {
+        pushResult({
+          csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+                 checkin: res.date, checkout: '', nuits: 0,
+                 net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+          crm: null, ecart: 0, csvType: 'resolution', status: 'ok',
+          cause: 'Déjà dans services additionnels · ' + (_dServHit.svc || '—')
+               + ' · ' + (_dServHit.montant || 0).toFixed(0) + ' MAD'
+               + ' · ' + (_dServHit.date || '—')
+               + (_dServHit.voy ? ' · ' + _dServHit.voy : ''),
+          level: 'ok', checkId: 'A_SERV', _section: 'missing',
+          _servMatch: _dServHit,
+          isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+        }); return;
+      }
+    }
+
     pushResult({
       csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
              checkin: res.date, checkout: '', nuits: 0,
