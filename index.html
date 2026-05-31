@@ -9224,6 +9224,15 @@ function runReconciliation(parsed) {
   //   2. Date proche : |csv.checkin − serv.date| ≤ 15 jours
   //   3. Voyageur (optionnel) : si les deux présents, au moins un mot en commun (≥ 3 chars)
   function findServMatch(csv) {
+    // Normalise une chaîne : minuscules + suppression des diacritiques
+    // Ex: "Estefanía" → "estefania", "Jöhannes" → "johannes"
+    function _normStr(s) {
+      return String(s || '').toLowerCase()
+        .replace(/[àâä]/g, 'a').replace(/[éèêë]/g, 'e')
+        .replace(/[îï]/g, 'i').replace(/[ôö]/g, 'o')
+        .replace(/[ùûü]/g, 'u').replace(/[ýÿ]/g, 'y')
+        .replace(/[ñ]/g, 'n').replace(/[ç]/g, 'c');
+    }
     var csvMad  = (csv.net || 0) * taux;
     var csvDate = csv.checkin || '';
     if (csvMad <= 0) return null;
@@ -9231,7 +9240,7 @@ function runReconciliation(parsed) {
       var _s = DB.serv[_si];
       var _sMad = _s.montant || 0;
       if (_sMad <= 0) continue;
-      // Critère 1 — montant MAD proche
+      // Critère 1 — montant MAD proche (±5 MAD ou ±5 %)
       var _tol = Math.max(5, _sMad * 0.05);
       if (Math.abs(csvMad - _sMad) > _tol) continue;
       // Critère 2 — date proche (≤ 15 j)
@@ -9240,9 +9249,10 @@ function runReconciliation(parsed) {
         if (_diff > 15) continue;
       }
       // Critère 3 — voyageur (optionnel, bloquant seulement si les deux présents)
+      // Comparaison insensible aux diacritiques : "Estefanía" == "Estefania"
       if (csv.voyageur && _s.voy && String(csv.voyageur).trim() && String(_s.voy).trim()) {
-        var _wCsv  = String(csv.voyageur).toLowerCase().split(/\s+/);
-        var _wServ = String(_s.voy).toLowerCase().split(/\s+/);
+        var _wCsv  = _normStr(csv.voyageur).split(/\s+/);
+        var _wServ = _normStr(_s.voy).split(/\s+/);
         var _ok = _wCsv.some(function(w) {
           return w.length > 2 && _wServ.indexOf(w) >= 0;
         });
@@ -9514,7 +9524,12 @@ function runReconciliation(parsed) {
     // Uniquement quand !crmAc (vrai absent) — si crmAc existe mais montant erroné,
     // c'est une vraie anomalie à corriger manuellement.
     if (!crmAc) {
-      var _dServCsv = { net: res.net, checkin: res.date, voyageur: res.voyageur };
+      // Préférer la date checkin de la réservation principale (plus stable que la
+      // date du virement résolution, qui peut arriver 2–4 semaines après le séjour)
+      // et son voyageur exact (même graphie que dans serv, pas la version Airbnb).
+      var _dCheckin = (crmBase && crmBase.checkin) ? crmBase.checkin : res.date;
+      var _dVoy     = (crmBase && crmBase.voyageur) ? crmBase.voyageur : res.voyageur;
+      var _dServCsv = { net: res.net, checkin: _dCheckin, voyageur: _dVoy };
       var _dServHit = findServMatch(_dServCsv);
       if (_dServHit) {
         pushResult({
