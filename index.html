@@ -7697,8 +7697,10 @@ function renderMissingSection() {
   var pendingM = items.filter(function(a) { return a.status === 'pending'; }).length;
   var ignoredM = items.filter(function(a) { return a.status === 'ignored'; }).length;
 
-  var resAbsent = items.filter(function(a) { return a.checkId === 'A'; });
-  var acAbsent  = items.filter(function(a) { return a.checkId === 'D'; });
+  var resAbsent      = items.filter(function(a) { return a.checkId === 'A'; });
+  var acAbsent       = items.filter(function(a) { return a.checkId === 'D'; });
+  var servMatched    = items.filter(function(a) { return a.checkId === 'A_SERV'; });
+  var hasRealMissing = resAbsent.length + acAbsent.length > 0;
 
   function missingCard(a) {
     var idx = RECONCIL_ANOMALIES.indexOf(a);
@@ -7734,10 +7736,13 @@ function renderMissingSection() {
   var html = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--td);margin-bottom:12px">'
     + 'Lignes manquantes / à créer · <span style="color:var(--re)">' + pendingM + ' en attente</span>'
     + (ignoredM ? ' · <span style="color:var(--td)">' + ignoredM + ' ignorée(s)</span>' : '')
+    + (servMatched.length ? ' · <span style="color:var(--gr)">' + servMatched.length + ' dans serv</span>' : '')
     + '</div>'
-    + '<div style="font-size:11px;color:var(--td);margin-bottom:12px;padding:8px 12px;background:var(--s2);border-radius:6px">'
-    + 'Ces lignes sont présentes dans le CSV Airbnb mais absentes du CRM. Aucune création automatique — à traiter manuellement.'
-    + '</div>';
+    + (hasRealMissing
+        ? '<div style="font-size:11px;color:var(--td);margin-bottom:12px;padding:8px 12px;background:var(--s2);border-radius:6px">'
+          + 'Ces lignes sont présentes dans le CSV Airbnb mais absentes du CRM. Aucune création automatique — à traiter manuellement.'
+          + '</div>'
+        : '');
 
   if (resAbsent.length) {
     html += '<div style="font-size:11px;color:var(--td);margin:0 0 6px;text-transform:uppercase;letter-spacing:.08em">Réservations absentes (' + resAbsent.length + ')</div>';
@@ -7746,6 +7751,34 @@ function renderMissingSection() {
   if (acAbsent.length) {
     html += '<div style="font-size:11px;color:var(--td);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.08em">AirCover / Versements résolution absents (' + acAbsent.length + ')</div>';
     acAbsent.forEach(function(a) { html += missingCard(a); });
+  }
+
+  // Virements déjà présents dans services additionnels (serv)
+  if (servMatched.length) {
+    html += '<div style="font-size:11px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.08em;margin:' + (hasRealMissing ? '18px' : '0') + ' 0 8px">'
+      + 'Déjà dans services additionnels · ' + servMatched.length + ' virement(s)'
+      + '</div>';
+    servMatched.forEach(function(a) {
+      var idx = RECONCIL_ANOMALIES.indexOf(a);
+      var isIgnored = a.status === 'ignored';
+      html += '<div style="border:1px solid rgba(22,163,74,.3);border-radius:8px;padding:10px 14px;margin-bottom:6px;background:rgba(22,163,74,.04);' + (isIgnored ? 'opacity:.55' : '') + '">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:3px">'
+          + '<div>'
+            + '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--bl)">' + escHtml(a.csv.code||'') + '</span>'
+            + ' <span style="font-size:11px;font-weight:600;color:var(--gr)">✓ Dans serv</span>'
+          + '</div>'
+          + '<span style="font-family:\'DM Mono\',monospace;font-size:13px;color:var(--tm)">' + (a.csv.net||0).toFixed(2) + ' EUR</span>'
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--tm);margin-bottom:2px">' + escHtml(a.csv.voyageur||'—') + ' · ' + escHtml(a.csv.logement||'—') + '</div>'
+        + '<div style="font-size:11px;color:var(--gr);margin-bottom:6px">' + escHtml(a.cause||'') + '</div>'
+        + (isIgnored ? '<div style="font-size:11px;color:var(--td);margin-bottom:5px"><em>— Ignorée</em></div>' : '')
+        + '<div style="display:flex;gap:6px">'
+          + (isIgnored
+            ? '<button class="ba ba-ghost" style="font-size:12px;padding:5px 10px" onclick="unignoreAnomaly(' + idx + ')">↩ Remettre</button>'
+            : '<button class="ba ba-ghost" style="font-size:12px;padding:5px 10px;color:var(--tm)" onclick="ignoreAnomaly(' + idx + ')" title="Faux positif — masquer définitivement">🙈 Faux positif</button>')
+        + '</div>'
+      + '</div>';
+    });
   }
 
   document.getElementById('missing-list').innerHTML = html;
@@ -9183,6 +9216,43 @@ function runReconciliation(parsed) {
     results.push(obj);
   }
 
+  // ── Correspondance services additionnels (vérification Check A) ─
+  // Avant de marquer un virement CSV comme "absent du CRM", on vérifie s'il
+  // correspond à un service déjà saisi dans la table `serv`.
+  // Critères (ET) :
+  //   1. Montant MAD proche : |csv.net × taux − serv.montant| ≤ max(5 MAD, 5% de serv.montant)
+  //   2. Date proche : |csv.checkin − serv.date| ≤ 15 jours
+  //   3. Voyageur (optionnel) : si les deux présents, au moins un mot en commun (≥ 3 chars)
+  function findServMatch(csv) {
+    var csvMad  = (csv.net || 0) * taux;
+    var csvDate = csv.checkin || '';
+    if (csvMad <= 0) return null;
+    for (var _si = 0; _si < DB.serv.length; _si++) {
+      var _s = DB.serv[_si];
+      var _sMad = _s.montant || 0;
+      if (_sMad <= 0) continue;
+      // Critère 1 — montant MAD proche
+      var _tol = Math.max(5, _sMad * 0.05);
+      if (Math.abs(csvMad - _sMad) > _tol) continue;
+      // Critère 2 — date proche (≤ 15 j)
+      if (csvDate && _s.date) {
+        var _diff = Math.abs(new Date(csvDate).getTime() - new Date(_s.date).getTime()) / 86400000;
+        if (_diff > 15) continue;
+      }
+      // Critère 3 — voyageur (optionnel, bloquant seulement si les deux présents)
+      if (csv.voyageur && _s.voy && String(csv.voyageur).trim() && String(_s.voy).trim()) {
+        var _wCsv  = String(csv.voyageur).toLowerCase().split(/\s+/);
+        var _wServ = String(_s.voy).toLowerCase().split(/\s+/);
+        var _ok = _wCsv.some(function(w) {
+          return w.length > 2 && _wServ.indexOf(w) >= 0;
+        });
+        if (!_ok) continue;
+      }
+      return _s; // premier match retourné
+    }
+    return null;
+  }
+
   // ── Checks A / B / C / F / G (réservations) ────────────────
   reservations.forEach(function(csv) {
     var isDevAmb = csv._hasUSD || csv.devise !== 'EUR';
@@ -9268,6 +9338,20 @@ function runReconciliation(parsed) {
 
     // A — absent du CRM
     if (!crm) {
+      // Vérifier d'abord si ce virement correspond à un service additionnel dans serv
+      var _servHit = findServMatch(csv);
+      if (_servHit) {
+        pushResult(Object.assign({}, baseFields, {
+          crm: null, ecart: 0, csvType: 'reservation', status: 'ok',
+          cause: 'Déjà dans services additionnels · ' + (_servHit.svc || '—')
+               + ' · ' + (_servHit.montant || 0).toFixed(0) + ' MAD'
+               + ' · ' + (_servHit.date || '—')
+               + (_servHit.voy ? ' · ' + _servHit.voy : ''),
+          level: 'ok', checkId: 'A_SERV', _section: 'missing',
+          _servMatch: _servHit,
+        })); return;
+      }
+      // Aucune correspondance dans serv → vraiment absent du CRM
       pushResult(Object.assign({}, baseFields, {
         crm: null, ecart: Math.round((csv.net||0)*100)/100, csvType: 'reservation', status: 'pending',
         cause: 'Réservation absente du CRM — à créer ou rattacher manuellement',
