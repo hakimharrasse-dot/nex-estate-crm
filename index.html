@@ -5530,6 +5530,11 @@ function buildForm(type, editId) {
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service</label><select class="fse" id="fi-svc">'+CATS_S.map(function(c){return '<option'+(v('svc')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
+      '<div class="ff"><label class="fl">Réservation liée (optionnel)</label>'+
+        '<input type="text" class="fi" id="fi-resa-ref" list="fi-resa-ref-list" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Code Airbnb ou tapez le voyageur">'+
+        '<datalist id="fi-resa-ref-list">'+buildServResaOptions()+'</datalist>'+
+        '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — sélectionnez ou collez le code</div>'+
+      '</div>'+
       '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
@@ -5559,6 +5564,19 @@ function buildForm(type, editId) {
       '</div>';
   }
   return '';
+}
+
+// Génère les <option> pour le datalist "Réservation liée" du formulaire serv
+// Retourne les 80 dernières réservations Airbnb : value=code, label=voyageur+appart+checkin
+function buildServResaOptions() {
+  return DB.resa
+    .filter(function(r) { return r.source === 'Airbnb' && r.ref; })
+    .sort(function(a, b) { return (b.checkin||'').localeCompare(a.checkin||''); })
+    .slice(0, 80)
+    .map(function(r) {
+      var label = (r.voyageur||'?') + ' — ' + (r.appart||'') + ' — ' + (r.checkin||'');
+      return '<option value="' + escHtml(r.ref) + '">' + escHtml(label) + '</option>';
+    }).join('');
 }
 
 function field2(lbl,id,type,val,opts) {
@@ -5785,7 +5803,8 @@ async function saveTaxe() {
 async function saveServ() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st')});
+  var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
+  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef});
   closeModal(); renderServ();
 }
 
@@ -9233,6 +9252,7 @@ function runReconciliation(parsed) {
         .replace(/[ùûü]/g, 'u').replace(/[ýÿ]/g, 'y')
         .replace(/[ñ]/g, 'n').replace(/[ç]/g, 'c');
     }
+    var csvCode = (csv.code || '').toUpperCase();
     var csvMad  = (csv.net || 0) * taux;
     var csvDate = csv.checkin || '';
     if (csvMad <= 0) return null;
@@ -9240,15 +9260,29 @@ function runReconciliation(parsed) {
       var _s = DB.serv[_si];
       var _sMad = _s.montant || 0;
       if (_sMad <= 0) continue;
-      // Critère 1 — montant MAD proche (±5 MAD ou ±5 %)
+
+      // ── Priorité 0 : match exact par resa_ref ──────────────
+      // Si le service a été explicitement lié à une réservation, on
+      // s'y fie sans vérifier montant/date/voyageur.
+      // Si resa_ref est renseigné mais ne correspond PAS → on skip
+      // cet enregistrement (il appartient à une autre réservation).
+      if (_s.resa_ref) {
+        var _rref = _s.resa_ref.toUpperCase();
+        if (csvCode && (_rref === csvCode || _rref === 'AIR-' + csvCode || csvCode === 'AIR-' + _rref)) {
+          return _s; // match explicite — 100 % fiable
+        }
+        continue; // resa_ref présent mais mauvais code → ne pas tenter le fuzzy
+      }
+
+      // ── Critère 1 — montant MAD proche (±5 MAD ou ±5 %) ───
       var _tol = Math.max(5, _sMad * 0.05);
       if (Math.abs(csvMad - _sMad) > _tol) continue;
-      // Critère 2 — date proche (≤ 15 j)
+      // ── Critère 2 — date proche (≤ 15 j) ───────────────────
       if (csvDate && _s.date) {
         var _diff = Math.abs(new Date(csvDate).getTime() - new Date(_s.date).getTime()) / 86400000;
         if (_diff > 15) continue;
       }
-      // Critère 3 — voyageur (optionnel, bloquant seulement si les deux présents)
+      // ── Critère 3 — voyageur (optionnel, bloquant si les deux présents)
       // Comparaison insensible aux diacritiques : "Estefanía" == "Estefania"
       if (csv.voyageur && _s.voy && String(csv.voyageur).trim() && String(_s.voy).trim()) {
         var _wCsv  = _normStr(csv.voyageur).split(/\s+/);
@@ -9258,7 +9292,7 @@ function runReconciliation(parsed) {
         });
         if (!_ok) continue;
       }
-      return _s; // premier match retourné
+      return _s; // premier match flou retourné
     }
     return null;
   }
@@ -9529,7 +9563,7 @@ function runReconciliation(parsed) {
       // et son voyageur exact (même graphie que dans serv, pas la version Airbnb).
       var _dCheckin = (crmBase && crmBase.checkin) ? crmBase.checkin : res.date;
       var _dVoy     = (crmBase && crmBase.voyageur) ? crmBase.voyageur : res.voyageur;
-      var _dServCsv = { net: res.net, checkin: _dCheckin, voyageur: _dVoy };
+      var _dServCsv = { net: res.net, checkin: _dCheckin, voyageur: _dVoy, code: res.code };
       var _dServHit = findServMatch(_dServCsv);
       if (_dServHit) {
         pushResult({
