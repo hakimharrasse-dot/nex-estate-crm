@@ -7739,20 +7739,50 @@ function renderMadRealSection() {
             + '</td>'
             + '</tr>';
         });
-        // Note réconciliation : somme proposée vs payout total
-        var sumProposed = idxs.reduce(function(s, idx) {
+        // Lignes simples du même lot — incluses dans la carte (input éditable, mêmes règles)
+        var simpleOfBatch = simpleIdxs.filter(function(si) { return MAD_REEL_ROWS[si]._batchId == bid; });
+        simpleOfBatch.forEach(function(idx) {
+          var row = MAD_REEL_ROWS[idx];
+          var cid = row.crm.id;
+          var sMAD = trueRate ? Math.round((row.csv.net||0) * trueRate * 100) / 100 : (row.csv._payoutMAD || 0);
+          ch += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:rgba(90,159,212,.04)">'
+            + '<td style="padding:5px 6px;font-family:monospace;color:var(--bl);font-size:11px">' + escHtml(row.csv.code||'') + '</td>'
+            + '<td style="padding:5px 6px;color:var(--tm)">' + escHtml(row.crm.voyageur||'—') + '</td>'
+            + '<td style="padding:5px 6px">'
+            + '<span style="font-size:10px;color:var(--td)">' + escHtml(row.crm.type_norm||'') + '</span>'
+            + '<br><span style="font-size:9px;color:var(--bl)">simple ✓</span>'
+            + '</td>'
+            + '<td style="padding:5px 6px;text-align:right;font-family:monospace">' + (row.csv.net||0).toFixed(2) + ' €</td>'
+            + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:var(--bl)">' + sMAD.toFixed(2) + '</td>'
+            + '<td style="padding:5px 6px;text-align:right">'
+            + '<input type="number" id="mad-lot-input-' + cid + '" value="' + sMAD.toFixed(2) + '" step="0.01" min="0"'
+            + ' style="width:88px;background:var(--s2);border:1px solid rgba(90,159,212,.4);color:var(--tx);border-radius:5px;padding:3px 6px;font-size:11px;font-family:\'DM Sans\',sans-serif">'
+            + ' <span style="font-size:10px;color:var(--td)">DH</span>'
+            + '</td>'
+            + '<td style="padding:5px 6px"></td>'
+            + '</tr>';
+        });
+        // Note réconciliation complète : complexes + simples du lot + déductions
+        var sumComplex = idxs.reduce(function(s, idx) {
           var r = MAD_REEL_ROWS[idx];
           return s + (trueRate ? Math.round((r.csv.net||0) * trueRate * 100) / 100 : (r.csv._payoutMAD || 0));
         }, 0);
-        var noteHtml = '';
-        if (batchNegLines && negMAD < -0.01) {
-          noteHtml = '<div style="font-size:10px;color:var(--td);margin-bottom:8px;padding:5px 8px;background:var(--s2);border-radius:5px">'
-            + 'Somme MAD proposée : <strong>' + sumProposed.toFixed(2) + ' MAD</strong>'
-            + ' · Déductions non appariées : <strong style="color:var(--re)">' + negMAD.toFixed(2) + ' MAD</strong>'
-            + ' · Net effectif : <strong style="color:var(--gr)">' + (sumProposed + negMAD).toFixed(2) + ' MAD</strong>'
+        var sumSimple = simpleOfBatch.reduce(function(s, idx) {
+          var r = MAD_REEL_ROWS[idx];
+          return s + (trueRate ? Math.round((r.csv.net||0) * trueRate * 100) / 100 : (r.csv._payoutMAD || 0));
+        }, 0);
+        var sumProposed = sumComplex + sumSimple;
+        var netEff = sumProposed + negMAD;
+        var netOk  = Math.abs(netEff - batchTotalMAD) < 1;
+        var noteHtml = (batchNegLines || simpleOfBatch.length)
+          ? '<div style="font-size:10px;color:var(--td);margin-bottom:8px;padding:5px 8px;background:var(--s2);border-radius:5px">'
+            + 'Σ lot : <strong>' + sumProposed.toFixed(2) + ' MAD</strong>'
+            + (negMAD < -0.01 ? ' · Déductions : <strong style="color:var(--re)">' + negMAD.toFixed(2) + ' MAD</strong>' : '')
+            + ' · Net effectif : <strong style="color:' + (netOk ? 'var(--gr)' : 'var(--or)') + '">' + netEff.toFixed(2) + ' MAD</strong>'
             + ' / payout ' + batchTotalMAD.toFixed(2) + ' MAD'
-            + '</div>';
-        }
+            + (!netOk ? ' <span style="color:var(--or)">⚠️ écart ' + (netEff - batchTotalMAD).toFixed(2) + ' MAD</span>' : ' ✓')
+            + '</div>'
+          : '';
         ch += '</tbody></table>'
           + noteHtml
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
