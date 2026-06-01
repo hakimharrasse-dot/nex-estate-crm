@@ -7686,6 +7686,17 @@ function renderMadRealSection() {
           + 'MAD estimé (×' + tauMin.toFixed(2) + ') : <strong>' + row.madEstime.toFixed(2) + '</strong> · '
           + 'Payout batch : <strong style="color:var(--or)">' + row.madReel.toFixed(2) + ' MAD</strong>' + (row.batchRate !== null ? ' (taux implicite : ' + row.batchRate.toFixed(4) + ')' : ' <span style="color:var(--pu);font-size:10px">natif MAD</span>')
           + '</div>'
+          + (row._hasNetMismatch && (row.csv.net||0) > 0.01
+            ? '<div style="font-size:11px;background:rgba(255,153,51,.08);border:1px solid rgba(255,153,51,.35);border-radius:6px;padding:7px 10px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+              + '<span style="color:var(--or);font-weight:700">⚠️ Écart EUR</span>'
+              + '<span>CSV <strong style="color:var(--gr)">' + (row.csv.net||0).toFixed(2) + ' €</strong>'
+              + ' · CRM actuel <strong style="color:var(--re)">' + (row.crm.net||0).toFixed(2) + ' €</strong></span>'
+              + '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:4px">'
+              + '<input type="checkbox" id="mad-eur-fix-' + cid + '" checked style="cursor:pointer;accent-color:var(--or)">'
+              + '<span style="color:var(--tx)">Corriger l\'EUR CRM avec la valeur CSV</span>'
+              + '</label>'
+              + '</div>'
+            : '')
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
           + '<span style="font-size:12px;color:var(--tm)">MAD réel à saisir :</span>'
           + '<input type="number" id="mad-complex-input-' + cid + '" placeholder="ex: ' + row.madEstime.toFixed(0) + '" step="0.01" min="0"'
@@ -7884,29 +7895,67 @@ async function applyMadRealManual(crmId) {
       if (!confirm('⚠️ Attention : ' + val.toFixed(2) + ' DH est très inférieur au MAD natif détecté (' + refVal.toFixed(2) + ' MAD).\nConfirmer quand même ?')) return;
     }
   }
+  // Correction EUR CRM — uniquement pour _hasNetMismatch avec case cochée
+  var eurFixChk = document.getElementById('mad-eur-fix-' + crmId);
+  var applyEurFix = !!(eurFixChk && eurFixChk.checked && row._hasNetMismatch && (row.csv.net || 0) > 0.01);
+  var csvNet = applyEurFix ? Math.round((row.csv.net || 0) * 100) / 100 : null;
   var isNatif = !!(row._isNativeMAD);
-  var tauxReel = isNatif ? null : ((row.crm.net || 0) > 0.01 ? Math.round(val / row.crm.net * 10000) / 10000 : null);
+  // taux_reel calculé sur l'EUR corrigé si correction activée, sinon sur l'EUR CRM actuel
+  var baseNet = applyEurFix ? csvNet : (row.crm.net || 0);
+  var tauxReel = isNatif ? null : (baseNet > 0.01 ? Math.round(val / baseNet * 10000) / 10000 : null);
   var srcLabel = isNatif ? 'CSV Airbnb MAD natif' : 'CSV Airbnb complexe / validation manuelle';
-  if (!confirm('Enregistrer MAD réel pour ' + (row.crm.voyageur || row.csv.code) + ' ?\n'
+  // Calcul des champs EUR si correction activée — règles Airbnb identiques à la Réconciliation
+  var eurPatch = null;
+  if (applyEurFix) {
+    var ZERO_COM = ['AIRCOVER', 'AJUSTEMENT'];
+    var isZeroCom = ZERO_COM.indexOf(row.crm.type_norm) !== -1;
+    if (isZeroCom) {
+      eurPatch = { net: csvNet, brut: csvNet, commission: 0, com_pct: 0 };
+    } else {
+      var newBrut = Math.round(csvNet / 0.845 * 100) / 100;
+      var newCom  = Math.round((newBrut - csvNet) * 100) / 100;
+      eurPatch = { net: csvNet, brut: newBrut, commission: newCom, com_pct: 0.155 };
+    }
+  }
+  // Confirmation détaillée
+  var confirmMsg = 'Enregistrer pour ' + (row.crm.voyageur || row.csv.code) + ' ?\n'
     + 'mad_reel = ' + val.toFixed(2) + ' DH'
     + (tauxReel ? ' · taux_reel = ' + tauxReel.toFixed(4) : ' · taux_reel = null')
-    + '\nmad_reel_source = "' + srcLabel + '"')) return;
+    + '\nmad_reel_source = "' + srcLabel + '"';
+  if (eurPatch) {
+    confirmMsg += '\n\n📐 Correction EUR CRM :'
+      + '\nnet : ' + (row.crm.net||0).toFixed(2) + ' € → ' + eurPatch.net.toFixed(2) + ' €'
+      + '\nbrut : ' + (row.crm.brut||0).toFixed(2) + ' € → ' + eurPatch.brut.toFixed(2) + ' €'
+      + '\ncommission : ' + (row.crm.commission||0).toFixed(2) + ' € → ' + eurPatch.commission.toFixed(2) + ' €'
+      + '\noverride_manual = true';
+  }
+  if (!confirm(confirmMsg)) return;
   var now = new Date().toISOString();
-  var res = await SUPA.from('resa').update({
-    mad_reel: val,
-    taux_reel: tauxReel,
-    mad_reel_source: srcLabel,
-    mad_reel_updated_at: now,
-  }).eq('id', crmId);
+  var patch = { mad_reel: val, taux_reel: tauxReel, mad_reel_source: srcLabel, mad_reel_updated_at: now };
+  if (eurPatch) {
+    patch.net = eurPatch.net;
+    patch.brut = eurPatch.brut;
+    patch.commission = eurPatch.commission;
+    patch.com_pct = eurPatch.com_pct;
+    patch.override_manual = true;
+  }
+  var res = await SUPA.from('resa').update(patch).eq('id', crmId);
   if (res.error) { alert('Erreur Supabase : ' + res.error.message); return; }
   row.crm.mad_reel = val;
   row.crm.taux_reel = tauxReel;
   row.crm.mad_reel_source = srcLabel;
   row.crm.mad_reel_updated_at = now;
+  if (eurPatch) {
+    row.crm.net = eurPatch.net;
+    row.crm.brut = eurPatch.brut;
+    row.crm.commission = eurPatch.commission;
+    row.crm.com_pct = eurPatch.com_pct;
+    row.crm.override_manual = true;
+  }
   MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(r) { return r.crm.id !== crmId; });
   if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
   else renderMadRealSection();
-  alert('MAD réel manuel enregistré pour ' + (row.crm.voyageur || row.csv.code) + '.');
+  alert('MAD réel' + (eurPatch ? ' + correction EUR' : '') + ' enregistré pour ' + (row.crm.voyageur || row.csv.code) + '.');
 }
 
 // ── RÉCONCILIATION BOOKING ─────────────────────────────────────────────────

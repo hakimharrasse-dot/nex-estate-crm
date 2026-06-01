@@ -10,7 +10,7 @@
 
 **Nex-Estate CRM** est un outil de gestion de réservations locatives courte durée (Airbnb, Booking.com, VRBO, Direct) pour 4 appartements au Maroc.
 
-- **Frontend** : `index.html` unique (~9800 lignes), vanilla JS, zéro framework, zéro build
+- **Frontend** : `index.html` unique (~11 650 lignes), vanilla JS, zéro framework, zéro build
 - **Backend** : Vercel Serverless Functions (Node.js)
 - **Base de données** : Supabase (PostgreSQL 17, projet `zjultuaqkzjupiiewxhy`, région `eu-west-1`)
 - **Source de réservations** : Smoobu (PMS) via webhook temps réel + cron horaire
@@ -31,6 +31,7 @@ nex-estate-crm-tmp/
 ├── api/
 │   ├── smoobu-poll.js          ← Polling Smoobu (cron horaire + manuel)
 │   ├── smoobu-webhook.js       ← Récepteur webhook Smoobu (temps réel)
+│   ├── smoobu-messages.js      ← Module messagerie IA (webhook + brouillon Claude + envoi)
 │   └── admin-users.js          ← CRUD utilisateurs (admin only, service_role)
 └── lib/
     └── smoobu-normalizer.js    ← Logique métier Smoobu partagée
@@ -119,11 +120,44 @@ Le CRM dispose d'une section **Logements** permettant d'activer/archiver des bie
 | `mad_reel_source` | text NULL | `'CSV Airbnb payout'` / `'CSV Airbnb MAD natif'` / `'CSV Airbnb complexe / validation manuelle'` |
 | `mad_reel_updated_at` | text NULL | ISO datetime de la dernière mise à jour mad_reel |
 
+### `serv` — services additionnels (ménage, maintenance, extras voyageur)
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | text PK | `uid()` JS côté client |
+| `date` | text | Format `YYYY-MM-DD` — date du service |
+| `appart` | text | Appartement concerné |
+| `svc` | text | Type de service (ex: Climatisation, Ménage, Linge...) |
+| `voy` | text | Nom du voyageur (optionnel) |
+| `col` | text | Collecté par (membre équipe) |
+| `pay` | text | Payé par (source du paiement) |
+| `montant` | numeric | Montant en **MAD** |
+| `statut` | text | `Payé` / `En attente` |
+| `resa_ref` | text NULL | Code réservation Airbnb lié — match prioritaire réconciliation (ajouté 2026-05-31) |
+
+### `messages` — messagerie IA (module Messages IA, ajouté 2026-05)
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | text PK | `uid()` |
+| `smoobu_booking_id` | integer | ID réservation Smoobu |
+| `smoobu_message_id` | text NULL | ID message Smoobu (déduplication) |
+| `sender` | text | `guest` / `host` / `system` |
+| `message_content` | text | Contenu brut du message |
+| `detected_language` | text NULL | Code ISO 2 lettres (ex: `fr`, `en`, `es`) |
+| `client_summary_fr` | text NULL | Résumé IA en français (1-2 phrases) |
+| `classification` | text NULL | `simple` / `complex` / `no_reply_needed` |
+| `ai_draft` | text NULL | Brouillon de réponse dans la langue du voyageur |
+| `ai_draft_fr` | text NULL | Traduction française du brouillon |
+| `hakim_instruction` | text NULL | Instruction de réécriture saisie par Hakim |
+| `statut` | text | `pending` / `sent` / `treated` / `error` |
+| `is_stale` | boolean | Brouillon obsolète (message Smoobu plus récent détecté) |
+| `error_message` | text NULL | Message d'erreur si `statut=error` |
+| `raw_payload` | jsonb NULL | Payload webhook brut (debug) |
+| `created_at` / `updated_at` | text | ISO datetime |
+
 ### Autres tables
 - `business` — dépenses/revenus liés aux appartements (scope: property ou global)
 - `perso` — dépenses personnelles (admin uniquement)
 - `taxe` — taxe de séjour Booking.com
-- `serv` — services (ménage, maintenance)
 - `profiles` — utilisateurs CRM (lié à `auth.users`)
 - `team_members` — équipe (ménage, maintenance)
 - `recurring_charges` — charges récurrentes (loyers, abonnements)
@@ -221,6 +255,7 @@ Variables d'environnement Vercel configurées et testées.
 SUPABASE_URL              → https://zjultuaqkzjupiiewxhy.supabase.co
 SUPABASE_SERVICE_ROLE_KEY → clé service_role
 SMOOBU_API_KEY            → clé API Smoobu
+ANTHROPIC_API_KEY         → clé Claude API (module Messages IA — côté serveur uniquement)
 CRON_SECRET               → secret optionnel (si défini, le poll exige Bearer <secret>)
 POLL_WINDOW_HOURS         → 25 (par défaut)
 ```
@@ -292,6 +327,17 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 | `renderBkBatches()` | Rendu des cartes batch avec état eur_only/pdf_ready/applied, upload PDF, bouton Appliquer |
 | `renderBkAnom()` | Rendu anomalies EUR (écart CSV↔CRM > 0.50 EUR) avec ignorer/remettre persistant |
 | `renderBkMiss()` | Rendu lignes CSV absentes du CRM avec ignorer/remettre persistant |
+| `buildServResaOptions()` | Génère les `<option>` pour le datalist resa_ref : 80 dernières réservations Airbnb (ref, voyageur, checkin) |
+| `saveServ()` | Sauvegarde un service additionnel — inclut `resa_ref` (optionnel, trimé, null si vide) |
+| `findServMatch(csv)` | Matching CSV Airbnb ↔ serv — P0 : resa_ref exact ; fuzzy : montant ±5% + date ±15j + voyageur accent-normalisé |
+| `renderMissingSection()` | Lignes manquantes — section verte "Déjà dans serv" (checkId='A_SERV') distincte des lignes rouges |
+| `renderMessages()` | Rendu principal module Messages IA — liste des threads, badges, filtres |
+| `loadMessages()` | Charge les messages depuis Supabase table `messages`, trie par date |
+| `openMessageThread(id)` | Ouvre le modal d'un thread — affiche conversation, brouillon IA, traduction FR |
+| `regenerateDraft(id)` | POST `/api/smoobu-messages?regenerate=1` — regénère le brouillon avec instruction Hakim |
+| `sendMessage(id)` | POST `/api/smoobu-messages?send=1` — envoie le brouillon validé (jamais auto) |
+| `markTreated(id)` | PATCH `messages` → `statut=treated` — marque comme Traité sans envoi |
+| `syncMessagesNow()` | Déclenche un sync Smoobu backend réel via POST `/api/smoobu-messages?sync=1` |
 
 ### Variables globales d'état des périodes (lignes ~2550-2558)
 ```javascript
@@ -444,6 +490,13 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-22 | Feat(doublons): Règle R5 doublons techniques — R5a (orphelin smoobu_id=null + même ref/appart/checkin) + R5b (même smoobu_id types mixtes) ; section orange séparée ; badge KPI ; `toggleDupTechAll()` ; sans impact KPIs financiers (`4d36171`) |
 | 2026-05-22 | Fix(sync): orphan fallback dans webhook (`upsertResa`) et poll (cas A) — si aucun match par smoobu_id → cherche ref+appart+checkin+smoobu_id=null → PATCH smoobu_id au lieu de créer doublon ; protège override_manual (`4d36171`) |
 | 2026-05-22 | Backup `nex-estate-crm-backup-2026-05-22` produit — suppression ancien backup 2026-05-18-booking-stable |
+| 2026-05-22/31 | Feat(messages-ia): module messagerie IA Smoobu complet — `api/smoobu-messages.js` : webhook newMessage → analyse Claude API → brouillon + traduction FR ; UI CRM section Messages IA (admin only) ; cron sync threads 8h ; badge Prospect ; dictée vocale Web Speech API (`8e9f76f`→`125cdde`) |
+| 2026-05-22/31 | Fix(messages): nombreuses itérations — isGuestMessage() robuste, tri chronologique Smoobu, stale 48h auto-expire, host-already-replied detection, envoi bloqué si stale, Booking.com scan, send endpoint corrigé, mode IA manuel, sentHistory guard 405 (`9414c81`→`125cdde`) |
+| 2026-05-31 | Feat(reconcil): ignorer les virements CSV déjà dans `serv` — `findServMatch()` : montant MAD ±5% + date ±15j + voyageur fuzzy → checkId='A_SERV' (vert) au lieu de rouge (`dcfe3e3`) |
+| 2026-05-31 | Fix(reconcil): étendre `findServMatch` aux versements résolution (Check D) — AirCover/résolutions désormais reconciliés contre `serv` comme les réservations (`30d11f1`) |
+| 2026-05-31 | Fix(reconcil): accents + date checkin pour résolutions — `_normStr()` (é/ñ/ç→ASCII) dans voyageur fuzzy ; Check D utilise `crmBase.checkin` (date séjour) au lieu de `res.date` (date payout, +2-4 semaines) (`341c365`) |
+| 2026-05-31 | Feat(serv): champ `resa_ref` — input datalist dans le formulaire services additionnels ; `saveServ()` inclut resa_ref ; `findServMatch()` Priority 0 : resa_ref exact → match 100% fiable ; migration Supabase : `ALTER TABLE serv ADD COLUMN IF NOT EXISTS resa_ref TEXT` (`1caabe8`) |
+| 2026-05-31 | **STABLE** : réconciliation serv + resa_ref opérationnelle — commit `1caabe8` (HEAD) |
 
 ---
 
@@ -749,3 +802,144 @@ Les helpers `rNetMAD/rBrutMAD/rComMAD` sont **source-agnostiques** : ils s'appli
 - Ne crée pas de nouvelle table Supabase
 - N'écrase jamais un `mad_reel` déjà renseigné
 - Ne gère pas les remboursements / annulations partielles Booking → rester en anomalie manuelle
+
+---
+
+## 16. Module Messages IA — Architecture complète (stabilisé 2026-05-31)
+
+### Objectif
+
+Recevoir les messages voyageurs Smoobu en temps réel, générer un brouillon de réponse via Claude API (Anthropic), le soumettre à validation Hakim avant tout envoi. **Jamais d'envoi automatique.**
+
+### Architecture backend — `api/smoobu-messages.js`
+
+| Endpoint | Méthode | Rôle |
+|---|---|---|
+| `POST` (no query) | Webhook Smoobu `newMessage` | Récupère messages Smoobu, génère analyse IA complète, INSERT dans `messages` |
+| `POST ?regenerate=1` | Regenerate | Regénère brouillon avec instruction Hakim → UPDATE ai_draft/ai_draft_fr/hakim_instruction |
+| `POST ?send=1` | Send | Envoie réponse validée via Smoobu API → UPDATE statut='sent' |
+| `POST ?sync=1` | Sync threads | Scan des conversations Smoobu récentes → INSERT manquants en DB |
+| `GET ?probe=1` | Health check | Retourne `{ ok: true, version: '2.0' }` |
+| `GET ?debugBooking=ID` | Debug | État complet conversation Smoobu + DB pour un booking — lecture seule |
+
+### Règle absolue
+> **Pas d'envoi automatique — jamais envoyer sans validation de Hakim.**  
+> Le bouton Envoyer dans le CRM déclenche un POST `?send=1` uniquement après que Hakim ait relu et validé le brouillon.
+
+### Variables d'environnement requises
+```
+ANTHROPIC_API_KEY  → Claude API (claude-3-haiku / sonnet) — côté serveur uniquement, jamais frontend
+SMOOBU_API_KEY     → Smoobu API (lecture messages + envoi)
+SUPABASE_SERVICE_ROLE_KEY → bypass RLS pour INSERT/PATCH messages
+```
+
+### Webhook Smoobu — configuration
+- URL : `https://nex-estate-seven.vercel.app/api/smoobu-messages`
+- **NE PAS remplacer** le webhook `smoobu-webhook.js` existant — Smoobu accepte plusieurs URLs webhook
+
+### Analyse IA — `generateFullAnalysis(ctx)`
+
+Un seul appel Claude API par message, retourne JSON structuré :
+```json
+{
+  "detected_language": "fr",
+  "client_summary_fr": "Le voyageur demande l'heure d'arrivée.",
+  "classification": "simple",
+  "ai_draft": "Bonjour ! Vous pouvez arriver à partir de 15h.",
+  "ai_draft_fr": "Bonjour ! Vous pouvez arriver à partir de 15h."
+}
+```
+Classifications possibles :
+- `simple` — question/demande standard, brouillon proposé
+- `complex` — situation nécessitant une décision (remboursement, problème grave)
+- `no_reply_needed` — merci, ok, emoji, confirmation sans question → ai_draft = null
+
+### Détection stale (brouillon obsolète)
+- Si un nouveau message guest arrive après la génération du brouillon → `is_stale = true`
+- Un brouillon stale est **bloqué** à l'envoi → doit être regénéré
+- Expiration automatique après 48h sans activité
+
+### Cron sync threads
+- Configuré dans `vercel.json` : quotidien à 8h
+- Scan les conversations Smoobu récentes → insère les threads manquants dans `messages`
+- Sans doublon (guard sur `smoobu_message_id`)
+
+### UI CRM (section `vw-messages`)
+
+| Élément | Rôle |
+|---|---|
+| `mn-messages` | Entrée menu nav (admin only) |
+| `vw-messages` | Vue principale module |
+| Badge rouge | Nombre de threads `statut=pending` |
+| Badge "Prospect" | Thread sans réservation CRM associée |
+| Filtre statut | pending / sent / treated / all |
+| Bouton 🔄 Actualiser | Déclenche `syncMessagesNow()` → POST ?sync=1 |
+| Modal thread | Conversation + brouillon IA + traduction FR + instruction Hakim + bouton Envoyer |
+| 🎤 Dictée vocale | Web Speech API — saisie vocale de l'instruction Hakim |
+| Bouton ✓ Traité | `markTreated(id)` → statut=treated sans envoi |
+
+### Mobile
+- Section Messages IA accessible via le drawer "Plus" → `mn-messages` (admin only)
+- Pas de modification spécifique mobile — responsive CSS standard
+
+---
+
+## 17. Réconciliation — Lignes manquantes serv + resa_ref (stabilisé 2026-05-31)
+
+### Problème résolu
+
+Certains virements Airbnb (CSV paiements) apparaissaient en rouge "Lignes manquantes" alors qu'ils correspondaient à des services additionnels déjà saisis dans la table `serv` (climatisation, linge, parking, voyageur supplémentaire...). Ces montants sont en EUR dans le CSV mais stockés en MAD dans `serv` → conversion EUR×taux nécessaire avant comparaison.
+
+### Solution — `findServMatch(csv)`
+
+Fonction de matching CSV Airbnb ↔ entrées `DB.serv`.
+
+**Priority 0 — resa_ref exact (100% fiable) :**
+- Si `serv.resa_ref` est renseigné → compare avec `csv.code`
+- Variantes acceptées : `CODE`, `AIR-CODE`, `CODE` ↔ `AIR-CODE`
+- Si resa_ref est renseigné mais ne match pas → skip ce serv (pas de fuzzy fallback)
+
+**Fuzzy (si resa_ref absent) — 3 critères successifs :**
+1. **Montant MAD ±5%** (min 5 MAD) : `csv.net × taux` vs `serv.montant`
+2. **Date ±15 jours** : `csv.checkin` vs `serv.date` (Check D utilise `crmBase.checkin`, pas `res.date`)
+3. **Voyageur accent-normalisé** (bloquant uniquement si les deux sont renseignés) : `_normStr()` mappe é/è/ê→e, ñ→n, ç→c, à/â→a etc., compare par mot ≥ 3 chars
+
+**`_normStr(s)` :**
+```javascript
+function _normStr(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[àâä]/g, 'a').replace(/[éèêë]/g, 'e')
+    .replace(/[îï]/g, 'i').replace(/[ôö]/g, 'o')
+    .replace(/[ùûü]/g, 'u').replace(/[ýÿ]/g, 'y')
+    .replace(/[ñ]/g, 'n').replace(/[ç]/g, 'c');
+}
+```
+
+### Checks concernés
+
+| Check | Condition | Action si match serv |
+|---|---|---|
+| **Check A** | Réservation absente du CRM | → checkId='A_SERV', level='ok' (vert) |
+| **Check D** | Versement résolution / AirCover absent | → checkId='A_SERV', level='ok' (vert) — Check D utilise `crmBase.checkin` pour la date |
+
+### Rendu `renderMissingSection()`
+
+| Groupe | Couleur | Comptage badge |
+|---|---|---|
+| `resAbsent` (checkId='A') | Rouge | ✅ Compté |
+| `acAbsent` (checkId='D') | Rouge | ✅ Compté |
+| `servMatched` (checkId='A_SERV') | **Vert** | ❌ Exclu du badge |
+
+La section verte "Déjà dans services additionnels · N virement(s)" est affichée après les sections rouges. Chaque carte montre : code + badge ✓ Dans serv + montant EUR + voyageur · logement + cause détaillée (svc · montant MAD · date · voy).
+
+### Champ `resa_ref` dans le formulaire Services additionnels
+
+- Input texte + datalist autocomplete (`buildServResaOptions()`) — 80 dernières réservations Airbnb (ref, voyageur, checkin)
+- Optionnel : si laissé vide, le fuzzy seul s'applique
+- Si renseigné : match Priority 0 → lien 100% fiable, aucune ambiguïté
+- Migration Supabase appliquée : `ALTER TABLE serv ADD COLUMN IF NOT EXISTS resa_ref TEXT`
+
+### Contraintes immuables
+- Ne pas refondre le module Réconciliation existant
+- Ne pas toucher au reste du module (Airbnb MAD réel, Booking)
+- Toute modification de `findServMatch` doit préserver les 3 critères et la priorité resa_ref
