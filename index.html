@@ -7423,6 +7423,7 @@ function buildMadRealRows(parsed, taux) {
         _batchId:       csvRow._batchId || 0,
         _batchTotalMAD: csvRow._batchTotalMAD || 0,
         _batchNetEUR:   csvRow._batchNetEUR || 0,
+        _batchNegLines: csvRow._batchNegLines || null,
       });
     });
   }
@@ -7656,18 +7657,39 @@ function renderMadRealSection() {
         var idxs = _batchGroups[bid];
         var firstRow = MAD_REEL_ROWS[idxs[0]];
         var batchTotalMAD = firstRow._batchTotalMAD || 0;
-        var batchNetEUR   = firstRow._batchNetEUR   || 0;
-        var batchRate     = batchNetEUR > 0.01 ? Math.round(batchTotalMAD / batchNetEUR * 10000) / 10000 : null;
+        var batchNetEUR   = firstRow._batchNetEUR   || 0;   // net réel = positives + négatives
+        var batchNegLines = firstRow._batchNegLines || null;
+        var trueRate      = batchNetEUR > 0.01 ? Math.round(batchTotalMAD / batchNetEUR * 10000) / 10000 : null;
+        var negSum        = 0;
+        if (batchNegLines) batchNegLines.forEach(function(l) { negSum += l.amt; });
+        var negMAD        = trueRate ? Math.round(negSum * trueRate * 100) / 100 : 0;  // MAD des déductions (négatif)
         ch += '<div style="border:1px solid rgba(255,153,51,.55);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:rgba(255,153,51,.05)">'
-          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
-          + '<span style="font-weight:700;font-size:13px;color:var(--or)">📦 Lot Airbnb — ' + idxs.length + ' lignes appariées</span>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+          + '<span style="font-weight:700;font-size:13px;color:var(--or)">📦 Lot Airbnb — ' + idxs.length + ' ligne(s) appariée(s)'
+          + (batchNegLines ? ' + ' + batchNegLines.length + ' non appariée(s)' : '') + '</span>'
           + '<span style="font-size:11px;color:var(--td)">'
-          + 'Payout total : <strong style="color:var(--or)">' + batchTotalMAD.toFixed(2) + ' MAD</strong>'
-          + (batchNetEUR > 0.01 ? ' · EUR batch : <strong>' + batchNetEUR.toFixed(2) + ' €</strong>' : '')
-          + (batchRate ? ' · Taux : <strong>' + batchRate.toFixed(4) + '</strong>' : '')
+          + 'Payout : <strong style="color:var(--or)">' + batchTotalMAD.toFixed(2) + ' MAD</strong>'
+          + (batchNetEUR > 0.01 ? ' · EUR net lot : <strong>' + batchNetEUR.toFixed(2) + ' €</strong>' : '')
+          + (trueRate ? ' · Taux réel : <strong style="color:var(--gr)">' + trueRate.toFixed(4) + '</strong>' : '')
           + '</span>'
           + '</div>'
-          + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">'
+          // Lignes non appariées (négatives) — contexte uniquement
+          + (batchNegLines
+            ? '<div style="font-size:11px;background:rgba(224,82,82,.07);border:1px solid rgba(224,82,82,.25);border-radius:6px;padding:6px 10px;margin-bottom:8px">'
+              + '<span style="color:var(--re);font-weight:600">⚠️ Lignes non appariées dans ce virement</span>'
+              + '<table style="width:100%;border-collapse:collapse;margin-top:4px">'
+              + batchNegLines.map(function(l) {
+                  var lMad = trueRate ? Math.round(l.amt * trueRate * 100) / 100 : null;
+                  return '<tr><td style="padding:2px 6px;color:var(--td);font-size:10px">' + escHtml(l.type) + '</td>'
+                    + '<td style="padding:2px 6px;font-family:monospace;color:var(--re);text-align:right;font-size:11px">' + l.amt.toFixed(2) + ' €</td>'
+                    + (lMad !== null ? '<td style="padding:2px 6px;font-family:monospace;color:var(--re);text-align:right;font-size:11px">' + lMad.toFixed(2) + ' MAD</td>' : '<td></td>')
+                    + '<td style="padding:2px 6px;color:var(--td);font-size:10px">' + escHtml(l.code || '') + '</td></tr>';
+                }).join('')
+              + '</table>'
+              + '<div style="font-size:10px;color:var(--td);margin-top:4px">Ces lignes ne sont pas attribuées à une réservation CRM — elles réduisent le net du lot mais pas le MAD enregistré par réservation.</div>'
+              + '</div>'
+            : '')
+          + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">'
           + '<thead><tr style="color:var(--td);border-bottom:1px solid var(--br)">'
           + '<th style="padding:3px 6px;text-align:left;font-weight:500">Code</th>'
           + '<th style="padding:3px 6px;text-align:left;font-weight:500">Voyageur</th>'
@@ -7680,7 +7702,10 @@ function renderMadRealSection() {
         idxs.forEach(function(idx) {
           var row = MAD_REEL_ROWS[idx];
           var cid = row.crm.id;
-          var proposedMAD = row.csv._payoutMAD || Math.round((row.csv.net||0) * (batchRate || tauMin) * 100) / 100;
+          // MAD proposé = taux réel × EUR CSV (taux calculé sur le net lot incluant les déductions)
+          var proposedMAD = trueRate
+            ? Math.round((row.csv.net||0) * trueRate * 100) / 100
+            : (row.csv._payoutMAD || Math.round((row.csv.net||0) * tauMin * 100) / 100);
           var rowReasons = [];
           if (row._hasUSD) rowReasons.push('USD');
           if (row._hasRegulResol) rowReasons.push('régul résol');
@@ -7714,7 +7739,22 @@ function renderMadRealSection() {
             + '</td>'
             + '</tr>';
         });
+        // Note réconciliation : somme proposée vs payout total
+        var sumProposed = idxs.reduce(function(s, idx) {
+          var r = MAD_REEL_ROWS[idx];
+          return s + (trueRate ? Math.round((r.csv.net||0) * trueRate * 100) / 100 : (r.csv._payoutMAD || 0));
+        }, 0);
+        var noteHtml = '';
+        if (batchNegLines && negMAD < -0.01) {
+          noteHtml = '<div style="font-size:10px;color:var(--td);margin-bottom:8px;padding:5px 8px;background:var(--s2);border-radius:5px">'
+            + 'Somme MAD proposée : <strong>' + sumProposed.toFixed(2) + ' MAD</strong>'
+            + ' · Déductions non appariées : <strong style="color:var(--re)">' + negMAD.toFixed(2) + ' MAD</strong>'
+            + ' · Net effectif : <strong style="color:var(--gr)">' + (sumProposed + negMAD).toFixed(2) + ' MAD</strong>'
+            + ' / payout ' + batchTotalMAD.toFixed(2) + ' MAD'
+            + '</div>';
+        }
         ch += '</tbody></table>'
+          + noteHtml
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
           + (ROLE === 'admin' ? '<button class="ba bat" onclick="applyMadRealLot(\'' + bid + '\')" style="font-size:12px">💾 Valider tout le lot</button>' : '')
           + '<button class="ba ba-ghost" onclick="madReelIgnoreLot(\'' + bid + '\')" style="font-size:12px;padding:5px 10px">🙈 Ignorer ce lot</button>'
@@ -9209,8 +9249,8 @@ function parseAirbnbCSV(text, taux) {
   // Même taux de change par batch, but destinations distinctes pour éviter la
   // contamination entre la réservation principale et sa résolution (même code).
   var payoutByCode = {}, payoutByCodeResol = {};
-  var _pMad = 0, _pEUR = [], _pResolEUR = [], _pMADtx = [];
-  var _batchCount = 0, _codeToBatchId = {}, _batchTotalMADMap = {}, _batchNetEURMap = {};
+  var _pMad = 0, _pEUR = [], _pResolEUR = [], _pMADtx = [], _pNegEUR = [];
+  var _batchCount = 0, _codeToBatchId = {}, _batchTotalMADMap = {}, _batchNetEURMap = {}, _batchNegLinesMap = {};
   function _flushP() {
     var _j, _it;
     if (_pMad > 0 && (_pEUR.length || _pResolEUR.length)) {
@@ -9248,10 +9288,12 @@ function parseAirbnbCSV(text, taux) {
       for (_j = 0; _j < _pEUR.length;      _j++) { _codeToBatchId[_pEUR[_j].code]      = _bId; _bNetEur += _pEUR[_j].amt; }
       for (_j = 0; _j < _pResolEUR.length; _j++) { _codeToBatchId[_pResolEUR[_j].code] = _bId; _bNetEur += _pResolEUR[_j].amt; }
       for (_j = 0; _j < _pMADtx.length;   _j++) { _codeToBatchId[_pMADtx[_j].code]    = _bId; }
+      for (_j = 0; _j < _pNegEUR.length;  _j++) { _bNetEur += _pNegEUR[_j].amt; }  // négatifs → réduisent le net réel
       _batchTotalMADMap[_bId] = _pMad;
       _batchNetEURMap[_bId]   = Math.round(_bNetEur * 100) / 100;
+      if (_pNegEUR.length) _batchNegLinesMap[_bId] = _pNegEUR.slice();
     }
-    _pMad = 0; _pEUR = []; _pResolEUR = []; _pMADtx = [];
+    _pMad = 0; _pEUR = []; _pResolEUR = []; _pMADtx = []; _pNegEUR = [];
   }
   for (var _pi = 1; _pi < lines.length; _pi++) {
     var _pl = lines[_pi].trim(); if (!_pl) continue;
@@ -9274,6 +9316,9 @@ function parseAirbnbCSV(text, taux) {
         if (_ptyp === 'Versement de résolution') _pResolEUR.push({ code: _pcod, amt: _pamt });
         else                                     _pEUR.push({ code: _pcod, amt: _pamt });
       }
+    } else if (_ptyp !== 'Payout' && _pcod && _pamt < -0.01 && _pdev === 'EUR') {
+      // Lignes EUR négatives (régularisation résolution négative, déduction) — même lot
+      _pNegEUR.push({ code: _pcod, amt: _pamt, type: _ptyp });
     }
   }
   _flushP();
@@ -9392,6 +9437,7 @@ function parseAirbnbCSV(text, taux) {
         _batchId:       _codeToBatchId[code] || 0,
         _batchTotalMAD: _codeToBatchId[code] ? (_batchTotalMADMap[_codeToBatchId[code]] || 0) : 0,
         _batchNetEUR:   _codeToBatchId[code] ? (_batchNetEURMap[_codeToBatchId[code]] || 0) : 0,
+        _batchNegLines: _codeToBatchId[code] ? (_batchNegLinesMap[_codeToBatchId[code]] || null) : null,
         _rawLines:  [{ type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details }],
       });
     }
@@ -9409,7 +9455,7 @@ function parseAirbnbCSV(text, taux) {
     r.regulResolAmt = Math.round(r.regulResolAmt*100)/100;
     if (payoutByCode[r.code]) r._payoutMAD = payoutByCode[r.code];
     var _bid = _codeToBatchId[r.code] || 0;
-    if (_bid) { r._batchId = _bid; r._batchTotalMAD = _batchTotalMADMap[_bid] || 0; r._batchNetEUR = _batchNetEURMap[_bid] || 0; }
+    if (_bid) { r._batchId = _bid; r._batchTotalMAD = _batchTotalMADMap[_bid] || 0; r._batchNetEUR = _batchNetEURMap[_bid] || 0; r._batchNegLines = _batchNegLinesMap[_bid] || null; }
   });
   return { reservations: reservations, resolutions: resolutions };
 }
