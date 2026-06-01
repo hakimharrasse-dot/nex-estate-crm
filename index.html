@@ -7419,6 +7419,10 @@ function buildMadRealRows(parsed, taux) {
         _hasNegativeRegul: !!(csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01),
         // net CRM ≠ net CSV Airbnb (tolérance 1 EUR) — écart → complexe, pas d'auto-apply
         _hasNetMismatch:   !_isNativeMad && Math.abs((crm.net||0) - (csvRow.net||0)) > 1,
+        // Identifiant lot — groupement visuel des lignes du même virement Airbnb
+        _batchId:       csvRow._batchId || 0,
+        _batchTotalMAD: csvRow._batchTotalMAD || 0,
+        _batchNetEUR:   csvRow._batchNetEUR || 0,
       });
     });
   }
@@ -7633,9 +7637,93 @@ function renderMadRealSection() {
   if (cplxEl) {
     if (!complexIdxs.length) { cplxEl.innerHTML = ''; }
     else {
+      // Grouper par _batchId — lots (>1 ligne complexe même virement) → carte LOT, sinon carte individuelle
+      var _batchGroups = {}, _singleCplx = [];
+      complexIdxs.forEach(function(idx) {
+        var bid = MAD_REEL_ROWS[idx]._batchId || 0;
+        if (bid > 0) { (_batchGroups[bid] = _batchGroups[bid] || []).push(idx); }
+        else { _singleCplx.push(idx); }
+      });
+      // Lots de 1 seule ligne complexe → traités comme cartes individuelles
+      Object.keys(_batchGroups).forEach(function(bid) {
+        if (_batchGroups[bid].length === 1) { _singleCplx.push(_batchGroups[bid][0]); delete _batchGroups[bid]; }
+      });
       var ch = '<div style="margin-top:16px;border-top:1px solid var(--br);padding-top:14px">'
         + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--or);margin-bottom:10px">⚠️ Cas complexes à vérifier (' + complexIdxs.length + ') — saisie manuelle requise</div>';
-      complexIdxs.forEach(function(idx) {
+
+      // ── Cartes LOT (plusieurs lignes complexes du même virement Airbnb) ──────
+      Object.keys(_batchGroups).forEach(function(bid) {
+        var idxs = _batchGroups[bid];
+        var firstRow = MAD_REEL_ROWS[idxs[0]];
+        var batchTotalMAD = firstRow._batchTotalMAD || 0;
+        var batchNetEUR   = firstRow._batchNetEUR   || 0;
+        var batchRate     = batchNetEUR > 0.01 ? Math.round(batchTotalMAD / batchNetEUR * 10000) / 10000 : null;
+        ch += '<div style="border:1px solid rgba(255,153,51,.55);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:rgba(255,153,51,.05)">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+          + '<span style="font-weight:700;font-size:13px;color:var(--or)">📦 Lot Airbnb — ' + idxs.length + ' lignes appariées</span>'
+          + '<span style="font-size:11px;color:var(--td)">'
+          + 'Payout total : <strong style="color:var(--or)">' + batchTotalMAD.toFixed(2) + ' MAD</strong>'
+          + (batchNetEUR > 0.01 ? ' · EUR batch : <strong>' + batchNetEUR.toFixed(2) + ' €</strong>' : '')
+          + (batchRate ? ' · Taux : <strong>' + batchRate.toFixed(4) + '</strong>' : '')
+          + '</span>'
+          + '</div>'
+          + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">'
+          + '<thead><tr style="color:var(--td);border-bottom:1px solid var(--br)">'
+          + '<th style="padding:3px 6px;text-align:left;font-weight:500">Code</th>'
+          + '<th style="padding:3px 6px;text-align:left;font-weight:500">Voyageur</th>'
+          + '<th style="padding:3px 6px;text-align:left;font-weight:500">Type</th>'
+          + '<th style="padding:3px 6px;text-align:right;font-weight:500">EUR CSV</th>'
+          + '<th style="padding:3px 6px;text-align:right;font-weight:500">MAD proposé</th>'
+          + '<th style="padding:3px 6px;text-align:right;font-weight:500">MAD réel</th>'
+          + '<th style="padding:3px 6px;font-weight:500"></th>'
+          + '</tr></thead><tbody>';
+        idxs.forEach(function(idx) {
+          var row = MAD_REEL_ROWS[idx];
+          var cid = row.crm.id;
+          var proposedMAD = row.csv._payoutMAD || Math.round((row.csv.net||0) * (batchRate || tauMin) * 100) / 100;
+          var rowReasons = [];
+          if (row._hasUSD) rowReasons.push('USD');
+          if (row._hasRegulResol) rowReasons.push('régul résol');
+          if (row._hasNegativeRegul) rowReasons.push('régul négative');
+          if (row.batchRate !== null && (row.batchRate < tauMin || row.batchRate > tauMax)) rowReasons.push('taux hors plage');
+          if (row._hasNetMismatch) rowReasons.push('écart EUR');
+          ch += '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'
+            + '<td style="padding:5px 6px;font-family:monospace;color:var(--bl);font-size:11px">' + escHtml(row.csv.code||'') + '</td>'
+            + '<td style="padding:5px 6px;color:var(--tm)">' + escHtml(row.crm.voyageur||'—') + '</td>'
+            + '<td style="padding:5px 6px">'
+            + '<span style="font-size:10px;color:var(--td)">' + escHtml(row.crm.type_norm||'') + '</span>'
+            + (rowReasons.length ? '<br><span style="font-size:9px;color:var(--or)">' + rowReasons.join(' · ') + '</span>' : '')
+            + '</td>'
+            + '<td style="padding:5px 6px;text-align:right;font-family:monospace">'
+            + (row._hasNetMismatch
+              ? '<span style="color:var(--re);text-decoration:line-through;font-size:10px">' + (row.crm.net||0).toFixed(2) + '</span> <span style="color:var(--gr)">' + (row.csv.net||0).toFixed(2) + '</span>'
+              : (row.csv.net||0).toFixed(2))
+            + ' €</td>'
+            + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:var(--or)">' + proposedMAD.toFixed(2) + '</td>'
+            + '<td style="padding:5px 6px;text-align:right">'
+            + '<input type="number" id="mad-lot-input-' + cid + '" value="' + proposedMAD.toFixed(2) + '" step="0.01" min="0"'
+            + ' style="width:88px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:5px;padding:3px 6px;font-size:11px;font-family:\'DM Sans\',sans-serif">'
+            + ' <span style="font-size:10px;color:var(--td)">DH</span>'
+            + '</td>'
+            + '<td style="padding:5px 6px">'
+            + (row._hasNetMismatch && (row.csv.net||0) > 0.01
+              ? '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;white-space:nowrap">'
+                + '<input type="checkbox" id="mad-eur-fix-' + cid + '" checked style="cursor:pointer;accent-color:var(--or)">'
+                + '<span style="color:var(--td)">Corr. EUR</span></label>'
+              : '')
+            + '</td>'
+            + '</tr>';
+        });
+        ch += '</tbody></table>'
+          + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+          + (ROLE === 'admin' ? '<button class="ba bat" onclick="applyMadRealLot(\'' + bid + '\')" style="font-size:12px">💾 Valider tout le lot</button>' : '')
+          + '<button class="ba ba-ghost" onclick="madReelIgnoreLot(\'' + bid + '\')" style="font-size:12px;padding:5px 10px">🙈 Ignorer ce lot</button>'
+          + '</div>'
+          + '</div>';
+      });
+
+      // ── Cartes individuelles (comportement identique à avant) ─────────────
+      _singleCplx.forEach(function(idx) {
         var row = MAD_REEL_ROWS[idx];
         var reasons = [];
         if (row.batchRate !== null && (row.batchRate < tauMin || row.batchRate > tauMax)) reasons.push('taux hors plage (' + row.batchRate.toFixed(4) + ')');
@@ -7643,7 +7731,6 @@ function renderMadRealSection() {
         if (row._hasRegulResol) reasons.push('régularisation de résolution');
         if (row._hasNegativeRegul) reasons.push('régularisation négative');
         var cid = row.crm.id;
-        // Composition CSV — lignes brutes
         var rawLines = (row.csv._rawLines || []);
         var compHtml = '';
         if (rawLines.length) {
@@ -7956,6 +8043,90 @@ async function applyMadRealManual(crmId) {
   if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
   else renderMadRealSection();
   alert('MAD réel' + (eurPatch ? ' + correction EUR' : '') + ' enregistré pour ' + (row.crm.voyageur || row.csv.code) + '.');
+}
+
+async function applyMadRealLot(bid) {
+  if (ROLE !== 'admin') return;
+  var lotRows = MAD_REEL_ROWS.filter(function(r) { return r._batchId == bid; });
+  if (!lotRows.length) return;
+  // Collecter les valeurs MAD saisies et les choix de correction EUR
+  var items = [];
+  for (var i = 0; i < lotRows.length; i++) {
+    var row = lotRows[i];
+    var cid = row.crm.id;
+    var inp = document.getElementById('mad-lot-input-' + cid);
+    var val = inp ? parseFloat(inp.value) : NaN;
+    if (isNaN(val) || val <= 0) {
+      alert('Saisir un montant MAD valide pour ' + (row.crm.voyageur || row.csv.code) + '.'); return;
+    }
+    var eurFixChk = document.getElementById('mad-eur-fix-' + cid);
+    var applyEurFix = !!(eurFixChk && eurFixChk.checked && row._hasNetMismatch && (row.csv.net || 0) > 0.01);
+    items.push({ row: row, val: val, applyEurFix: applyEurFix });
+  }
+  // Confirmation détaillée
+  var batchTotalMAD = lotRows[0]._batchTotalMAD || 0;
+  var sumProposed = items.reduce(function(s, it) { return s + it.val; }, 0);
+  var confirmMsg = '💾 Valider le lot de ' + items.length + ' ligne(s) ?\n'
+    + 'Payout Airbnb : ' + batchTotalMAD.toFixed(2) + ' MAD'
+    + ' · Somme saisie : ' + sumProposed.toFixed(2) + ' MAD\n\n';
+  items.forEach(function(it) {
+    confirmMsg += '• ' + (it.row.crm.voyageur || it.row.csv.code) + ' : ' + it.val.toFixed(2) + ' MAD'
+      + (it.applyEurFix ? ' + correction EUR → ' + (it.row.csv.net||0).toFixed(2) + ' €' : '') + '\n';
+  });
+  if (!confirm(confirmMsg)) return;
+  var now = new Date().toISOString();
+  var ok = 0, fail = 0;
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var row = it.row;
+    var isNatif = !!(row._isNativeMAD);
+    var baseNet = it.applyEurFix ? (row.csv.net || 0) : (row.crm.net || 0);
+    var tauxReel = isNatif ? null : (baseNet > 0.01 ? Math.round(it.val / baseNet * 10000) / 10000 : null);
+    var srcLabel = 'CSV Airbnb complexe / validation manuelle';
+    var patch = { mad_reel: it.val, taux_reel: tauxReel, mad_reel_source: srcLabel, mad_reel_updated_at: now };
+    if (it.applyEurFix) {
+      var ZERO_COM_L = ['AIRCOVER', 'AJUSTEMENT'];
+      var csvNetL = Math.round((row.csv.net || 0) * 100) / 100;
+      if (ZERO_COM_L.indexOf(row.crm.type_norm) !== -1) {
+        patch.net = csvNetL; patch.brut = csvNetL; patch.commission = 0; patch.com_pct = 0;
+      } else {
+        patch.net = csvNetL;
+        patch.brut = Math.round(csvNetL / 0.845 * 100) / 100;
+        patch.commission = Math.round((patch.brut - csvNetL) * 100) / 100;
+        patch.com_pct = 0.155;
+      }
+      patch.override_manual = true;
+    }
+    var res = await SUPA.from('resa').update(patch).eq('id', row.crm.id);
+    if (res.error) { fail++; console.error('[lot] patch error', row.crm.id, res.error.message); continue; }
+    row.crm.mad_reel = it.val; row.crm.taux_reel = tauxReel;
+    row.crm.mad_reel_source = srcLabel; row.crm.mad_reel_updated_at = now;
+    if (it.applyEurFix && patch.net != null) {
+      row.crm.net = patch.net; row.crm.brut = patch.brut;
+      row.crm.commission = patch.commission; row.crm.com_pct = patch.com_pct;
+      row.crm.override_manual = true;
+    }
+    ok++;
+  }
+  MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(r) { return r._batchId != bid; });
+  if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
+  else renderMadRealSection();
+  if (fail > 0) alert(ok + ' enregistré(s), ' + fail + ' erreur(s) — voir console.');
+  else showToast('Lot validé : ' + ok + ' ligne(s) enregistrée(s).');
+}
+
+function madReelIgnoreLot(bid) {
+  var lotRows = MAD_REEL_ROWS.filter(function(r) { return r._batchId == bid; });
+  if (!lotRows.length) return;
+  if (!confirm('Ignorer tout ce lot (' + lotRows.length + ' ligne(s)) ? Elles ne seront plus proposées.')) return;
+  var key = 'nex_madReel_ignored_v1';
+  var stored = {};
+  try { var s = localStorage.getItem(key); if (s) stored = JSON.parse(s); } catch(e) {}
+  lotRows.forEach(function(r) { stored[r.crm.id] = true; delete MAD_REEL_SELECTED[r.crm.id]; });
+  try { localStorage.setItem(key, JSON.stringify(stored)); } catch(e) {}
+  MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(r) { return r._batchId != bid; });
+  if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
+  else renderMadRealSection();
 }
 
 // ── RÉCONCILIATION BOOKING ─────────────────────────────────────────────────
@@ -9039,6 +9210,7 @@ function parseAirbnbCSV(text, taux) {
   // contamination entre la réservation principale et sa résolution (même code).
   var payoutByCode = {}, payoutByCodeResol = {};
   var _pMad = 0, _pEUR = [], _pResolEUR = [], _pMADtx = [];
+  var _batchCount = 0, _codeToBatchId = {}, _batchTotalMADMap = {}, _batchNetEURMap = {};
   function _flushP() {
     var _j, _it;
     if (_pMad > 0 && (_pEUR.length || _pResolEUR.length)) {
@@ -9068,6 +9240,16 @@ function parseAirbnbCSV(text, taux) {
     for (_j = 0; _j < _pMADtx.length; _j++) {
       _it = _pMADtx[_j];
       payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt) * 100) / 100;
+    }
+    // Batch tracking — assigne un identifiant unique à ce virement pour le groupement LOT
+    if (_pMad > 0) {
+      _batchCount++;
+      var _bId = _batchCount, _bNetEur = 0;
+      for (_j = 0; _j < _pEUR.length;      _j++) { _codeToBatchId[_pEUR[_j].code]      = _bId; _bNetEur += _pEUR[_j].amt; }
+      for (_j = 0; _j < _pResolEUR.length; _j++) { _codeToBatchId[_pResolEUR[_j].code] = _bId; _bNetEur += _pResolEUR[_j].amt; }
+      for (_j = 0; _j < _pMADtx.length;   _j++) { _codeToBatchId[_pMADtx[_j].code]    = _bId; }
+      _batchTotalMADMap[_bId] = _pMad;
+      _batchNetEURMap[_bId]   = Math.round(_bNetEur * 100) / 100;
     }
     _pMad = 0; _pEUR = []; _pResolEUR = []; _pMADtx = [];
   }
@@ -9206,7 +9388,10 @@ function parseAirbnbCSV(text, taux) {
         dossier:    mDos ? mDos[0].toUpperCase() : '',
         details:    details,
         subtype:    isAc ? 'aircover' : 'resolution',
-        _payoutMAD: payoutByCodeResol[code] || null,
+        _payoutMAD:     payoutByCodeResol[code] || null,
+        _batchId:       _codeToBatchId[code] || 0,
+        _batchTotalMAD: _codeToBatchId[code] ? (_batchTotalMADMap[_codeToBatchId[code]] || 0) : 0,
+        _batchNetEUR:   _codeToBatchId[code] ? (_batchNetEURMap[_codeToBatchId[code]] || 0) : 0,
         _rawLines:  [{ type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details }],
       });
     }
@@ -9223,6 +9408,8 @@ function parseAirbnbCSV(text, taux) {
     r.regulAmt      = Math.round(r.regulAmt*100)/100;
     r.regulResolAmt = Math.round(r.regulResolAmt*100)/100;
     if (payoutByCode[r.code]) r._payoutMAD = payoutByCode[r.code];
+    var _bid = _codeToBatchId[r.code] || 0;
+    if (_bid) { r._batchId = _bid; r._batchTotalMAD = _batchTotalMADMap[_bid] || 0; r._batchNetEUR = _batchNetEURMap[_bid] || 0; }
   });
   return { reservations: reservations, resolutions: resolutions };
 }
