@@ -10092,13 +10092,23 @@ function runReconciliation(parsed) {
 
       var bLevel, bCause;
       if (bIsLocked) {
-        // Ligne verrouillée (override_manual=true) : classification selon l'écart
+        // Ligne verrouillée (override_manual=true) : classification selon mad_reel + écart
         if (absEcart > 5) {
           // Gros écart sur ligne verrouillée → anomalie réelle à vérifier
           bLevel = 'anomaly';
           bCause = '🔒 Ligne verrouillée — écart inhabituel (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → vérifier si la correction manuelle est encore correcte';
+        } else if (crm.mad_reel != null) {
+          // MAD réel déjà enregistré + override_manual : EUR légèrement non aligné
+          // Ne pas renvoyer vers "onglet MAD réel" — le MAD est traité, seul l'EUR reste
+          if (absEcart <= 0.10) {
+            bLevel = 'info';
+            bCause = '✅ MAD réel enregistré — arrondi EUR (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · aucune action requise';
+          } else {
+            bLevel = 'minor';
+            bCause = 'MAD réel enregistré — EUR non aligné (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → corriger l\'EUR via ✏️ Modifier si nécessaire';
+          }
         } else if (absEcart <= 0.10) {
-          // Arrondi mineur sur ligne verrouillée → silence total (info masquée)
+          // Arrondi mineur sur ligne verrouillée sans mad_reel → info masquée
           bLevel = 'info';
           bCause = '🔒 Verrouillée — arrondi (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · aucune action';
         } else {
