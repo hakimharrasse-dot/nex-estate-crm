@@ -605,6 +605,21 @@ Ne jamais élargir sans décision explicite. AIRCOVER/AJUSTEMENT : `mad_reel = N
 Si `|crm.net − csv.net| > 1 €` → complexe. Checkbox "Corriger l'EUR CRM" cochée par défaut.
 Si validée : PATCH avec règles Airbnb 15,5% + `override_manual = true`. `taux_reel` calculé sur `csv.net`.
 
+### Régularisations Airbnb — MAD réel net (ajouté 2026-06-02)
+
+`batchRate = payoutMAD / csvNet` est gonflé quand `csvNet` inclut déjà une déduction → `madReel = crm.net × batchRate` faux. `_payoutMAD` est la valeur correcte.
+
+`_suggestedMAD` résout ce problème en deux cas :
+
+| Cas | Détection | Valeur |
+|---|---|---|
+| Régul même payout | `_hasNegativeRegul` ou `_hasRegulResol` | `csvRow._payoutMAD` |
+| Régul autre payout | `buildCrossNegMap()` via `airbnbBaseRef` | `_payoutMAD - Σ(adj × taux_payout_adj)` |
+
+`buildCrossNegMap(MAD_REEL_ROWS)` appelée après `buildMadRealRows()`. N'affecte pas les lignes sans régularisation (`_suggestedMAD = null` → comportement inchangé).
+
+Coexistence avec `_hasNetMismatch` : les deux corrections s'affichent ensemble (complémentaires, pas en conflit).
+
 ### Groupement LOT — virements Airbnb multi-lignes
 
 | Champ | Contenu |
