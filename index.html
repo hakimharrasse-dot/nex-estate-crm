@@ -7438,20 +7438,31 @@ function buildMadRealRows(parsed, taux) {
         _batchNetEUR:   csvRow._batchNetEUR || 0,
         _batchNegLines: csvRow._batchNegLines || null,
         _batchPosLines: csvRow._batchPosLines || null,
-        // MAD réel suggéré pour les cas avec régularisation (même payout ou payout croisé).
-        // RÈGLE GÉNÉRALE : net_EUR_après_reg × (payoutMAD / originalEUR) = MAD net réel.
-        //   Ex : 117,55€ × (1 482,66 / 137,55) ≈ 1 266 MAD  (taux réel ~10,77, cohérent).
-        //   NE PAS utiliser _payoutMAD brut (137,55€ × taux = 1 482,66 MAD, ne soustrait pas la reg).
-        // _suggestedIsNet = true → buildCrossNegMap() ignore ce cas (déjà résolu, pas de double-comptage).
-        _suggestedMAD: (!_isNativeMad
-          && (csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01))
-          && (csvRow._payoutMAD || 0) > 0.01
-          && (csvRow.netBase || 0) > 0.01)
-          ? Math.round((csvRow.net || 0) * ((csvRow._payoutMAD || 0) / (csvRow.netBase || 1)) * 100) / 100
-          : null,
-        _suggestedIsNet: !!(!_isNativeMad
-          && (csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01))
-          && (csvRow._payoutMAD || 0) > 0.01 && (csvRow.netBase || 0) > 0.01),
+        // _suggestedMAD — MAD réel proposé, pré-rempli dans le champ de saisie (input vert).
+        //
+        // Cas 1 — Régularisation (hasRegulResol / hasNegativeRegul) :
+        //   Formule : csv.net × (_payoutMAD / csv.netBase) = MAD net au taux réel du payout.
+        //   Ex : 117,55€ × (1 482,66 / 137,55) ≈ 1 266 MAD  (taux ~10,77, cohérent).
+        //   _suggestedIsNet = true → buildCrossNegMap() ne soustrait pas une 2e fois.
+        //
+        // Cas 2 — Écart EUR seul (_hasNetMismatch sans régularisation, taux connu) :
+        //   _payoutMAD = csv.net × batchRate = MAD exact versé par Airbnb pour ce net CSV.
+        //   Ex : 61,68€ × 10,8234 = 667,59 MAD  (Mouadh Tayari — CRM avait 56,61€).
+        _suggestedMAD: (function() {
+          var _isReg = csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01);
+          var _pm    = csvRow._payoutMAD || 0;
+          if (_isNativeMad || _pm <= 0.01) return null;
+          if (_isReg && (csvRow.netBase || 0) > 0.01)
+            return Math.round((csvRow.net || 0) * _pm / (csvRow.netBase || 1) * 100) / 100;
+          var _ecart = Math.abs((crm.net||0) - (csvRow.net||0));
+          if (_ecart > 1 && !_isReg && !csvRow._hasUSD)
+            return Math.round(_pm * 100) / 100;
+          return null;
+        })(),
+        _suggestedIsNet: !!(function() {
+          var _isReg = csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01);
+          return !_isNativeMad && _isReg && (csvRow._payoutMAD||0) > 0.01 && (csvRow.netBase||0) > 0.01;
+        })(),
         _crossBatchNeg: null,  // rempli par buildCrossNegMap() après buildMadRealRows()
       });
     });
