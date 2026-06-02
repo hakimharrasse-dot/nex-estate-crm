@@ -10058,6 +10058,29 @@ function runReconciliation(parsed) {
       }
     }
 
+    // B-MADAPPLIED : MAD réel déjà enregistré via l'onglet MAD réel Airbnb,
+    // mais l'EUR CRM n'a pas été aligné (cas simple apply sans EUR correction).
+    // Détecter : crm.mad_reel != null ET crm.override_manual = false ET absEcart > 0.
+    // → message clair, action : ✏️ Modifier pour aligner l'EUR directement.
+    // NE PAS confondre avec crm.override_manual=true (EUR déjà corrigé avec MAD réel).
+    if (crm && crm.mad_reel != null && !crm.override_manual && absEcart >= 0.01) {
+      var bMadLevel, bMadCause;
+      if (absEcart <= 0.10) {
+        bMadLevel = 'info';
+        bMadCause = '✅ MAD réel enregistré — arrondi EUR (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · aucune action requise';
+      } else if (absEcart >= 1) {
+        bMadLevel = 'anomaly';
+        bMadCause = '⚠️ MAD réel enregistré — EUR non aligné (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → corriger l\'EUR via ✏️ Modifier (le MAD ne peut plus être recalculé ici)';
+      } else {
+        bMadLevel = 'minor';
+        bMadCause = 'MAD réel enregistré — EUR non aligné (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → corriger l\'EUR via ✏️ Modifier si nécessaire';
+      }
+      pushResult(Object.assign({}, baseFields, {
+        crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
+        cause: bMadCause, level: bMadLevel, checkId: 'B',
+      })); return;
+    }
+
     // B — montant différent (détecté dès 0.01 EUR)
     if (absEcart >= 0.01) {
       var isMad     = csv.devise === 'MAD';
