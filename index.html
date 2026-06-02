@@ -7431,6 +7431,16 @@ function buildMadRealRows(parsed, taux) {
         _batchNetEUR:   csvRow._batchNetEUR || 0,
         _batchNegLines: csvRow._batchNegLines || null,
         _batchPosLines: csvRow._batchPosLines || null,
+        // MAD réel suggéré pour les cas avec régularisation dans le même payout.
+        // batchRate est gonflé (= _payoutMAD / csvNet_après_reg) → madReel faux.
+        // _payoutMAD est la vraie valeur versée par Airbnb pour cette réservation.
+        // buildCrossNegMap() complétera _suggestedMAD avec les déductions cross-payout.
+        _suggestedMAD: (!_isNativeMad
+          && (csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01))
+          && (csvRow._payoutMAD || 0) > 0.01)
+          ? Math.round(csvRow._payoutMAD * 100) / 100
+          : null,
+        _crossBatchNeg: null,  // rempli par buildCrossNegMap() après buildMadRealRows()
       });
     });
   }
@@ -7909,11 +7919,46 @@ function renderMadRealSection() {
           + '<span style="font-size:11px;color:var(--or);font-weight:600">' + reasons.join(' · ') + '</span>'
           + '</div>'
           + (compHtml ? '<div style="background:var(--s2);border-radius:6px;padding:8px 10px;margin-bottom:8px">' + compHtml + '</div>' : '')
-          + '<div style="font-size:11px;color:var(--td);margin-bottom:8px">'
-          + 'CRM : <strong style="color:var(--tx)">' + (row.crm.net||0).toFixed(2) + ' €</strong> · '
-          + 'MAD estimé (×' + tauMin.toFixed(2) + ') : <strong>' + row.madEstime.toFixed(2) + '</strong> · '
-          + 'Payout batch : <strong style="color:var(--or)">' + row.madReel.toFixed(2) + ' MAD</strong>' + (row.batchRate !== null ? ' (taux implicite : ' + row.batchRate.toFixed(4) + ')' : ' <span style="color:var(--pu);font-size:10px">natif MAD</span>')
-          + '</div>'
+          // ── Ligne d'info : MAD réel proposé ou estimation ─────────────────
+          + (function() {
+              var infoHtml = '<div style="font-size:11px;color:var(--td);margin-bottom:8px">'
+                + 'CRM : <strong style="color:var(--tx)">' + (row.crm.net||0).toFixed(2) + ' €</strong> · ';
+              if (row._suggestedMAD != null) {
+                // Cas régularisation même payout ou cross-payout
+                infoHtml += 'MAD net versé : <strong style="color:var(--gr)">' + row._suggestedMAD.toFixed(2) + ' MAD</strong>';
+                if (row._crossBatchNeg && row._crossBatchNeg.length) {
+                  var adjTot = row._crossBatchNeg.reduce(function(s, cn) {
+                    return s + (cn.taux ? Math.round(cn.amt * cn.taux * 100)/100 : 0); }, 0);
+                  infoHtml += ' <span style="color:var(--re);font-size:10px">(inclut déductions cross-payout : '
+                    + adjTot.toFixed(2) + ' MAD)</span>';
+                } else if (row._hasNegativeRegul || row._hasRegulResol) {
+                  var regAmt = row.csv.regulAmt || row.csv.regulResolAmt || 0;
+                  infoHtml += ' <span style="color:var(--td);font-size:10px">'
+                    + '= versement brut ' + (row.csv._payoutMAD || 0).toFixed(2)
+                    + ' MAD (après régul ' + (regAmt).toFixed(2) + '€ incluse dans CSV net)</span>';
+                }
+              } else {
+                infoHtml += 'MAD estimé (×' + tauMin.toFixed(2) + ') : <strong>' + row.madEstime.toFixed(2) + '</strong> · '
+                  + 'Payout batch : <strong style="color:var(--or)">' + row.madReel.toFixed(2) + ' MAD</strong>'
+                  + (row.batchRate !== null ? ' (taux implicite : ' + row.batchRate.toFixed(4) + ')' : ' <span style="color:var(--pu);font-size:10px">natif MAD</span>');
+              }
+              return infoHtml + '</div>';
+            })()
+          // Note cross-payout si présente
+          + (row._crossBatchNeg && row._crossBatchNeg.length
+            ? '<div style="font-size:11px;background:rgba(224,82,82,.06);border:1px solid rgba(224,82,82,.25);border-radius:6px;padding:6px 10px;margin-bottom:8px">'
+              + '<span style="color:var(--re);font-weight:600">⚠️ Régularisation dans un autre payout</span><br>'
+              + row._crossBatchNeg.map(function(cn) {
+                  var cnMad = cn.taux ? Math.round(cn.amt * cn.taux * 100)/100 : null;
+                  return '<span style="font-size:10px;color:var(--td)">'
+                    + escHtml(cn.type||'Régularisation') + ' : <strong style="color:var(--re)">' + cn.amt.toFixed(2) + '€</strong>'
+                    + (cnMad !== null ? ' → <strong style="color:var(--re)">' + cnMad.toFixed(2) + ' MAD</strong>' : '')
+                    + ' (taux payout ' + (cn.taux ? cn.taux.toFixed(4) : '?') + ')</span>';
+                }).join('<br>')
+              + '<br><span style="font-size:10px;color:var(--td)">MAD net proposé = payout original - déductions = '
+              + (row._suggestedMAD || 0).toFixed(2) + ' MAD</span>'
+              + '</div>'
+            : '')
           + (row._hasNetMismatch && (row.csv.net||0) > 0.01
             ? '<div style="font-size:11px;background:rgba(255,153,51,.08);border:1px solid rgba(255,153,51,.35);border-radius:6px;padding:7px 10px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
               + '<span style="color:var(--or);font-weight:700">⚠️ Écart EUR</span>'
@@ -7927,8 +7972,12 @@ function renderMadRealSection() {
             : '')
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
           + '<span style="font-size:12px;color:var(--tm)">MAD réel à saisir :</span>'
-          + '<input type="number" id="mad-complex-input-' + cid + '" placeholder="ex: ' + row.madEstime.toFixed(0) + '" step="0.01" min="0"'
-          + ' style="width:110px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:6px;padding:5px 8px;font-size:12px;font-family:\'DM Sans\',sans-serif">'
+          + '<input type="number" id="mad-complex-input-' + cid + '"'
+          + (row._suggestedMAD != null
+              ? ' value="' + row._suggestedMAD.toFixed(2) + '"'
+              : ' placeholder="ex: ' + row.madEstime.toFixed(0) + '"')
+          + ' step="0.01" min="0"'
+          + ' style="width:110px;background:var(--s2);border:1px solid ' + (row._suggestedMAD != null ? 'var(--gr)' : 'var(--br)') + ';color:var(--tx);border-radius:6px;padding:5px 8px;font-size:12px;font-family:\'DM Sans\',sans-serif">'
           + '<span style="font-size:12px;color:var(--td)">DH</span>'
           + (ROLE==='admin' ? '<button class="ba bat" onclick="applyMadRealManual(\'' + cid + '\')" style="font-size:12px">💾 Enregistrer</button>' : '')
           + '<button class="ba ba-ghost" onclick="if(confirm(\'Ignorer ce cas complexe ? Il ne sera plus proposé.\')) madReelIgnore(\'' + cid + '\')" style="font-size:12px;padding:5px 10px" title="Ignorer définitivement ce cas complexe">🙈 Ignorer ce cas complexe</button>'
@@ -8332,6 +8381,53 @@ function madReelIgnoreLot(bid) {
   MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(r) { return r._batchId != bid; });
   if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
   else renderMadRealSection();
+}
+
+// ── Détection des régularisations cross-payout ─────────────────────────────
+// Appelée juste après buildMadRealRows().
+// Cherche les lignes EUR négatives dans chaque payout qui correspondent
+// (par airbnbBaseRef) à une réservation dans un AUTRE payout de la même session CSV.
+// Met à jour _crossBatchNeg et ajuste _suggestedMAD en conséquence.
+function buildCrossNegMap(rows) {
+  if (!rows || !rows.length) return;
+  // Construire la map baseRef → [{amt, taux, type, batchId}] depuis toutes les _batchNegLines
+  var crossNeg = {};
+  var seenBatch = {};
+  rows.forEach(function(row) {
+    var bid = row._batchId;
+    if (!bid || seenBatch[bid]) return;
+    seenBatch[bid] = true;
+    var batchNetEur = row._batchNetEUR || 0;
+    var batchMad    = row._batchTotalMAD || 0;
+    var adjRate     = batchNetEur > 0.01 ? batchMad / batchNetEur : null;
+    (row._batchNegLines || []).forEach(function(nl) {
+      var base = airbnbBaseRef(nl.code || '');
+      if (base.length < 6) return;
+      (crossNeg[base] = crossNeg[base] || []).push({
+        amt: nl.amt, taux: adjRate, type: nl.type, batchId: bid,
+      });
+    });
+  });
+  // Attacher aux lignes concernées (autre batch) et mettre à jour _suggestedMAD
+  rows.forEach(function(row) {
+    var base = airbnbBaseRef((row.csv.code || '').toUpperCase());
+    if (base.length < 6) return;
+    var relevant = (crossNeg[base] || []).filter(function(cn) {
+      return cn.batchId !== row._batchId;
+    });
+    if (!relevant.length) return;
+    row._crossBatchNeg = relevant;
+    // Ajuster _suggestedMAD : valeur originale moins les déductions cross-payout
+    var base_mad = row._suggestedMAD != null
+      ? row._suggestedMAD
+      : (row.csv._payoutMAD || 0);
+    var totalAdj = relevant.reduce(function(s, cn) {
+      return s + (cn.taux ? Math.round(cn.amt * cn.taux * 100) / 100 : 0);
+    }, 0);
+    if (base_mad > 0.01) {
+      row._suggestedMAD = Math.round((base_mad + totalAdj) * 100) / 100;  // totalAdj est négatif
+    }
+  });
 }
 
 // ── Référence racine Airbnb ─────────────────────────────────────────────────
@@ -9380,6 +9476,7 @@ function handleReconCSV(input) {
       applyPersistedIgnores(RECONCIL_ANOMALIES);
       RECONCIL_SELECTED = {};
       MAD_REEL_ROWS = buildMadRealRows(parsed, taux);
+      buildCrossNegMap(MAD_REEL_ROWS);
       MAD_REEL_SELECTED = {};
       renderReconcil();
     } catch(err) {
