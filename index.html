@@ -7438,15 +7438,20 @@ function buildMadRealRows(parsed, taux) {
         _batchNetEUR:   csvRow._batchNetEUR || 0,
         _batchNegLines: csvRow._batchNegLines || null,
         _batchPosLines: csvRow._batchPosLines || null,
-        // MAD réel suggéré pour les cas avec régularisation dans le même payout.
-        // batchRate est gonflé (= _payoutMAD / csvNet_après_reg) → madReel faux.
-        // _payoutMAD est la vraie valeur versée par Airbnb pour cette réservation.
-        // buildCrossNegMap() complétera _suggestedMAD avec les déductions cross-payout.
+        // MAD réel suggéré pour les cas avec régularisation (même payout ou payout croisé).
+        // RÈGLE GÉNÉRALE : net_EUR_après_reg × (payoutMAD / originalEUR) = MAD net réel.
+        //   Ex : 117,55€ × (1 482,66 / 137,55) ≈ 1 266 MAD  (taux réel ~10,77, cohérent).
+        //   NE PAS utiliser _payoutMAD brut (137,55€ × taux = 1 482,66 MAD, ne soustrait pas la reg).
+        // _suggestedIsNet = true → buildCrossNegMap() ignore ce cas (déjà résolu, pas de double-comptage).
         _suggestedMAD: (!_isNativeMad
           && (csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01))
-          && (csvRow._payoutMAD || 0) > 0.01)
-          ? Math.round(csvRow._payoutMAD * 100) / 100
+          && (csvRow._payoutMAD || 0) > 0.01
+          && (csvRow.netBase || 0) > 0.01)
+          ? Math.round((csvRow.net || 0) * ((csvRow._payoutMAD || 0) / (csvRow.netBase || 1)) * 100) / 100
           : null,
+        _suggestedIsNet: !!(!_isNativeMad
+          && (csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01))
+          && (csvRow._payoutMAD || 0) > 0.01 && (csvRow.netBase || 0) > 0.01),
         _crossBatchNeg: null,  // rempli par buildCrossNegMap() après buildMadRealRows()
       });
     });
@@ -8424,7 +8429,10 @@ function buildCrossNegMap(rows) {
     });
     if (!relevant.length) return;
     row._crossBatchNeg = relevant;
-    // Ajuster _suggestedMAD : valeur originale moins les déductions cross-payout
+    // Si _suggestedIsNet = true, la formule net_EUR × (payoutMAD / originalEUR) a déjà résolu
+    // la déduction dans le même payout — ne pas soustraire une seconde fois.
+    if (row._suggestedIsNet) return;
+    // Ajuster _suggestedMAD pour les déductions cross-payout pures (sans régularisation groupée)
     var base_mad = row._suggestedMAD != null
       ? row._suggestedMAD
       : (row.csv._payoutMAD || 0);
