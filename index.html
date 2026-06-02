@@ -10057,12 +10057,25 @@ function runReconciliation(parsed) {
       var isUsdMvt  = csv._hasUSD && (csv.hasRegul || csv.hasRegulResol);
       var isMultiMv = csv.hasRegul && csv.hasRegulResol;
       var bIsLocked = crm && crm.override_manual;
+      // Note MAD réel : si le taux exact est dans un autre onglet, l'indiquer
+      var madNote   = csv._payoutMAD ? ' · taux exact → onglet "MAD réel Airbnb"' : '';
 
       var bLevel, bCause;
       if (bIsLocked) {
-        // Ligne déjà corrigée manuellement → écart résiduel attendu, classer info
-        bLevel = 'info';
-        bCause = 'Ligne déjà corrigée manuellement — écart résiduel (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · vérification manuelle si besoin';
+        // Ligne verrouillée (override_manual=true) : classification selon l'écart
+        if (absEcart > 5) {
+          // Gros écart sur ligne verrouillée → anomalie réelle à vérifier
+          bLevel = 'anomaly';
+          bCause = '🔒 Ligne verrouillée — écart inhabituel (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → vérifier si la correction manuelle est encore correcte';
+        } else if (absEcart <= 0.10) {
+          // Arrondi mineur sur ligne verrouillée → silence total (info masquée)
+          bLevel = 'info';
+          bCause = '🔒 Verrouillée — arrondi (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · aucune action';
+        } else {
+          // Écart résiduel modéré → info, vérification optionnelle
+          bLevel = 'info';
+          bCause = '🔒 Verrouillée — écart résiduel (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · vérification optionnelle' + madNote;
+        }
       } else if (isMad) {
         bLevel = 'complex';
         bCause = 'Devise historique MAD — conversion approx. (1 EUR ≈ ' + taux.toFixed(2) + ' MAD) · vérification manuelle requise';
@@ -10074,15 +10087,19 @@ function runReconciliation(parsed) {
         bCause = 'Dossier complexe — plusieurs régularisations liées (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) · vérification manuelle';
       } else if (absEcart >= 10) {
         bLevel = 'crit';
-        bCause = 'Montant très différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+        bCause = 'Montant très différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → corriger ou créer' + madNote;
       } else if (absEcart >= seuil || isDevAmb) {
         bLevel = 'anomaly';
         bCause = csv._hasUSD
           ? 'Montant différent — devise USD (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR estimé) · vérifier avant correction'
-          : 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR)';
+          : 'Montant différent CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) → ⚡ Aligner ou 🙈 Ignorer' + madNote;
+      } else if (absEcart <= 0.10) {
+        // Très petit écart ≤ 0,10 € : arrondi Airbnb ou différence de taux — pas une anomalie réelle
+        bLevel = 'minor';
+        bCause = 'Arrondi probable (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — différence de taux ou arrondi Airbnb · aucune action requise';
       } else {
         bLevel = 'minor';
-        bCause = 'Petit écart CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — arrondi / taux de change';
+        bCause = 'Petit écart CSV vs CRM (Δ ' + (ecart>=0?'+':'') + ecart.toFixed(2) + ' EUR) — arrondi / taux de change' + madNote;
       }
       pushResult(Object.assign({}, baseFields, {
         crm: crm, ecart: ecart, csvType: 'reservation', status: 'pending',
@@ -10104,17 +10121,21 @@ function runReconciliation(parsed) {
 
   // ── Check D (versements de résolution / AirCover) ───────────
   resolutions.forEach(function(res) {
+    // Check D : utilise airbnbBaseRef pour trouver AIRCOVER/AJUSTEMENT même avec suffixe
+    var _dBase = airbnbBaseRef(res.code.toUpperCase());
+    function _dMatch(ref, code) {
+      return ref === code || ref === 'AIR-' + code || ref.startsWith(code + '-') || ref.startsWith(code + '_')
+        || (_dBase.length >= 6 && airbnbBaseRef(ref) === _dBase);
+    }
     var crmAc = DB.resa.find(function(r) {
       if (r.source !== 'Airbnb') return false;
       if (r.type_norm !== 'AIRCOVER' && r.type_norm !== 'AJUSTEMENT') return false;
       if (!r.ref) return false;
-      var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
-      return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
+      return _dMatch(r.ref.toUpperCase(), res.code.toUpperCase());
     });
     var crmBase = !crmAc ? DB.resa.find(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
-      var ref = r.ref.toUpperCase(), code = res.code.toUpperCase();
-      return ref === code || ref === 'AIR-' + code || ref.indexOf(code) >= 0;
+      return _dMatch(r.ref.toUpperCase(), res.code.toUpperCase());
     }) : null;
 
     if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
