@@ -7348,15 +7348,21 @@ function buildMadRealRows(parsed, taux) {
   madReelIgnoredLoad().forEach(function(id) { ignoredMadReel[id] = true; });
   function findByCode(code) {
     var c = code.toUpperCase();
+    var baseC = airbnbBaseRef(c);
     return DB.resa.filter(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
       var ref = r.ref.toUpperCase();
-      return ref === c
-          || ref === 'AIR-' + c
-          || ref.startsWith(c + '_')
-          || ref.startsWith(c + '-')
-          || ref.startsWith('AIR-' + c + '_')
-          || ref.startsWith('AIR-' + c + '-');
+      // Correspondances directes (CRM ref commence par le code CSV)
+      if (ref === c || ref === 'AIR-' + c
+          || ref.startsWith(c + '_') || ref.startsWith(c + '-')
+          || ref.startsWith('AIR-' + c + '_') || ref.startsWith('AIR-' + c + '-')) return true;
+      // Correspondance bidirectionnelle par référence racine :
+      // ex. CSV "HMR5WHAT93-Extra" ↔ CRM "HMR5WHAT93" (même dossier Airbnb)
+      if (baseC.length >= 6) {
+        var baseRef = airbnbBaseRef(ref);
+        if (baseRef === baseC) return true;
+      }
+      return false;
     });
   }
   var seen = {};  // éviter les doublons crm.id
@@ -7773,14 +7779,34 @@ function renderMadRealSection() {
           unmatchedPos.forEach(function(l) {
             var lMad = trueRate ? Math.round(l.amt * trueRate * 100) / 100 : null;
             if (lMad) sumUnmatched += lMad;
-            ch += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:rgba(155,89,182,.04)">'
-              + '<td style="padding:5px 6px;font-family:monospace;color:var(--pu);font-size:11px">' + escHtml(l.code||'') + '</td>'
-              + '<td style="padding:5px 6px;color:var(--td);font-size:11px">—</td>'
-              + '<td style="padding:5px 6px"><span style="font-size:9px;color:var(--pu)">' + (l.isResol ? 'versement résolution' : 'réservation') + '</span>'
-              + '<br><span style="font-size:9px;color:var(--td)">non appariée +</span></td>'
-              + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:var(--pu)">' + l.amt.toFixed(2) + ' €</td>'
-              + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:var(--pu)">' + (lMad !== null ? lMad.toFixed(2) : '—') + '</td>'
-              + '<td colspan="2" style="padding:5px 6px;font-size:10px;color:var(--td)">non enregistrée (pas de CRM éligible)</td>'
+            // Chercher un dossier CRM existant par référence racine (tous types)
+            var lBaseRef = airbnbBaseRef(l.code || '');
+            var crmDossier = lBaseRef.length >= 6 ? DB.resa.find(function(r) {
+              return r.source === 'Airbnb' && r.ref &&
+                     airbnbBaseRef((r.ref||'').toUpperCase()) === lBaseRef;
+            }) : null;
+            var isInServ = lBaseRef.length >= 6 && DB.serv.some(function(s) {
+              return s.resa_ref && airbnbBaseRef((s.resa_ref||'').toUpperCase()) === lBaseRef;
+            });
+            // Fond bleu si dossier CRM ou serv trouvé, violet si vraiment orphelin
+            var rowBg = (crmDossier || isInServ) ? 'rgba(90,159,212,.06)' : 'rgba(155,89,182,.04)';
+            var codeColor = (crmDossier || isInServ) ? 'var(--bl)' : 'var(--pu)';
+            var statusLabel = crmDossier
+              ? '<span style="font-size:9px;color:var(--bl)">dossier CRM · ' + escHtml(crmDossier.type_norm||'') + ' · non éligible MAD</span>'
+              : isInServ
+                ? '<span style="font-size:9px;color:var(--bl)">dans serv ✓</span>'
+                : '<span style="font-size:9px;color:var(--pu)">pas de CRM éligible</span>';
+            var voyageurLabel = crmDossier ? escHtml(crmDossier.voyageur||'—') : '—';
+            ch += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:' + rowBg + '">'
+              + '<td style="padding:5px 6px;font-family:monospace;color:' + codeColor + ';font-size:11px">' + escHtml(l.code||'') + '</td>'
+              + '<td style="padding:5px 6px;color:var(--tm);font-size:11px">' + voyageurLabel + '</td>'
+              + '<td style="padding:5px 6px"><span style="font-size:9px;color:var(--td)">' + (l.isResol ? 'versement résolution' : 'réservation') + '</span>'
+              + '<br>' + statusLabel + '</td>'
+              + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:' + codeColor + '">' + l.amt.toFixed(2) + ' €</td>'
+              + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:' + codeColor + '">' + (lMad !== null ? lMad.toFixed(2) : '—') + '</td>'
+              + '<td colspan="2" style="padding:5px 6px;font-size:10px;color:var(--td)">'
+              + (crmDossier ? '📁 ' + escHtml(crmDossier.ref||'') : isInServ ? '✓ serv' : '—')
+              + '</td>'
               + '</tr>';
           });
         }
@@ -8219,6 +8245,21 @@ function madReelIgnoreLot(bid) {
   MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(r) { return r._batchId != bid; });
   if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
   else renderMadRealSection();
+}
+
+// ── Référence racine Airbnb ─────────────────────────────────────────────────
+// Extrait la référence de base d'un code Airbnb — supprime le préfixe AIR-
+// et tout suffixe après le premier '-' ou '_'.
+// Exemples : "AIR-HMR5WHAT93-Extra" → "HMR5WHAT93"
+//            "HMR5WHAT93_q1"         → "HMR5WHAT93"
+//            "HMR5WHAT93"            → "HMR5WHAT93"
+// Utilisé partout dans la réconciliation pour matcher des dossiers complets
+// indépendamment du suffixe (service, résolution, AirCover, import CSV…).
+function airbnbBaseRef(code) {
+  if (!code) return '';
+  var c = String(code).toUpperCase().replace(/^AIR-/, '');
+  var sep = c.search(/[-_]/);
+  return sep > 0 ? c.slice(0, sep) : c;
 }
 
 // ── RÉCONCILIATION BOOKING ─────────────────────────────────────────────────
@@ -9554,17 +9595,21 @@ function runReconciliation(parsed) {
 
   function findCrmByCode(code) {
     var c = code.toUpperCase();
+    var baseC = airbnbBaseRef(c);
     return DB.resa.filter(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
       var ref = r.ref.toUpperCase();
-      // Correspondances légitimes uniquement — indexOf trop large, startsWith précis
-      // Séparateurs acceptés : '_' (import CSV) et '-' (suffixes CRM type ANL-P, ANL-NP…)
-      return ref === c                           // HMTPNJSM exact
-          || ref === 'AIR-' + c                 // AIR-HMTPNJSM exact
-          || ref.startsWith(c + '_')            // HMTPNJSM_q1, HMTPNJSM_V2…
-          || ref.startsWith(c + '-')            // HMTPNJSM-ANL-P…
-          || ref.startsWith('AIR-' + c + '_')  // AIR-HMTPNJSM_q1…
-          || ref.startsWith('AIR-' + c + '-'); // AIR-HMTPNJSM-ANL-P…
+      // Correspondances directes (séparateurs '_' et '-')
+      if (ref === c || ref === 'AIR-' + c
+          || ref.startsWith(c + '_') || ref.startsWith(c + '-')
+          || ref.startsWith('AIR-' + c + '_') || ref.startsWith('AIR-' + c + '-')) return true;
+      // Correspondance bidirectionnelle par référence racine — même dossier Airbnb
+      // ex. CSV "HMR5WHAT93-Extra" ↔ CRM "HMR5WHAT93", ou inverse
+      if (baseC.length >= 6) {
+        var baseRef = airbnbBaseRef(ref);
+        if (baseRef === baseC) return true;
+      }
+      return false;
     });
   }
 
@@ -9606,11 +9651,12 @@ function runReconciliation(parsed) {
       // Si resa_ref est renseigné mais ne correspond PAS → on skip
       // cet enregistrement (il appartient à une autre réservation).
       if (_s.resa_ref) {
-        var _rref = _s.resa_ref.toUpperCase();
-        if (csvCode && (_rref === csvCode || _rref === 'AIR-' + csvCode || csvCode === 'AIR-' + _rref)) {
-          return _s; // match explicite — 100 % fiable
+        // Comparaison par référence racine — couvre les suffixes (-Extra, -Resol, _q1, etc.)
+        // Ex: serv.resa_ref="HMR5WHAT93" et csv.code="HMR5WHAT93-Extra" → même dossier
+        if (csvCode && airbnbBaseRef(_s.resa_ref) === airbnbBaseRef(csvCode)) {
+          return _s; // match explicite par dossier — fiable
         }
-        continue; // resa_ref présent mais mauvais code → ne pas tenter le fuzzy
+        continue; // resa_ref présent mais dossier différent → ne pas tenter le fuzzy
       }
 
       // ── Critère 1 — montant MAD proche (±5 MAD ou ±5 %) ───
