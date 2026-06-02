@@ -574,7 +574,69 @@ var CATS_B = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais 
 
 ---
 
-## 14. Module MAD réel Airbnb — Architecture complète (stabilisé 2026-05-17)
+## 14. Module Réconciliation Airbnb — Règles métier (stabilisé 2026-06-02)
+
+### airbnbBaseRef() — règle de matching durable (IMMUABLE)
+
+```javascript
+function airbnbBaseRef(code) {
+  if (!code) return '';
+  var c = String(code).toUpperCase().replace(/^AIR-/, '');
+  var sep = c.search(/[-_]/);
+  return sep > 0 ? c.slice(0, sep) : c;
+}
+```
+
+Toute comparaison de référence Airbnb utilise cette fonction. Strip préfixe `AIR-` + tout suffixe après `-` ou `_`.
+Guard : `baseRef.length >= 6` dans `findByCode` / `findCrmByCode`.
+Appliquée dans : `findByCode`, `findCrmByCode`, `findServMatch` P0, LOT display.
+
+### TYPES_OK (IMMUABLE)
+
+```javascript
+var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'RELOCATION'];
+// AIRCOVER, AJUSTEMENT → jamais écrits, toujours fallback EUR × EUR_MAD
+```
+
+Ne jamais élargir sans décision explicite. AIRCOVER/AJUSTEMENT : `mad_reel = NULL`, `rNetMAD()` → `net × EUR_MAD`.
+
+### Correction EUR CRM (`_hasNetMismatch`)
+
+Si `|crm.net − csv.net| > 1 €` → complexe. Checkbox "Corriger l'EUR CRM" cochée par défaut.
+Si validée : PATCH avec règles Airbnb 15,5% + `override_manual = true`. `taux_reel` calculé sur `csv.net`.
+
+### Groupement LOT — virements Airbnb multi-lignes
+
+| Champ | Contenu |
+|---|---|
+| `_batchId` | Identifiant unique du virement (pré-passe `parseAirbnbCSV`) |
+| `_batchNetEUR` | Net réel = Σ positives + Σ négatives → taux lot exact |
+| `_batchNegLines` | Lignes EUR négatives (déductions, rouge, non enregistrables) |
+| `_batchPosLines` | Toutes lignes EUR positives du lot |
+
+Note de réconciliation : `Σ(appariées) + Σ(non appariées +) + Σ(déductions) = payout ✓`
+
+### Classification des lignes non appariées dans le LOT
+
+| Cas | Condition | Affichage | Action |
+|---|---|---|---|
+| **Cas 1** | `airbnbBaseRef` trouve `DB.resa` (tous types) | Bleu — "présent CRM · type_norm · non éligible mad_reel" | Bouton ✏️ ouvre fiche (admin) |
+| **Cas 1b** | `airbnbBaseRef` trouve `DB.serv` via `resa_ref` | Bleu — "✓ déjà dans serv" | Affichage seul |
+| **Cas 2** | Aucune correspondance | Orange — "⚠️ absente du CRM → Lignes manquantes" | Renvoi Check A |
+
+### findServMatch — priorités (MAJ 2026-06-02)
+
+- **P0** : `serv.resa_ref` comparé par `airbnbBaseRef` (couvre les suffixes)
+- **Fuzzy** : montant MAD ±5% + date ±15j + voyageur accent-normalisé
+- Si `resa_ref` présent mais dossier différent → skip (pas de fuzzy fallback)
+
+### Règle absolue : aucune application automatique
+
+Lignes simples → bouton "Appliquer". LOT → "Valider tout le lot" + confirmation. Manuel → "Enregistrer" + confirmation + guards. Correction EUR → checkbox décochable.
+
+---
+
+## 14b. Module MAD réel Airbnb — Architecture complète (stabilisé 2026-05-17, MAJ 2026-06-02)
 
 ### Objectif
 
@@ -608,33 +670,21 @@ var TYPES_OK = ['RESERVATION', 'ANNULATION_PAYEE', 'RELOCATION'];
 4. **`_hasNetMismatch`** : `|crm.net - csvRow.net| > 1 EUR` → complexe, jamais auto-apply
 5. **`isSimpleRow`** : `batchRate ∈ [tauMin, tauMax]` ET pas `_hasUSD` ET pas `_hasNegativeRegul` ET pas `_hasRegulResol`
 
-### `findByCode(code)` — correspondance ref Airbnb
+### `findByCode(code)` — correspondance ref Airbnb (bidirectionnelle depuis 2026-06-02)
 
-```javascript
-function findByCode(code) {
-  var c = code.toUpperCase();
-  return DB.resa.filter(function(r) {
-    if (r.source !== 'Airbnb' || !r.ref) return false;
-    var ref = r.ref.toUpperCase();
-    return ref === c
-        || ref === 'AIR-' + c
-        || ref.startsWith(c + '_')
-        || ref.startsWith(c + '-')       // ← matche -Resol / -AIRC
-        || ref.startsWith('AIR-' + c + '_')
-        || ref.startsWith('AIR-' + c + '-');
-  });
-}
-```
+Utilise `airbnbBaseRef()` pour le matching bidirectionnel :
+- Correspondances directes : `ref === c`, `ref.startsWith(c + '-')`, etc. (historique)
+- **Nouveau** : `airbnbBaseRef(ref) === airbnbBaseRef(c)` si `baseRef.length >= 6`
+- Ex. : CSV `"HMR5WHAT93-Extra"` ↔ CRM `"HMR5WHAT93"` → même dossier
 
-⚠️ `startsWith(c + '-')` matche les -Resol et -AIRC → le guard TYPES_OK et natif MAD filtrent en aval.
-
-### Sections UI (onglet Réconciliation)
+### Sections UI (onglet Réconciliation) — état 2026-06-02
 
 | Section | Condition |
 |---|---|
 | **Lignes simples** | `isSimpleRow()` → coché auto, apply batch |
-| **À valider (natif MAD)** | `_isNativeMad` → input pré-rempli avec `_natifRef` (somme des lignes MAD brutes CSV), `data-ref` pour les guards |
-| **Cas complexes** | `_hasNetMismatch` / `_hasRegulResol` / `_hasUSD` / `_hasNegativeRegul` / `_natifForceComplex` → saisie manuelle + bouton "Ignorer ce cas complexe" |
+| **À valider (natif MAD)** | `_isNativeMad` → input pré-rempli avec `_natifRef` |
+| **Cas complexes individuels** | `_hasNetMismatch` / `_hasRegulResol` / `_hasUSD` / `_hasNegativeRegul` / `_natifForceComplex` + batchId unique ou nul |
+| **📦 Carte LOT** | ≥2 lignes complexes partageant le même `_batchId` → tableau compact, MAD proposé au taux réel, lignes positives non appariées classifiées, note réconciliation |
 
 ### Guards `applyMadRealManual(crmId)` (validation manuelle)
 
