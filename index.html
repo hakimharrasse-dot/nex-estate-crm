@@ -7767,12 +7767,17 @@ function renderMadRealSection() {
         });
         // Lignes positives du lot sans correspondance CRM (non dans MAD_REEL_ROWS)
         var batchPosLines = firstRow._batchPosLines || [];
+        // Clé = code|isResol — distingue réservation et résolution de même code
+        // (ex: HMXXXXXXX réservation et HMXXXXXXX versement résolution = même code Airbnb)
         var matchedCodesInLot = {};
         idxs.concat(simpleOfBatch).forEach(function(idx) {
-          matchedCodesInLot[(MAD_REEL_ROWS[idx].csv.code||'').toUpperCase()] = true;
+          var row = MAD_REEL_ROWS[idx];
+          var code = (row.csv.code||'').toUpperCase();
+          var isResol = !!(row.csv && row.csv.subtype); // resolutions ont subtype='resolution'|'aircover'
+          matchedCodesInLot[code + '|' + (isResol ? '1' : '0')] = true;
         });
         var unmatchedPos = batchPosLines.filter(function(l) {
-          return !matchedCodesInLot[(l.code||'').toUpperCase()];
+          return !matchedCodesInLot[(l.code||'').toUpperCase() + '|' + (l.isResol ? '1' : '0')];
         });
         var sumUnmatched = 0;
         if (unmatchedPos.length) {
