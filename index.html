@@ -7788,15 +7788,35 @@ function renderMadRealSection() {
             var isInServ = lBaseRef.length >= 6 && DB.serv.some(function(s) {
               return s.resa_ref && airbnbBaseRef((s.resa_ref||'').toUpperCase()) === lBaseRef;
             });
-            // Fond bleu si dossier CRM ou serv trouvé, violet si vraiment orphelin
-            var rowBg = (crmDossier || isInServ) ? 'rgba(90,159,212,.06)' : 'rgba(155,89,182,.04)';
-            var codeColor = (crmDossier || isInServ) ? 'var(--bl)' : 'var(--pu)';
-            var statusLabel = crmDossier
-              ? '<span style="font-size:9px;color:var(--bl)">dossier CRM · ' + escHtml(crmDossier.type_norm||'') + ' · non éligible MAD</span>'
-              : isInServ
-                ? '<span style="font-size:9px;color:var(--bl)">dans serv ✓</span>'
-                : '<span style="font-size:9px;color:var(--pu)">pas de CRM éligible</span>';
-            var voyageurLabel = crmDossier ? escHtml(crmDossier.voyageur||'—') : '—';
+            // ── Classification de la ligne non appariée ─────────────────────────
+            // Cas 1 : dossier CRM trouvé (tous types) → présent, non éligible mad_reel
+            // Cas 1b : déjà dans serv ✓ → service additionnel enregistré
+            // Cas 2 : aucune correspondance → vraiment absente du CRM
+            var rowBg, codeColor, statusLabel, actionCell, voyageurLabel;
+            if (crmDossier) {
+              // Cas 1 — présent dans resa, type non éligible (AIRCOVER, AJUSTEMENT, etc.)
+              rowBg      = 'rgba(90,159,212,.06)';
+              codeColor  = 'var(--bl)';
+              voyageurLabel = escHtml(crmDossier.voyageur || '—');
+              statusLabel = '<span style="font-size:9px;color:var(--bl)">présent dans CRM · <strong>' + escHtml(crmDossier.type_norm||'') + '</strong> · non éligible mad_reel</span>';
+              actionCell  = (ROLE === 'admin'
+                ? '<button class="ba ba-ghost" onclick="openModal(\'resa\',\'' + crmDossier.id + '\')" style="font-size:10px;padding:2px 7px" title="Ouvrir la fiche">✏️ ' + escHtml(crmDossier.ref||'') + '</button>'
+                : '<span style="font-size:10px;color:var(--bl)">📁 ' + escHtml(crmDossier.ref||'') + '</span>');
+            } else if (isInServ) {
+              // Cas 1b — déjà dans services additionnels
+              rowBg      = 'rgba(90,159,212,.06)';
+              codeColor  = 'var(--bl)';
+              voyageurLabel = '—';
+              statusLabel = '<span style="font-size:9px;color:var(--gr)">✓ déjà dans serv</span>';
+              actionCell  = '<span style="font-size:10px;color:var(--gr)">service enregistré</span>';
+            } else {
+              // Cas 2 — absente du CRM (ligne manquante)
+              rowBg      = 'rgba(255,153,51,.04)';
+              codeColor  = 'var(--or)';
+              voyageurLabel = '—';
+              statusLabel = '<span style="font-size:9px;color:var(--or)">⚠️ absente du CRM</span>';
+              actionCell  = '<span style="font-size:10px;color:var(--or)" title="Cette ligne devrait apparaître dans l\'onglet Lignes manquantes">→ Lignes manquantes</span>';
+            }
             ch += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:' + rowBg + '">'
               + '<td style="padding:5px 6px;font-family:monospace;color:' + codeColor + ';font-size:11px">' + escHtml(l.code||'') + '</td>'
               + '<td style="padding:5px 6px;color:var(--tm);font-size:11px">' + voyageurLabel + '</td>'
@@ -7804,9 +7824,7 @@ function renderMadRealSection() {
               + '<br>' + statusLabel + '</td>'
               + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:' + codeColor + '">' + l.amt.toFixed(2) + ' €</td>'
               + '<td style="padding:5px 6px;text-align:right;font-family:monospace;color:' + codeColor + '">' + (lMad !== null ? lMad.toFixed(2) : '—') + '</td>'
-              + '<td colspan="2" style="padding:5px 6px;font-size:10px;color:var(--td)">'
-              + (crmDossier ? '📁 ' + escHtml(crmDossier.ref||'') : isInServ ? '✓ serv' : '—')
-              + '</td>'
+              + '<td colspan="2" style="padding:5px 6px">' + actionCell + '</td>'
               + '</tr>';
           });
         }
