@@ -7423,8 +7423,15 @@ function buildMadRealRows(parsed, taux) {
         _hasRegulResol:   !!(csvRow.hasRegulResol),
         // Patch B — régularisation négative (geste commercial, remboursement)
         _hasNegativeRegul: !!(csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01),
-        // net CRM ≠ net CSV Airbnb (tolérance 1 EUR) — écart → complexe, pas d'auto-apply
-        _hasNetMismatch:   !_isNativeMad && Math.abs((crm.net||0) - (csvRow.net||0)) > 1,
+        // net CRM ≠ net CSV Airbnb — seuil dynamique :
+        //   • cas avec régularisation (hasRegulResol / hasNegativeRegul) : 0,01€
+        //     le csv.net est déjà net de déductions → tout écart est significatif
+        //   • autres cas : 1€ (tolère les arrondis mineurs)
+        _hasNetMismatch: !_isNativeMad && (function() {
+          var _ecart = Math.abs((crm.net||0) - (csvRow.net||0));
+          var _isReg = csvRow.hasRegulResol || (csvRow.hasRegul && (csvRow.regulAmt||0) < -0.01);
+          return _ecart > (_isReg ? 0.01 : 1);
+        })(),
         // Identifiant lot — groupement visuel des lignes du même virement Airbnb
         _batchId:       csvRow._batchId || 0,
         _batchTotalMAD: csvRow._batchTotalMAD || 0,
