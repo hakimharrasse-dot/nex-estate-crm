@@ -8204,16 +8204,80 @@ async function applyMadRealLot(bid) {
     var applyEurFix = !!(eurFixChk && eurFixChk.checked && row._hasNetMismatch && (row.csv.net || 0) > 0.01);
     items.push({ row: row, val: val, applyEurFix: applyEurFix });
   }
-  // Confirmation détaillée
+  // ── Confirmation détaillée lot ──────────────────────────────────────────
   var batchTotalMAD = lotRows[0]._batchTotalMAD || 0;
-  var sumProposed = items.reduce(function(s, it) { return s + it.val; }, 0);
-  var confirmMsg = '💾 Valider le lot de ' + items.length + ' ligne(s) ?\n'
-    + 'Payout Airbnb : ' + batchTotalMAD.toFixed(2) + ' MAD'
-    + ' · Somme saisie : ' + sumProposed.toFixed(2) + ' MAD\n\n';
+  var batchNetEUR   = lotRows[0]._batchNetEUR   || 0;
+  var batchPosLines = lotRows[0]._batchPosLines || [];
+  var batchNegLines = lotRows[0]._batchNegLines || [];
+  var trueRateLot   = batchNetEUR > 0.01 ? batchTotalMAD / batchNetEUR : null;
+  // Identifier les lignes positives qui ne seront PAS modifiées (non dans items)
+  var modifiedKeys = {};
   items.forEach(function(it) {
-    confirmMsg += '• ' + (it.row.crm.voyageur || it.row.csv.code) + ' : ' + it.val.toFixed(2) + ' MAD'
-      + (it.applyEurFix ? ' + correction EUR → ' + (it.row.csv.net||0).toFixed(2) + ' €' : '') + '\n';
+    var isResol = !!(it.row.csv && it.row.csv.subtype);
+    modifiedKeys[(it.row.csv.code||'').toUpperCase() + '|' + (isResol ? '1' : '0')] = true;
   });
+  var unmatchedPosConf = batchPosLines.filter(function(l) {
+    return !modifiedKeys[(l.code||'').toUpperCase() + '|' + (l.isResol ? '1' : '0')];
+  });
+  // Calcul des sommes pour la vérification finale
+  var sumModified  = items.reduce(function(s, it) { return s + it.val; }, 0);
+  var sumUnmatched = unmatchedPosConf.reduce(function(s, l) {
+    return s + (trueRateLot ? Math.round(l.amt * trueRateLot * 100) / 100 : 0);
+  }, 0);
+  var sumNeg = batchNegLines.reduce(function(s, l) {
+    return s + (trueRateLot ? Math.round(l.amt * trueRateLot * 100) / 100 : 0);
+  }, 0);
+  var netCheck = sumModified + sumUnmatched + sumNeg;
+  var netOk    = Math.abs(netCheck - batchTotalMAD) < 1;
+  // Construction du message
+  var confirmMsg = '💾 Valider le lot — ' + items.length + ' ligne(s) à modifier\n'
+    + '─────────────────────────────────────────\n'
+    + 'Payout Airbnb total : ' + batchTotalMAD.toFixed(2) + ' MAD\n'
+    + (trueRateLot ? 'Taux réel lot : ' + trueRateLot.toFixed(4) + ' MAD/EUR\n' : '')
+    + '\n';
+  confirmMsg += '✏️  SERONT MODIFIÉES (mad_reel enregistré) :\n';
+  items.forEach(function(it) {
+    var tag = it.applyEurFix ? ' [+ corr. EUR ' + (it.row.csv.net||0).toFixed(2) + '€]' : '';
+    confirmMsg += '  • ' + (it.row.crm.voyageur || it.row.csv.code)
+      + '  [' + (it.row.crm.type_norm||'') + ']'
+      + '  ' + (it.row.csv.net||0).toFixed(2) + ' €'
+      + ' → ' + it.val.toFixed(2) + ' MAD' + tag + '\n';
+  });
+  confirmMsg += '  Sous-total : ' + sumModified.toFixed(2) + ' MAD\n';
+  if (unmatchedPosConf.length) {
+    confirmMsg += '\n⏭  NON MODIFIÉES (contrôle uniquement) :\n';
+    unmatchedPosConf.forEach(function(l) {
+      var lMad = trueRateLot ? Math.round(l.amt * trueRateLot * 100) / 100 : 0;
+      // Chercher le dossier CRM pour l'affichage
+      var baseL = airbnbBaseRef(l.code || '');
+      var crmL  = baseL.length >= 6 ? DB.resa.find(function(r) {
+        return r.source === 'Airbnb' && r.ref && airbnbBaseRef((r.ref||'').toUpperCase()) === baseL;
+      }) : null;
+      var label = crmL
+        ? (crmL.voyageur || l.code) + '  [' + (crmL.type_norm||'') + ']'
+        : l.code + (l.isResol ? ' [résolution]' : '');
+      confirmMsg += '  • ' + label + '  ' + l.amt.toFixed(2) + ' €'
+        + ' → ' + lMad.toFixed(2) + ' MAD  (présent CRM, non éligible mad_reel)\n';
+    });
+    confirmMsg += '  Sous-total : ' + sumUnmatched.toFixed(2) + ' MAD\n';
+  }
+  if (batchNegLines.length) {
+    confirmMsg += '\n➖  DÉDUCTIONS (non enregistrées) :\n';
+    batchNegLines.forEach(function(l) {
+      var lMad = trueRateLot ? Math.round(l.amt * trueRateLot * 100) / 100 : 0;
+      confirmMsg += '  • ' + escHtml(l.type||'déduction') + '  ' + l.amt.toFixed(2) + ' €'
+        + ' → ' + lMad.toFixed(2) + ' MAD\n';
+    });
+    confirmMsg += '  Sous-total : ' + sumNeg.toFixed(2) + ' MAD\n';
+  }
+  confirmMsg += '\n─────────────────────────────────────────\n'
+    + 'Vérification : ' + sumModified.toFixed(2)
+    + (sumUnmatched ? ' + ' + sumUnmatched.toFixed(2) : '')
+    + (sumNeg ? ' + (' + sumNeg.toFixed(2) + ')' : '')
+    + ' = ' + netCheck.toFixed(2) + ' MAD'
+    + (netOk ? ' ✓' : ' ⚠️ écart ' + (netCheck - batchTotalMAD).toFixed(2)) + '\n'
+    + 'Payout Airbnb : ' + batchTotalMAD.toFixed(2) + ' MAD\n'
+    + '\nSeules les lignes ✏️ seront écrites en base.\nLes lignes ⏭ et ➖ sont affichées pour contrôle uniquement.';
   if (!confirm(confirmMsg)) return;
   var now = new Date().toISOString();
   var ok = 0, fail = 0;
