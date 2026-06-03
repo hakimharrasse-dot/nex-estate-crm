@@ -496,7 +496,14 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-05-31 | Fix(reconcil): étendre `findServMatch` aux versements résolution (Check D) — AirCover/résolutions désormais reconciliés contre `serv` comme les réservations (`30d11f1`) |
 | 2026-05-31 | Fix(reconcil): accents + date checkin pour résolutions — `_normStr()` (é/ñ/ç→ASCII) dans voyageur fuzzy ; Check D utilise `crmBase.checkin` (date séjour) au lieu de `res.date` (date payout, +2-4 semaines) (`341c365`) |
 | 2026-05-31 | Feat(serv): champ `resa_ref` — input datalist dans le formulaire services additionnels ; `saveServ()` inclut resa_ref ; `findServMatch()` Priority 0 : resa_ref exact → match 100% fiable ; migration Supabase : `ALTER TABLE serv ADD COLUMN IF NOT EXISTS resa_ref TEXT` (`1caabe8`) |
-| 2026-05-31 | **STABLE** : réconciliation serv + resa_ref opérationnelle — commit `1caabe8` (HEAD) |
+| 2026-05-31 | **STABLE** : réconciliation serv + resa_ref opérationnelle — commit `1caabe8` |
+| 2026-06-02 | Feat(reconcil): _suggestedMAD étendu — cas 2 : écart EUR seul (sans régularisation), pré-remplit le MAD depuis payoutMAD × (netCSV / originalEUR) (`364c2e0`) |
+| 2026-06-02 | Feat(reconcil): check B-MADAPPLIED — quand `mad_reel != null && !override_manual && absEcart >= 0.01`, affiche "MAD réel enregistré — EUR non aligné → corriger via ✏️ Modifier" (`36a694c`) |
+| 2026-06-02 | Fix(reconcil): B-MADAPPLIED étendu aux lignes `override_manual=true` qui ont aussi un mad_reel (cas Eva Jakob — mad_reel appliqué + EUR corrigé via alignement, arrondi résiduel détecté correctement) (`1550368`) |
+| 2026-06-02 | Fix(reconcil): infos techniques masquées par défaut dans Anomalies CSV — lignes purement informatives (type non financier, doublon technique…) n'encombrent pas la file principale (`c7a1f6b`) |
+| 2026-06-02 | Fix(reconcil): classification Anomalies CSV — niveaux affinés : arrondi ≤0.10€ → info, 0.10–1€ → minor, ≥1€ → anomaly/crit selon contexte (`042c3f1`) |
+| 2026-06-03 | **STABLE** : Réconciliation Airbnb — B-MADAPPLIED + classification infos techniques — commit `1550368` (HEAD) |
+| 2026-06-03 | ⚠️ Problème identifié (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation pour les records avec taux_reel renseigné. Les données en base sont correctes. À corriger avant toute modification manuelle via le formulaire. |
 
 ---
 
@@ -574,7 +581,7 @@ var CATS_B = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais 
 
 ---
 
-## 14. Module Réconciliation Airbnb — Règles métier (stabilisé 2026-06-02)
+## 14. Module Réconciliation Airbnb — Règles métier (stabilisé 2026-06-03)
 
 ### airbnbBaseRef() — règle de matching durable (IMMUABLE)
 
@@ -648,6 +655,30 @@ Note de réconciliation : `Σ(appariées) + Σ(non appariées +) + Σ(déduction
 ### Règle absolue : aucune application automatique
 
 Lignes simples → bouton "Appliquer". LOT → "Valider tout le lot" + confirmation. Manuel → "Enregistrer" + confirmation + guards. Correction EUR → checkbox décochable.
+
+### Check B-MADAPPLIED — MAD traité, EUR non aligné (ajouté 2026-06-02)
+
+Déclencheur : `crm.mad_reel != null` ET `absEcart >= 0.01 EUR` (que `override_manual` soit true ou false).
+
+| Écart | Niveau | Message |
+|---|---|---|
+| ≤ 0.10 EUR | `info` | ✅ MAD réel enregistré — arrondi EUR · aucune action requise |
+| 0.10 – 1 EUR | `minor` | MAD réel enregistré — EUR non aligné → corriger via ✏️ Modifier si nécessaire |
+| ≥ 1 EUR | `anomaly` | ⚠️ MAD réel enregistré — EUR non aligné → corriger via ✏️ Modifier |
+
+**Cas Eva Jakob** (commit `1550368`) : `mad_reel` appliqué + EUR corrigé via alignement CSV → `override_manual=true`. Le check B-MADAPPLIED s'applique aussi dans ce cas (écart résiduel d'arrondi). Niveau `info` (≤ 0.10 EUR).
+
+**Important** : quand B-MADAPPLIED renvoie vers ✏️ Modifier, le formulaire `buildForm` affiche actuellement `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel`. Le montant MAD affiché est inexact. **Ne pas sauvegarder depuis ce formulaire sans avoir corrigé cette valeur manuellement** — risque de dériver les champs EUR en base.
+
+### Problème connu — buildForm affiche des montants MAD fallback (NON CORRIGÉ)
+
+`buildForm('resa', id)` ligne ~5422 :
+```javascript
+var brutMad = Math.round(rec.brut * EUR_MAD);  // ← taux global, PAS taux_reel
+```
+Pour un record avec `taux_reel = 10.87` et `EUR_MAD = 10.50`, l'écart peut atteindre 37 MAD sur 100€.  
+**Les données en base (mad_reel, taux_reel, brut EUR) sont correctes** — c'est uniquement l'affichage dans le modal Modifier qui est faux.  
+À corriger : utiliser `rec.taux_reel` si disponible dans le calcul `brutMad`.
 
 ---
 
