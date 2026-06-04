@@ -5421,13 +5421,11 @@ function buildForm(type, editId) {
     var ap=v('appart','Agdal 13'), src=v('source','Airbnb');
     var ci=v('checkin',T), co=v('checkout','');
     var brutEur=rec?rec.brut:0;
-    // Priorité : mad_reel validé → brut × taux_reel → fallback brut × EUR_MAD
+    // brutMad = brut EUR × taux_reel (si dispo) ou fallback EUR_MAD — mad_reel est le NET, jamais le brut
     var _madElig = rec && MAD_REEL_ELIGIBLE.indexOf(rec.type_norm||'') >= 0;
-    var brutMad = _madElig && rec.mad_reel != null
-      ? Math.round(rec.mad_reel)
-      : (_madElig && rec.taux_reel != null
-          ? Math.round(brutEur * rec.taux_reel)
-          : Math.round(brutEur * EUR_MAD));
+    var brutMad = _madElig && rec && rec.taux_reel != null
+      ? Math.round(brutEur * rec.taux_reel)
+      : Math.round(brutEur * EUR_MAD);
     // Badge affiché sous le champ MAD pour indiquer la source du taux
     var _madBadge = _madElig && rec.mad_reel != null
       ? '<div style="font-size:11px;color:var(--bl);margin-top:4px">● MAD réel '+(rec.source==='Booking.com'?'Booking':'Airbnb')+' · taux '+(rec.taux_reel?rec.taux_reel.toFixed(4):'natif MAD')+'</div>'
