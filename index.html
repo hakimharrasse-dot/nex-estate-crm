@@ -5442,7 +5442,10 @@ function buildForm(type, editId) {
     var ciDisp = /^\d{4}-\d{2}-\d{2}/.test(ci) ? ci : '';
     var coDisp = /^\d{4}-\d{2}-\d{2}/.test(co) ? co : '';
     var nf=v('nuits_fact',diffNuits(ciDisp,coDisp));
-    var netMad=Math.round(brutMad-brutMad*comPct);
+    // Net MAD : mad_reel si disponible (montant réel encaissé), sinon brut - commission
+    var netMad = _madElig && rec && rec.mad_reel != null
+      ? Math.round(rec.mad_reel)
+      : Math.round(brutMad-brutMad*comPct);
     var taxeMad = rec ? Math.round((rec.taxe_sejour||0)*EUR_MAD) : ((src==='Booking.com' && nf>0) ? Math.round(nf*np*tauxTaxe(ap)*EUR_MAD) : 0);
     var existingRef = rec ? (rec.ref||'') : '';
     // Bannière d'alerte si le record contient des valeurs de date invalides
