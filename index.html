@@ -3255,8 +3255,9 @@ function computePeriodKPIs(resaRows, bizRows, joursDispo, pBounds, appart) {
   var nuitsSej=(pBounds&&pBounds.start)
     ? occupNightsBiz(appart||null, pBounds.start, pBounds.end)
     : rev.filter(function(r){return ['RESERVATION','RELOCATION','DIRECT'].indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
-  // Net MAD : utilise mad_reel si disponible (RESERVATION/ANNULATION_PAYEE/RELOCATION),
-  // sinon fallback net EUR × EUR_MAD (Booking.com, VRBO, Direct, AIRCOVER, AJUSTEMENT…).
+  // Net MAD : utilise mad_reel via rNetMAD() pour tous les types dans MAD_REEL_ELIGIBLE
+  // (RESERVATION, ANNULATION_PAYEE, RELOCATION, AIRCOVER, AJUSTEMENT).
+  // Fallback net EUR × EUR_MAD pour Booking.com, VRBO, Direct et les lignes sans mad_reel.
   var netMad    = sumNetMAD(revPaye);
   var netMadAtt = sumNetMAD(revAtt);
   var dep    = sum(bizRows,'montant');

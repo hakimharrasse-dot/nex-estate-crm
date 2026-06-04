@@ -507,9 +507,13 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-04 | fix(reconcil): Check D — EUR non aligné (écart de taux < 5%) → niveau `minor` + bouton ⚡ Aligner EUR. `alignDAnomaly(i)` : patch brut/net/commission/com_pct + override_manual=true. Fix libellé causeD : distingue "AirCover" vs "Résolution" via `res.isAircover` (`5a782ab`) |
 | 2026-06-04 | fix(reconcil): Check D — MAD prioritaire pour AIRCOVER/AJUSTEMENT quand `_payoutMAD` connu. `_payoutMAD` vérifié AVANT le guard EUR < 1€ (qui pouvait masquer des écarts MAD importants via EUR coïncidant accidentellement). Ex : HMBKW3WYPQ — 1 645 vs 1 693 MAD, EUR coïncidant à 0.04€. Nouveau bloc D-MAD-PRIORITAIRE + `fixDMadAnomaly(i)` + bouton ⚡ Corriger MAD (`7b89457`) |
 | 2026-06-04 | fix(reconcil): `fixDMadAnomaly` — retrait écriture `mad_reel`/`taux_reel` pour AIRCOVER/AJUSTEMENT. `_payoutMAD` peut représenter le lot entier (contamination batch), rendant la valeur MAD non fiable. Seul l'EUR CSV est aligné. Guard EUR < 0.01€ ajouté dans D-MAD-PRIORITAIRE pour éviter fausses anomalies après alignement (`5b7c8f6`) |
-| 2026-06-04 | fix(reconcil+display): badge "MAD réel Airbnb" protégé par `MAD_REEL_ELIGIBLE` dans renderResa (mobile + tableau). Avant : `r.mad_reel != null` → affichait badge pour TOUS les types. Après : guard identique à `rNetMAD()`. `fixDMadAnomaly` définitivement nettoyé : patch EUR uniquement (`dfca571` ← **HEAD**) |
+| 2026-06-04 | fix(reconcil+display): badge "MAD réel Airbnb" protégé par `MAD_REEL_ELIGIBLE` dans renderResa (mobile + tableau). Avant : `r.mad_reel != null` → affichait badge pour TOUS les types. Après : guard identique à `rNetMAD()`. `fixDMadAnomaly` définitivement nettoyé : patch EUR uniquement (`dfca571`) |
 | 2026-06-04 | DB fix : HMPJ5EQJZA-AIRC — `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL` (valeurs erronées écrites par `fixDMadAnomaly` avec `_payoutMAD` de lot contaminé = 1 423.94 au lieu de 920.22). Note alignement EUR conservée. |
 | 2026-06-04 | ⚠️ Problème connu (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation. Données en base correctes. À corriger avant toute modification manuelle. |
+| 2026-06-04 | feat(reconcil): `mad_reel/taux_reel` écrits pour AIRCOVER/AJUSTEMENT. `MAD_REEL_ELIGIBLE` étendu. `isPayoutMadFiable()` : lot mono → bouton auto, lot mixte → saisie manuelle. `fixDMadAnomaly` (fiable) + `fixDMadManual` (lot mixte). Guard anti re-flag : `mad_reel_source='complexe'` → return silencieux aux imports suivants. (`06d432c`) |
+| 2026-06-04 | fix(reconcil): guard EUR seul ne bloque plus saisie MAD quand `mad_reel=NULL` (HMPJ5EQJZA-AIRC : EUR=86€=86€ mais MAD jamais saisi car guard tirait return avant comparaison MAD). Fix : `|EUR| < 0.01 && mad_reel != null` (`1af5b2d`) |
+| 2026-06-04 | fix(reconcil): pre-pass CSV — `payoutByCodeResol` accumulait plusieurs payouts sur la même référence. Remplacé par `_resolBatchList[code]=[{batchId,madAmt}]` + consommation séquentielle `_resolBatchIdx`. HMPJ5EQJZA : 920.22 (23/05) + 503.72 (20/05) = 1 423.94 faux → chaque résolution reçoit maintenant son propre MAD. (`65541b9`) |
+| 2026-06-04 | **STABLE** : Réconciliation MAD réel AIRCOVER/AJUSTEMENT — pré-pass, Check D, KPI — commit `65541b9` ← **HEAD** |
 
 ---
 
@@ -723,21 +727,25 @@ var _dFallCands = _dAllCands.filter(r => r.type_norm === _dFallback);
 | Bouton | Condition | Patch DB |
 |---|---|---|
 | ⚡ Aligner EUR | `_dEurMisaligned=true` (écart 1€–5%) | `brut=net=csv.net, commission=0, com_pct=0, override_manual=true` |
-| ⚡ Corriger MAD | `_dMadEcart` présent + `_payoutMADReal` | `brut=net=csv.net, commission=0, com_pct=0, override_manual=true` (**jamais mad_reel ni taux_reel**) |
+| ⚡ Aligner EUR + MAD réel | `_dMadEcart` présent + `_madFiable=true` (lot solo) | `brut=net=csv.net, mad_reel=_payoutMAD, taux_reel=MAD/EUR, mad_reel_source='CSV Airbnb payout', override_manual=true` |
+| ⚡ Saisir MAD réel | `_dMadEcart` présent + `_madFiable=false` (lot mixte) | input éditable pré-rempli suggestion · patch identique au cas fiable mais `mad_reel_source='CSV Airbnb complexe / validation manuelle'` |
 
-#### Règle immuable AIRCOVER/AJUSTEMENT + mad_reel
+#### Règles AIRCOVER/AJUSTEMENT + mad_reel (MAJ 2026-06-04)
 
-- `mad_reel` et `taux_reel` ne doivent **JAMAIS** être écrits sur AIRCOVER/AJUSTEMENT
-- `_payoutMAD` pour ces types peut représenter le lot entier (contamination batch), pas la transaction seule
-- Seul l'EUR CSV est fiable et aligneable
-- `MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION']` — AIRCOVER/AJUSTEMENT exclus
-- L'affichage MAD dans `renderResa` vérifie maintenant `MAD_REEL_ELIGIBLE` (même guard que `rNetMAD()`)
+- `MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT']`
+- AIRCOVER/AJUSTEMENT **sont désormais éligibles** à `mad_reel` quand il est renseigné
+- `rNetMAD()` utilise `mad_reel` pour ces types → impact KPI réel (CA, ADR, RevPAN, marge)
+- Sans `mad_reel` (null) → fallback `net × EUR_MAD` inchangé
+- `isPayoutMadFiable(res)` : lot mono-transaction + taux ∈ [3,30] + pas de déduction → `true` → bouton auto
+- Lot mixte (`_madFiable=false`) → saisie manuelle obligatoire
+- Guard anti re-flag : `mad_reel_source='CSV Airbnb complexe / validation manuelle'` → Check D retourne silencieusement aux imports suivants (ne re-compare pas contre `_payoutMAD` du lot)
+- `_payoutMAD` de lot mixte n'est jamais écrit directement — seule la valeur validée par l'utilisateur est stockée
 
 #### DB cleanup appliqué (2026-06-04)
 
-- `HMPJ5EQJZA-AIRC` (id=`mpgzdywi1wlk`) : `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL`
-- Cause : `fixDMadAnomaly` avait écrit `mad_reel=1423.94` avec `_payoutMAD` de lot contaminé
-- État correct : `net=brut=86€, commission=0, override_manual=true, mad_reel=NULL`
+- `HMPJ5EQJZA-AIRC` (id=`mpgzdywi1wlk`) : `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL` (nettoyé avant la correction finale)
+- Cause initiale : `fixDMadAnomaly` avait écrit `mad_reel=1423.94` avec `_payoutMAD` de lot contaminé (920.22 + 503.72 accumulés)
+- État attendu après correction complète : `mad_reel=920.22, taux_reel=10.7002, mad_reel_source='CSV Airbnb payout'` (bouton auto disponible après Ctrl+F5)
 
 ---
 
@@ -805,7 +813,8 @@ Utilise `airbnbBaseRef()` pour le matching bidirectionnel :
 ### Helpers dashboard (ajoutés 2026-05-17)
 
 ```javascript
-var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION'];
+// MAJ 2026-06-04 : AIRCOVER et AJUSTEMENT ajoutés à la liste éligible
+var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT'];
 function rNetMAD(r)  { return r.mad_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? r.mad_reel : (r.net||0)*EUR_MAD; }
 function rBrutMAD(r) { return r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? (r.brut||0)*r.taux_reel : (r.brut||0)*EUR_MAD; }
 function rComMAD(r)  { return r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0 ? (r.commission||0)*r.taux_reel : (r.commission||0)*EUR_MAD; }
@@ -814,11 +823,14 @@ function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s+rNetMAD(r)
 
 Utilisés dans : `computePeriodKPIs` (netMad, netMadAtt), `renderDash` (brut, com, sparklines, recap appart/source, décisions rapides), `renderResa` (totaux entête, ADR, recap par appart).
 
+KPI impactés par `mad_reel` : CA encaissé, CA en attente, ADR, RevPAN, résultat net, marge.
+Les totaux par appartement (`sumNetMAD(filter appart)`) et par source (`sumNetMAD(filter source)`) utilisent la même fonction.
+
 ### Règle d'affichage — ne JAMAIS modifier
 
 - `net / brut / commission` en base = toujours EUR → **jamais touchés**
-- `e2m()` / `fmtE()` = fonctions globales EUR×EUR_MAD → **inchangées**, utilisées pour Booking.com / VRBO / Direct / AIRCOVER / AJUSTEMENT
-- AIRCOVER et AJUSTEMENT : toujours fallback EUR×EUR_MAD, `mad_reel` = NULL en base
+- `e2m()` / `fmtE()` = fonctions globales EUR×EUR_MAD → **inchangées**, utilisées pour Booking.com / VRBO / Direct
+- AIRCOVER et AJUSTEMENT : fallback EUR×EUR_MAD si `mad_reel = null`, sinon `mad_reel` (après validation Réconciliation)
 
 ### CSV Airbnb — format attendu
 
