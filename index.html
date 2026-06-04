@@ -5421,7 +5421,19 @@ function buildForm(type, editId) {
     var ap=v('appart','Agdal 13'), src=v('source','Airbnb');
     var ci=v('checkin',T), co=v('checkout','');
     var brutEur=rec?rec.brut:0;
-    var brutMad=Math.round(brutEur*EUR_MAD);
+    // Priorité : mad_reel validé → brut × taux_reel → fallback brut × EUR_MAD
+    var _madElig = rec && MAD_REEL_ELIGIBLE.indexOf(rec.type_norm||'') >= 0;
+    var brutMad = _madElig && rec.mad_reel != null
+      ? Math.round(rec.mad_reel)
+      : (_madElig && rec.taux_reel != null
+          ? Math.round(brutEur * rec.taux_reel)
+          : Math.round(brutEur * EUR_MAD));
+    // Badge affiché sous le champ MAD pour indiquer la source du taux
+    var _madBadge = _madElig && rec.mad_reel != null
+      ? '<div style="font-size:11px;color:var(--bl);margin-top:4px">● MAD réel '+(rec.source==='Booking.com'?'Booking':'Airbnb')+' · taux '+(rec.taux_reel?rec.taux_reel.toFixed(4):'natif MAD')+'</div>'
+      : (_madElig && rec.taux_reel != null
+          ? '<div style="font-size:11px;color:var(--bl);margin-top:4px">● MAD calculé · taux réel '+rec.taux_reel.toFixed(4)+'</div>'
+          : '<div style="font-size:11px;color:var(--td);margin-top:4px">MAD fallback · taux '+EUR_MAD.toFixed(2)+'</div>');
     // Fix: utiliser com_pct existant du record (0 pour AIRCOVER/AJUSTEMENT)
     // Jamais écraser par COM[src] lors de l'édition — COM[src] sert uniquement à la création
     var comPct = rec ? (rec.com_pct||0) : (COM[src]||0.155);
@@ -5467,7 +5479,7 @@ function buildForm(type, editId) {
         '</div>'+
       '</div>'+
       field2('Nb personnes','fi-np','number',np)+
-      field2('Montant brut (MAD)','fi-brut','number',brutMad)+
+      '<div class="ff"><label class="fl">Montant brut (MAD)</label><input type="number" class="fi" id="fi-brut" value="'+brutMad+'" oninput="autoCalcResa()">'+_madBadge+'</div>'+
       '<div><label class="fl">Commission (%) <span style="font-size:10px;color:var(--td);font-weight:400">auto · modifiable</span></label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" step="0.1" min="0" max="100"></div>'+
       '<div><label class="fl">Montant net (MAD)</label><input type="number" class="fi" id="fi-net" value="'+netMad+'" readonly></div>'+
       '<div><label class="fl">Taxe séjour MAD <span style="font-size:10px;color:var(--te);font-weight:400">estimation · source de vérité = table Taxe</span></label><input type="number" class="fi" id="fi-taxe" value="'+taxeMad+'"></div>'+
@@ -5763,7 +5775,12 @@ async function saveResa() {
       // Pas de checkbox = édition rapide — conserver la valeur existante si présente
       if (M_ID) { var ex = DB.resa.find(function(x){return x.id===M_ID;}); if(ex) return !!ex.override_manual; }
       return true; // nouvelle entrée manuelle = protégée par défaut
-    })()
+    })(),
+    // Préserver les champs MAD réel validés par Réconciliation — jamais écrasés par l'édition manuelle
+    mad_reel: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel??null:null; })(),
+    taux_reel: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.taux_reel??null:null; })(),
+    mad_reel_source: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
+    mad_reel_updated_at: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
   await upsert('resa',entry); closeModal(); renderResa();
   if (QUALITE_ANOMALIES.length) runQualiteCheck();

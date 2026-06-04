@@ -290,8 +290,8 @@ Le fichier `index.html` est organisé en sections délimitées par des commentai
 | `confirmCSV()` | Import CSV : upsert avec protection `override_manual` et préservation `nuits_business` |
 | `showImportLog()` | Affiche le log du dernier import CSV (depuis localStorage `smoobu_import_log`) |
 | `syncSmoobuAPI()` | Déclenche `/api/smoobu-poll?from=…` depuis le CRM, affiche overlay de résultat |
-| `buildForm('resa', id)` | Génère le modal d'édition d'une réservation |
-| `saveResa()` | Sauvegarde une réservation depuis le modal (inclut `nuits_business`) |
+| `buildForm('resa', id)` | Génère le modal d'édition. Calcul `brutMad` : priorité `mad_reel` → `brut × taux_reel` → fallback `brut × EUR_MAD`. Badge contextuel affiché sous le champ. |
+| `saveResa()` | Sauvegarde une réservation depuis le modal. Préserve `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at` depuis `DB.resa` — jamais écrasés par Enregistrer. |
 | `effectiveNightsInPeriod(r, pStart, pEnd)` | Calcul chevauchement nuits (utilise `nuits_business` si défini) |
 | `occupNightsBiz(appart, pStart, pEnd)` | Agrège les nuits business par appartement sur une période |
 | `recomputeAndSave()` | Recalcule statuts/dates de toutes les réservations |
@@ -509,7 +509,7 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-04 | fix(reconcil): `fixDMadAnomaly` — retrait écriture `mad_reel`/`taux_reel` pour AIRCOVER/AJUSTEMENT. `_payoutMAD` peut représenter le lot entier (contamination batch), rendant la valeur MAD non fiable. Seul l'EUR CSV est aligné. Guard EUR < 0.01€ ajouté dans D-MAD-PRIORITAIRE pour éviter fausses anomalies après alignement (`5b7c8f6`) |
 | 2026-06-04 | fix(reconcil+display): badge "MAD réel Airbnb" protégé par `MAD_REEL_ELIGIBLE` dans renderResa (mobile + tableau). Avant : `r.mad_reel != null` → affichait badge pour TOUS les types. Après : guard identique à `rNetMAD()`. `fixDMadAnomaly` définitivement nettoyé : patch EUR uniquement (`dfca571`) |
 | 2026-06-04 | DB fix : HMPJ5EQJZA-AIRC — `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL` (valeurs erronées écrites par `fixDMadAnomaly` avec `_payoutMAD` de lot contaminé = 1 423.94 au lieu de 920.22). Note alignement EUR conservée. |
-| 2026-06-04 | ⚠️ Problème connu (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation. Données en base correctes. À corriger avant toute modification manuelle. |
+| 2026-06-04 | fix(modifier-resa): `buildForm` utilise désormais `mad_reel` → `brut × taux_reel` → fallback `brut × EUR_MAD` pour pré-remplir le champ MAD. Badge contextuel "MAD réel Airbnb · taux X.XXXX" ou "MAD fallback · taux 10.50" affiché sous le champ. `saveResa()` préserve `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at` depuis `DB.resa` — aucun écrasement possible via Enregistrer. |
 | 2026-06-04 | feat(reconcil): `mad_reel/taux_reel` écrits pour AIRCOVER/AJUSTEMENT. `MAD_REEL_ELIGIBLE` étendu. `isPayoutMadFiable()` : lot mono → bouton auto, lot mixte → saisie manuelle. `fixDMadAnomaly` (fiable) + `fixDMadManual` (lot mixte). Guard anti re-flag : `mad_reel_source='complexe'` → return silencieux aux imports suivants. (`06d432c`) |
 | 2026-06-04 | fix(reconcil): guard EUR seul ne bloque plus saisie MAD quand `mad_reel=NULL` (HMPJ5EQJZA-AIRC : EUR=86€=86€ mais MAD jamais saisi car guard tirait return avant comparaison MAD). Fix : `|EUR| < 0.01 && mad_reel != null` (`1af5b2d`) |
 | 2026-06-04 | fix(reconcil): pre-pass CSV — `payoutByCodeResol` accumulait plusieurs payouts sur la même référence. Remplacé par `_resolBatchList[code]=[{batchId,madAmt}]` + consommation séquentielle `_resolBatchIdx`. HMPJ5EQJZA : 920.22 (23/05) + 503.72 (20/05) = 1 423.94 faux → chaque résolution reçoit maintenant son propre MAD. (`65541b9`) |
@@ -678,17 +678,7 @@ Déclencheur : `crm.mad_reel != null` ET `absEcart >= 0.01 EUR` (que `override_m
 
 **Cas Eva Jakob** (commit `1550368`) : `mad_reel` appliqué + EUR corrigé via alignement CSV → `override_manual=true`. Le check B-MADAPPLIED s'applique aussi dans ce cas (écart résiduel d'arrondi). Niveau `info` (≤ 0.10 EUR).
 
-**Important** : quand B-MADAPPLIED renvoie vers ✏️ Modifier, le formulaire `buildForm` affiche actuellement `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel`. Le montant MAD affiché est inexact. **Ne pas sauvegarder depuis ce formulaire sans avoir corrigé cette valeur manuellement** — risque de dériver les champs EUR en base.
-
-### Problème connu — buildForm affiche des montants MAD fallback (NON CORRIGÉ)
-
-`buildForm('resa', id)` ligne ~5422 :
-```javascript
-var brutMad = Math.round(rec.brut * EUR_MAD);  // ← taux global, PAS taux_reel
-```
-Pour un record avec `taux_reel = 10.87` et `EUR_MAD = 10.50`, l'écart peut atteindre 37 MAD sur 100€.  
-**Les données en base (mad_reel, taux_reel, brut EUR) sont correctes** — c'est uniquement l'affichage dans le modal Modifier qui est faux.  
-À corriger : utiliser `rec.taux_reel` si disponible dans le calcul `brutMad`.
+**Note** : quand B-MADAPPLIED renvoie vers ✏️ Modifier, le formulaire `buildForm` affiche désormais le MAD réel (`mad_reel` → `brut × taux_reel` → fallback). Un badge bleu "MAD réel Airbnb · taux X.XXXX" confirme la source. `saveResa()` préserve `mad_reel/taux_reel` — aucun risque de dériver les données validées.
 
 ### Check D — AirCover / Résolution : règles complètes (stabilisé 2026-06-04)
 
