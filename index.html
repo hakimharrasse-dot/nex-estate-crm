@@ -10167,12 +10167,57 @@ function runReconciliation(parsed) {
       return ref === code || ref === 'AIR-' + code || ref.startsWith(code + '-') || ref.startsWith(code + '_')
         || (_dBase.length >= 6 && airbnbBaseRef(ref) === _dBase);
     }
-    var crmAc = DB.resa.find(function(r) {
+    // Sélection prioritaire : affinité subtype CSV ↔ type_norm CRM
+    //   CSV subtype='aircover'   → AIRCOVER en priorité, AJUSTEMENT en fallback contrôlé
+    //   CSV subtype='resolution' → AJUSTEMENT en priorité, AIRCOVER en fallback contrôlé
+    // Si plusieurs candidats du même type préféré → anomalie "matching ambigu"
+    // au lieu de choisir arbitrairement selon l'ordre du tableau DB.resa.
+    var _dPreferred = res.subtype === 'aircover' ? 'AIRCOVER' : 'AJUSTEMENT';
+    var _dFallback  = res.subtype === 'aircover' ? 'AJUSTEMENT' : 'AIRCOVER';
+    var _dAllCands  = DB.resa.filter(function(r) {
       if (r.source !== 'Airbnb') return false;
       if (r.type_norm !== 'AIRCOVER' && r.type_norm !== 'AJUSTEMENT') return false;
       if (!r.ref) return false;
       return _dMatch(r.ref.toUpperCase(), res.code.toUpperCase());
     });
+    var _dPrefCands = _dAllCands.filter(function(r) { return r.type_norm === _dPreferred; });
+    var _dFallCands = _dAllCands.filter(function(r) { return r.type_norm === _dFallback; });
+    var crmAc;
+    if (_dPrefCands.length === 1) {
+      // Cas normal : un seul candidat du bon type → match fiable
+      crmAc = _dPrefCands[0];
+    } else if (_dPrefCands.length > 1) {
+      // Ambiguïté sur le type attendu → pas de choix arbitraire
+      pushResult({ _taux: taux,
+        csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+               checkin: res.date, checkout: '', nuits: 0,
+               net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+        crm: _dPrefCands[0], ecart: Math.round((res.net||0)*100)/100,
+        cause: 'Matching ambigu — ' + _dPrefCands.length + ' enregistrements ' + _dPreferred
+             + ' avec la même référence Airbnb racine · vérifier manuellement',
+        level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
+        _deviseAmbigue: res.devise !== 'EUR',
+        isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+      }); return;
+    } else if (_dFallCands.length === 1) {
+      // Fallback contrôlé : pas de type préféré, mais un seul du type alternatif
+      // (ex : AirCover saisi comme AJUSTEMENT, ou résolution saisie comme AIRCOVER)
+      crmAc = _dFallCands[0];
+    } else if (_dFallCands.length > 1) {
+      // Ambiguïté même sur le fallback
+      pushResult({ _taux: taux,
+        csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+               checkin: res.date, checkout: '', nuits: 0,
+               net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+        crm: _dFallCands[0], ecart: Math.round((res.net||0)*100)/100,
+        cause: 'Matching ambigu — ' + _dFallCands.length + ' enregistrements ' + _dFallback
+             + ' avec la même référence Airbnb racine · vérifier manuellement',
+        level: 'anomaly', checkId: 'D', csvType: 'resolution', status: 'pending',
+        _deviseAmbigue: res.devise !== 'EUR',
+        isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+      }); return;
+    }
+    // _dAllCands.length === 0 → crmAc reste undefined → absent du CRM (traité plus bas)
     var crmBase = !crmAc ? DB.resa.find(function(r) {
       if (r.source !== 'Airbnb' || !r.ref) return false;
       return _dMatch(r.ref.toUpperCase(), res.code.toUpperCase());
