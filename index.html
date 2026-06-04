@@ -9375,6 +9375,9 @@ function renderAnomaliesList() {
           : '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
         (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
         '<div class="reconcil-acts">' +
+          (a.status!=='ignored' && a._dEurMisaligned && ROLE==='admin'
+            ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="alignDAnomaly('+i+')" title="Aligner brut/net/commission sur le montant EUR du CSV Airbnb">⚡ Aligner EUR</button>'
+            : '') +
           (a.status!=='ignored' ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',null)" title="Créer AIRCOVER ou AJUSTEMENT">➕ Créer</button>' : '') +
           (a.crm ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px" onclick="openModal(\'resa\',\''+a.crm.id+'\')">✏️ Modifier</button>' : '') +
           (a.status!=='ignored'
@@ -10247,12 +10250,15 @@ function runReconciliation(parsed) {
       }
     }
 
-    var ecartD = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
+    var ecartD    = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
+    var absEcartD = Math.abs(ecartD);
+    // Libellé selon le type de versement : AirCover ou Résolution (correction bug "versement résolution" générique)
+    var dTypeLabel = res.isAircover ? 'Versement AirCover' : 'Versement de résolution';
     var causeD = !crmAc
       ? (res.isAircover
           ? 'Versement AirCover absent du CRM' + (res.dossier ? ' (dossier ' + res.dossier + ')' : '') + ' — créer une ligne AIRCOVER manuellement'
           : 'Versement de résolution absent du CRM — créer une ligne AJUSTEMENT manuellement')
-      : 'Montant versement résolution différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
+      : dTypeLabel + ' — montant différent CSV vs CRM (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR)';
 
     // Check D serv : avant de marquer "absent du CRM", vérifier si ce versement
     // résolution correspond à un service additionnel déjà saisi dans serv.
@@ -10281,6 +10287,31 @@ function runReconciliation(parsed) {
           isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
         }); return;
       }
+    }
+
+    // D-EUR-MISALIGNED : crmAc trouvé + devise EUR + écart entre 1€ et 5% du net CSV.
+    // Cause probable : EUR CRM issu de MAD/taux_fallback (10.50), virement Airbnb à taux réel différent.
+    // → Affiche en minor + propose "⚡ Aligner EUR" (patch brut/net/com/com_pct + override_manual=true).
+    // Guards : crmAc présent, devise EUR, net CSV > 0, |écart| / net CSV < 5%.
+    // Seuil 5% couvre toute la plage réaliste de variation EUR/MAD (10.20–11.00).
+    // Si écart ≥ 5% → vrai problème → anomaly classique sans bouton d'alignement.
+    if (crmAc && res.net > 0 && res.devise === 'EUR'
+        && absEcartD >= 0.01 && absEcartD / res.net < 0.05) {
+      pushResult({
+        csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+               checkin: res.date, checkout: '', nuits: 0,
+               net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+        crm: crmAc, ecart: ecartD,
+        cause: dTypeLabel + ' — MAD saisi cohérent, EUR non aligné'
+             + ' (Δ ' + (ecartD>=0?'+':'') + ecartD.toFixed(2) + ' EUR'
+             + ' · ' + (absEcartD / res.net * 100).toFixed(1) + '%)'
+             + ' · saisi au taux 10.50, virement Airbnb à taux réel différent'
+             + ' → ⚡ Aligner l\'EUR depuis CSV Airbnb',
+        level: 'minor', checkId: 'D', csvType: 'resolution', status: 'pending',
+        _deviseAmbigue: false, _dEurMisaligned: true,
+        isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+        _section: 'anomaly',
+      }); return;
     }
 
     pushResult({
@@ -10419,6 +10450,58 @@ async function alignLockedAnomaly(i) {
     updateReconcilBadge();
     renderAnomaliesList();
     showToast('✅ Net aligné (ligne verrouillée conservée)');
+  } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
+}
+
+// Alignement EUR depuis CSV Airbnb pour AirCover / Résolution (Check D, écart de taux < 5%)
+// Patche brut/net/commission/com_pct sur la vérité EUR du CSV. override_manual = true.
+// Ne touche pas au MAD saisi, au taux_reel, ni aux données calendaires.
+async function alignDAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (!a || !a.crm || !a._dEurMisaligned) return;
+  // Guards en entrée (défense en profondeur, déjà vérifiés à la construction)
+  if (a.csv.devise !== 'EUR') { alert('Devise CSV non EUR — alignement impossible.'); return; }
+  var csvNet = Math.round((a.csv.net || 0) * 100) / 100;
+  if (csvNet <= 0) { alert('Montant CSV invalide.'); return; }
+  var ecartPct = Math.abs(a.ecart || 0) / csvNet;
+  if (ecartPct >= 0.05) { alert('Écart ≥ 5 % — alignement automatique désactivé.\nVérifier manuellement.'); return; }
+
+  var typeLabel = a.isAircover ? 'AirCover' : 'Résolution';
+  var ident = escHtml(a.crm.ref || a.crm.id) + ' — ' + escHtml(a.crm.voyageur || '');
+  var wasLocked = !!a.crm.override_manual;
+  if (!confirm(
+    '⚡ Aligner EUR depuis CSV Airbnb — ' + typeLabel + '\n\n' +
+    'Dossier : ' + (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '') + '\n' +
+    'CRM actuel : brut = ' + (a.crm.brut||0).toFixed(2) + ' EUR · net = ' + (a.crm.net||0).toFixed(2) + ' EUR\n' +
+    'CSV Airbnb : net = ' + csvNet.toFixed(2) + ' EUR\n\n' +
+    'Champs mis à jour : brut = net = ' + csvNet.toFixed(2) + ' EUR, commission = 0, com_pct = 0\n' +
+    'override_manual = true' + (wasLocked ? ' (déjà actif)' : ' (sera posé)') + '\n' +
+    'Le montant MAD saisi reste inchangé.\n\n' +
+    'Confirmer ?'
+  )) return;
+
+  var dateTag = new Date().toISOString().slice(0, 10);
+  var noteTag = '[Réconcil ' + dateTag + ' ' + typeLabel + ' CSV=' + (a.csv.code||'?')
+              + ' EUR aligné ' + csvNet.toFixed(2) + '€ (était ' + (a.crm.net||0).toFixed(2) + '€)]';
+  var patch = {
+    brut:       csvNet,
+    net:        csvNet,
+    commission: 0,
+    com_pct:    0,
+    override_manual: true,
+    notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+  };
+  try {
+    var res = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+    if (res.error) throw res.error;
+    Object.assign(a.crm, patch);
+    var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+    if (dbRow) Object.assign(dbRow, patch);
+    a.status = 'validated';
+    a._dEurMisaligned = false;
+    updateReconcilBadge();
+    renderAnomaliesList();
+    showToast('✅ EUR aligné — ' + typeLabel + ' ' + (a.csv.code || ''));
   } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
 }
 
