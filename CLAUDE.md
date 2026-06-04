@@ -503,8 +503,13 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-02 | Fix(reconcil): infos techniques masquées par défaut dans Anomalies CSV — lignes purement informatives (type non financier, doublon technique…) n'encombrent pas la file principale (`c7a1f6b`) |
 | 2026-06-02 | Fix(reconcil): classification Anomalies CSV — niveaux affinés : arrondi ≤0.10€ → info, 0.10–1€ → minor, ≥1€ → anomaly/crit selon contexte (`042c3f1`) |
 | 2026-06-03 | **STABLE** : Réconciliation Airbnb — B-MADAPPLIED + classification infos techniques — commit `1550368` |
-| 2026-06-03 | fix(reconcil): Check D — matching AirCover/Résolution prioritaire par subtype CSV. Remplace `DB.resa.find()` non prioritaire par sélection en 2 passes (`_dPrefCands` / `_dFallCands`). Cas HMPJ5EQJZA corrigé : AirCover 86 EUR → `-AIRC` (AIRCOVER), pas `-Resol` (AJUSTEMENT). Anomalie "matching ambigu" si plusieurs candidats du même type. `airbnbBaseRef()` et `_dMatch()` inchangés — commit `342fe81` (HEAD) |
-| 2026-06-03 | ⚠️ Problème identifié (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation pour les records avec taux_reel renseigné. Les données en base sont correctes. À corriger avant toute modification manuelle via le formulaire. |
+| 2026-06-03 | fix(reconcil): Check D — matching AirCover/Résolution prioritaire par subtype CSV. Remplace `DB.resa.find()` non prioritaire par sélection en 2 passes (`_dPrefCands` / `_dFallCands`). Cas HMPJ5EQJZA corrigé : AirCover 86 EUR → `-AIRC` (AIRCOVER), pas `-Resol` (AJUSTEMENT). Anomalie "matching ambigu" si plusieurs candidats du même type (`342fe81`) |
+| 2026-06-04 | fix(reconcil): Check D — EUR non aligné (écart de taux < 5%) → niveau `minor` + bouton ⚡ Aligner EUR. `alignDAnomaly(i)` : patch brut/net/commission/com_pct + override_manual=true. Fix libellé causeD : distingue "AirCover" vs "Résolution" via `res.isAircover` (`5a782ab`) |
+| 2026-06-04 | fix(reconcil): Check D — MAD prioritaire pour AIRCOVER/AJUSTEMENT quand `_payoutMAD` connu. `_payoutMAD` vérifié AVANT le guard EUR < 1€ (qui pouvait masquer des écarts MAD importants via EUR coïncidant accidentellement). Ex : HMBKW3WYPQ — 1 645 vs 1 693 MAD, EUR coïncidant à 0.04€. Nouveau bloc D-MAD-PRIORITAIRE + `fixDMadAnomaly(i)` + bouton ⚡ Corriger MAD (`7b89457`) |
+| 2026-06-04 | fix(reconcil): `fixDMadAnomaly` — retrait écriture `mad_reel`/`taux_reel` pour AIRCOVER/AJUSTEMENT. `_payoutMAD` peut représenter le lot entier (contamination batch), rendant la valeur MAD non fiable. Seul l'EUR CSV est aligné. Guard EUR < 0.01€ ajouté dans D-MAD-PRIORITAIRE pour éviter fausses anomalies après alignement (`5b7c8f6`) |
+| 2026-06-04 | fix(reconcil+display): badge "MAD réel Airbnb" protégé par `MAD_REEL_ELIGIBLE` dans renderResa (mobile + tableau). Avant : `r.mad_reel != null` → affichait badge pour TOUS les types. Après : guard identique à `rNetMAD()`. `fixDMadAnomaly` définitivement nettoyé : patch EUR uniquement (`dfca571` ← **HEAD**) |
+| 2026-06-04 | DB fix : HMPJ5EQJZA-AIRC — `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL` (valeurs erronées écrites par `fixDMadAnomaly` avec `_payoutMAD` de lot contaminé = 1 423.94 au lieu de 920.22). Note alignement EUR conservée. |
+| 2026-06-04 | ⚠️ Problème connu (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation. Données en base correctes. À corriger avant toute modification manuelle. |
 
 ---
 
@@ -680,6 +685,59 @@ var brutMad = Math.round(rec.brut * EUR_MAD);  // ← taux global, PAS taux_reel
 Pour un record avec `taux_reel = 10.87` et `EUR_MAD = 10.50`, l'écart peut atteindre 37 MAD sur 100€.  
 **Les données en base (mad_reel, taux_reel, brut EUR) sont correctes** — c'est uniquement l'affichage dans le modal Modifier qui est faux.  
 À corriger : utiliser `rec.taux_reel` si disponible dans le calcul `brutMad`.
+
+### Check D — AirCover / Résolution : règles complètes (stabilisé 2026-06-04)
+
+#### Matching prioritaire par subtype CSV (commit `342fe81`)
+
+```javascript
+// subtype='aircover'   → préférer AIRCOVER en CRM, AJUSTEMENT en fallback
+// subtype='resolution' → préférer AJUSTEMENT en CRM, AIRCOVER en fallback
+var _dPrefCands = _dAllCands.filter(r => r.type_norm === _dPreferred);
+var _dFallCands = _dAllCands.filter(r => r.type_norm === _dFallback);
+// Si plusieurs candidats du même type → anomalie "Matching ambigu"
+```
+
+#### Flux de décision Check D (ordre strict — ne pas modifier)
+
+```
+1. [NOUVEAU] D-MAD-PRIORITAIRE : crmAc + _payoutMAD + (AIRCOVER ou AJUSTEMENT)
+   → Guard EUR aligné : |crmAc.net - res.net| < 0.01 → return silencieux
+   → crmMAD = crmAc.mad_reel ?? (crmAc.net × taux)
+   → |crmMAD - _payoutMAD| ≤ 1 MAD → info "MAD conforme"
+   → |crmMAD - _payoutMAD| > 1 MAD → anomaly/minor "MAD versé différent" + bouton ⚡ Corriger MAD
+   → return (conclusif — ne passe jamais aux étapes suivantes)
+
+2. Guard EUR classique : |res.net - crmAc.net| < 1€ → return silencieux
+   (uniquement quand _payoutMAD absent, ou non AIRCOVER/AJUSTEMENT)
+
+3. D-EUR-MISALIGNED : devise EUR + 1€ ≤ |écart| < 5% du net CSV
+   → level='minor', _dEurMisaligned=true → bouton ⚡ Aligner EUR
+
+4. Anomalie finale : |écart| ≥ 5%
+   → level='anomaly', cause = "[AirCover/Résolution] — montant différent"
+```
+
+#### Boutons d'action Check D (admin uniquement)
+
+| Bouton | Condition | Patch DB |
+|---|---|---|
+| ⚡ Aligner EUR | `_dEurMisaligned=true` (écart 1€–5%) | `brut=net=csv.net, commission=0, com_pct=0, override_manual=true` |
+| ⚡ Corriger MAD | `_dMadEcart` présent + `_payoutMADReal` | `brut=net=csv.net, commission=0, com_pct=0, override_manual=true` (**jamais mad_reel ni taux_reel**) |
+
+#### Règle immuable AIRCOVER/AJUSTEMENT + mad_reel
+
+- `mad_reel` et `taux_reel` ne doivent **JAMAIS** être écrits sur AIRCOVER/AJUSTEMENT
+- `_payoutMAD` pour ces types peut représenter le lot entier (contamination batch), pas la transaction seule
+- Seul l'EUR CSV est fiable et aligneable
+- `MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION']` — AIRCOVER/AJUSTEMENT exclus
+- L'affichage MAD dans `renderResa` vérifie maintenant `MAD_REEL_ELIGIBLE` (même guard que `rNetMAD()`)
+
+#### DB cleanup appliqué (2026-06-04)
+
+- `HMPJ5EQJZA-AIRC` (id=`mpgzdywi1wlk`) : `mad_reel/taux_reel/mad_reel_source/mad_reel_updated_at → NULL`
+- Cause : `fixDMadAnomaly` avait écrit `mad_reel=1423.94` avec `_payoutMAD` de lot contaminé
+- État correct : `net=brut=86€, commission=0, override_manual=true, mad_reel=NULL`
 
 ---
 
