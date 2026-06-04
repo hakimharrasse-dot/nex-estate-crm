@@ -513,7 +513,9 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-04 | feat(reconcil): `mad_reel/taux_reel` écrits pour AIRCOVER/AJUSTEMENT. `MAD_REEL_ELIGIBLE` étendu. `isPayoutMadFiable()` : lot mono → bouton auto, lot mixte → saisie manuelle. `fixDMadAnomaly` (fiable) + `fixDMadManual` (lot mixte). Guard anti re-flag : `mad_reel_source='complexe'` → return silencieux aux imports suivants. (`06d432c`) |
 | 2026-06-04 | fix(reconcil): guard EUR seul ne bloque plus saisie MAD quand `mad_reel=NULL` (HMPJ5EQJZA-AIRC : EUR=86€=86€ mais MAD jamais saisi car guard tirait return avant comparaison MAD). Fix : `|EUR| < 0.01 && mad_reel != null` (`1af5b2d`) |
 | 2026-06-04 | fix(reconcil): pre-pass CSV — `payoutByCodeResol` accumulait plusieurs payouts sur la même référence. Remplacé par `_resolBatchList[code]=[{batchId,madAmt}]` + consommation séquentielle `_resolBatchIdx`. HMPJ5EQJZA : 920.22 (23/05) + 503.72 (20/05) = 1 423.94 faux → chaque résolution reçoit maintenant son propre MAD. (`65541b9`) |
-| 2026-06-04 | **STABLE** : Réconciliation MAD réel AIRCOVER/AJUSTEMENT — pré-pass, Check D, KPI — commit `65541b9` ← **HEAD** |
+| 2026-06-04 | **STABLE** : Réconciliation MAD réel AIRCOVER/AJUSTEMENT — pré-pass, Check D, KPI — commit `65541b9` |
+| 2026-06-05 | fix(modifier-resa): correction complète en 4 commits (`1f221d4`→`905f6f3`). `buildForm` : `brutMad = brut×taux_reel` (jamais `mad_reel`), `netMad = mad_reel` si disponible. `saveResa` : préserve `brut/net/commission` EUR et `mad_reel/taux_reel` quand `taux_reel` existe — aucune dérive possible. DB fix HMNMXRCNYQ (Ikram Badri) : `brut/net/commission` restaurés depuis `mad_reel/taux_reel` après altération par test. |
+| 2026-06-05 | **STABLE** : Modifier réservation — affichage MAD réel + Enregistrer idempotent — commit `905f6f3` ← **HEAD** |
 
 ---
 
