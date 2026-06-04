@@ -10263,10 +10263,9 @@ function runReconciliation(parsed) {
       // _payoutMAD = total du lot → non comparable à la valeur individuelle déjà validée.
       if (crmAc.mad_reel != null
           && crmAc.mad_reel_source === 'CSV Airbnb complexe / validation manuelle') return;
-      // Guard : si EUR CRM déjà parfaitement aligné avec CSV (|écart| < 0.01€), retour silencieux.
-      // Cas : fixDMadAnomaly a aligné net=csv.net → _payoutMAD du lot peut être non fiable
-      // (représente parfois le lot entier, pas la transaction seule). Pas besoin de vérifier le MAD.
-      if (Math.abs((crmAc.net||0) - res.net) < 0.01) return;
+      // Guard : EUR aligné ET mad_reel déjà renseigné → transaction complète, return silencieux.
+      // Si mad_reel = NULL, continuer même si EUR coïncide : le MAD reste à saisir.
+      if (Math.abs((crmAc.net||0) - res.net) < 0.01 && crmAc.mad_reel != null) return;
       // Priorité mad_reel si déjà enregistré — sinon fallback net × taux
       var crmMAD    = (crmAc.mad_reel != null)
                       ? crmAc.mad_reel
