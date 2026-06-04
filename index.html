@@ -9375,6 +9375,9 @@ function renderAnomaliesList() {
           : '<div style="font-size:11px;color:var(--re);margin-top:4px">Aucune correspondance AIRCOVER/AJUSTEMENT dans le CRM</div>') +
         (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
         '<div class="reconcil-acts">' +
+          (a.status!=='ignored' && a._dMadEcart && a._payoutMADReal && ROLE==='admin'
+            ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--or)" onclick="fixDMadAnomaly('+i+')" title="Corriger EUR en base pour que MAD = payout Airbnb réel">⚡ Corriger MAD</button>'
+            : '') +
           (a.status!=='ignored' && a._dEurMisaligned && ROLE==='admin'
             ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="alignDAnomaly('+i+')" title="Aligner brut/net/commission sur le montant EUR du CSV Airbnb">⚡ Aligner EUR</button>'
             : '') +
@@ -10226,15 +10229,18 @@ function runReconciliation(parsed) {
       return _dMatch(r.ref.toUpperCase(), res.code.toUpperCase());
     }) : null;
 
-    if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
-
-    // D-MAD : si payout MAD réel connu, comparer CRM (converti en MAD) ↔ payout MAD réel
-    // CRM stocke net en EUR → crmMAD = crmAc.net × taux fallback
-    if (crmAc && res._payoutMAD) {
+    // D-MAD PRIORITAIRE — AIRCOVER / AJUSTEMENT uniquement, quand _payoutMAD est connu.
+    // Pour ces types, l'EUR CRM est une approximation (MAD / taux_saisie) :
+    // l'EUR peut coïncider accidentellement avec le CSV même quand le MAD est faux
+    // (ex : CRM 1 645 MAD / 10.50 = 156.67 EUR ≈ CSV 156.63 EUR, mais MAD réel = 1 693.08).
+    // → La vérité prioritaire est le MAD versé. Le guard EUR classique < 1 ne s'applique pas.
+    if (crmAc && res._payoutMAD
+        && (crmAc.type_norm === 'AIRCOVER' || crmAc.type_norm === 'AJUSTEMENT')) {
       var crmMAD    = Math.round((crmAc.net||0) * taux * 100) / 100;
       var crmVsPayD = Math.abs(crmMAD - res._payoutMAD);
+      var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
       if (crmVsPayD <= 1) {
-        var dRealRate = res.net > 0.01 ? Math.round(res._payoutMAD / res.net * 100) / 100 : null;
+        // MAD conforme → info
         pushResult({
           csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
                  checkin: res.date, checkout: '', nuits: 0,
@@ -10246,9 +10252,34 @@ function runReconciliation(parsed) {
           _deviseAmbigue: false,
           isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
         });
-        return;
+      } else {
+        // MAD non conforme → anomalie sur le MAD, pas l'EUR (qui peut coïncider faussement)
+        var madEcart = Math.round((crmMAD - res._payoutMAD) * 100) / 100;
+        var dLvl     = Math.abs(madEcart) >= 5 ? 'anomaly' : 'minor';
+        var dTL      = res.isAircover ? 'Versement AirCover' : 'Versement de résolution';
+        pushResult({
+          csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
+                 checkin: res.date, checkout: '', nuits: 0,
+                 net: res.net, brut: res.brut, commission: 0, devise: res.devise, netBase: res.net },
+          crm: crmAc, ecart: Math.round((res.net - (crmAc.net||0))*100)/100,
+          cause: dTL + ' — MAD versé différent : CRM ' + crmMAD.toFixed(2) + ' MAD'
+               + ' vs Airbnb ' + res._payoutMAD.toFixed(2) + ' MAD'
+               + ' (Δ ' + (madEcart >= 0 ? '+' : '') + madEcart.toFixed(2) + ' MAD'
+               + ' ≈ ' + (madEcart >= 0 ? '+' : '') + (madEcart / taux).toFixed(2) + ' EUR)'
+               + (dRealRate ? ' · taux réel ' + dRealRate.toFixed(2) + ' MAD/EUR' : '')
+               + ' → ⚡ Corriger MAD ou ✏️ Modifier',
+          level: dLvl, checkId: 'D', csvType: 'resolution', status: 'pending',
+          _deviseAmbigue: false, _dMadEcart: madEcart, _payoutMADReal: res._payoutMAD,
+          isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
+          _section: 'anomaly',
+        });
       }
+      return; // MAD check conclusif pour AIRCOVER/AJUSTEMENT + _payoutMAD — ne pas continuer
     }
+
+    // Guard EUR classique — s'applique uniquement quand _payoutMAD est absent
+    // (AIRCOVER/AJUSTEMENT sans info MAD, ou tout autre type résolution sans correspondance)
+    if (crmAc && Math.abs(res.net - (crmAc.net||0)) < 1) return; // OK (même devise)
 
     var ecartD    = crmAc ? Math.round((res.net - (crmAc.net||0))*100)/100 : res.net;
     var absEcartD = Math.abs(ecartD);
@@ -10502,6 +10533,49 @@ async function alignDAnomaly(i) {
     updateReconcilBadge();
     renderAnomaliesList();
     showToast('✅ EUR aligné — ' + typeLabel + ' ' + (a.csv.code || ''));
+  } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
+}
+
+// Correction MAD pour AIRCOVER / AJUSTEMENT (Check D, _dMadEcart détecté)
+// Recalcule EUR = _payoutMADReal / taux_fallback → le CRM affichera le bon MAD.
+// Champs patchés : brut, net, commission=0, com_pct=0, override_manual=true.
+// Ne touche pas au taux_reel, mad_reel (non éligibles pour ces types).
+async function fixDMadAnomaly(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (!a || !a.crm || !a._payoutMADReal) return;
+  var tauxF = parseFloat((document.getElementById('reconcil-taux')||{}).value) || 10.5;
+  var correctEur = Math.round(a._payoutMADReal / tauxF * 100) / 100;
+  var typeLabel  = a.isAircover ? 'AirCover' : 'Résolution';
+  var crmMadCurr = Math.round((a.crm.net||0) * tauxF * 100) / 100;
+  if (!confirm(
+    '⚡ Corriger le MAD en base — ' + typeLabel + '\n\n' +
+    'Dossier : ' + (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '') + '\n\n' +
+    'CRM actuel : ' + (a.crm.net||0).toFixed(2) + ' EUR → ≈ ' + crmMadCurr.toFixed(0) + ' MAD\n' +
+    'Airbnb réel : ' + a._payoutMADReal.toFixed(2) + ' MAD\n\n' +
+    'Correction : EUR sera mis à ' + correctEur.toFixed(2) + ' EUR\n' +
+    '  = ' + a._payoutMADReal.toFixed(2) + ' MAD ÷ ' + tauxF.toFixed(2) + ' (taux fallback)\n' +
+    'commission = 0, com_pct = 0, override_manual = true\n\n' +
+    'Confirmer ?'
+  )) return;
+  var dateTag = new Date().toISOString().slice(0, 10);
+  var noteTag = '[Réconcil ' + dateTag + ' ' + typeLabel + ' CSV=' + (a.csv.code||'?')
+              + ' MAD corrigé ' + a._payoutMADReal.toFixed(2) + ' MAD → EUR '
+              + correctEur.toFixed(2) + ']';
+  var patch = {
+    brut: correctEur, net: correctEur, commission: 0, com_pct: 0, override_manual: true,
+    notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+  };
+  try {
+    var res2 = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+    if (res2.error) throw res2.error;
+    Object.assign(a.crm, patch);
+    var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+    if (dbRow) Object.assign(dbRow, patch);
+    a.status = 'validated';
+    a._dMadEcart = null;
+    updateReconcilBadge();
+    renderAnomaliesList();
+    showToast('✅ MAD corrigé — ' + typeLabel + ' ' + (a.csv.code || ''));
   } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
 }
 
