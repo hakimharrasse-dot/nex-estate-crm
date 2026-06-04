@@ -2468,9 +2468,10 @@ function fmtE(v) { return Math.round((v||0)*EUR_MAD).toLocaleString('fr-MA')+' M
 function e2m(v)  { return Math.round((v||0)*EUR_MAD); }
 function uid()   { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 // ── Helpers MAD réel — conversion EUR→MAD avec taux_reel quand disponible ──
-// Éligibles : RESERVATION, ANNULATION_PAYEE, RELOCATION (sources Airbnb principalement).
-// AIRCOVER, AJUSTEMENT, RESOLUTION : toujours fallback EUR×EUR_MAD.
-var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION'];
+// Éligibles : RESERVATION, ANNULATION_PAYEE, RELOCATION, AIRCOVER, AJUSTEMENT.
+// AIRCOVER/AJUSTEMENT utilisent mad_reel quand renseigné (fiable CSV ou validé manuellement).
+// RESOLUTION : toujours fallback EUR×EUR_MAD (jamais de mad_reel en base pour ce type).
+var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT'];
 function rNetMAD(r) {
   if (r.mad_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return r.mad_reel;
   return (r.net || 0) * EUR_MAD;
@@ -7331,6 +7332,21 @@ function madReelIgnore(crmId) {
   else renderMadRealSection();
 }
 
+// Retourne true si le _payoutMAD d'une résolution CSV est fiable pour cette transaction seule.
+// Critères : lot mono-transaction positive, sans déduction, taux dans la plage économique [3,30].
+// Si false : lot mixte → le _payoutMAD représente plusieurs transactions → saisie manuelle requise.
+function isPayoutMadFiable(res) {
+  if (!res || !res._payoutMAD || res._payoutMAD < 0.01) return false;
+  if (!res.net || res.net < 0.01) return false;
+  var rate = res._payoutMAD / res.net;
+  if (rate < 3 || rate > 30) return false;
+  var posLines = res._batchPosLines || [];
+  var negLines = res._batchNegLines || [];
+  if (negLines.length > 0) return false;   // déductions dans le lot → non fiable
+  if (posLines.length !== 1) return false; // 0 (pas de contexte lot) ou >1 (lot mixte) → non fiable
+  return true;
+}
+
 function buildMadRealRows(parsed, taux) {
   taux = taux || 10.5;
   var rows = [];
@@ -9376,7 +9392,14 @@ function renderAnomaliesList() {
         (a.status==='ignored' ? '<div style="font-size:11px;color:var(--td);margin-top:3px"><em>— Ignorée</em></div>' : '') +
         '<div class="reconcil-acts">' +
           (a.status!=='ignored' && a._dMadEcart && a._payoutMADReal && ROLE==='admin'
-            ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--or)" onclick="fixDMadAnomaly('+i+')" title="Corriger EUR en base pour que MAD = payout Airbnb réel">⚡ Corriger MAD</button>'
+            ? (a._madFiable
+                ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--or)" onclick="fixDMadAnomaly('+i+')" title="Aligner EUR + MAD réel · '+(a._payoutMADReal||0).toFixed(2)+' DH · taux '+((a.csv.net||0)>0.01?((a._payoutMADReal||0)/(a.csv.net||1)).toFixed(4):'?')+'">⚡ Aligner EUR + MAD réel</button>'
+                : '<span style="display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap">'
+                  + '<label style="font-size:11px;color:var(--tm)">MAD réel :</label>'
+                  + '<input type="number" id="mad-manual-input-'+i+'" value="'+(a._madSuggestion != null ? a._madSuggestion.toFixed(2) : '')+'" step="0.01" min="0" placeholder="ex: 920.22" style="width:90px;font-size:12px;padding:3px 6px;border:1px solid var(--br);border-radius:6px;background:var(--s2);font-family:\'DM Mono\',monospace">'
+                  + '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--or)" onclick="fixDMadManual('+i+')" title="Valider le MAD réel saisi (vérifier sur votre relevé Airbnb)">⚡ Saisir MAD réel</button>'
+                  + '<span style="font-size:10px;color:var(--td)">Lot mixte — vérifier relevé Airbnb</span>'
+                  + '</span>')
             : '') +
           (a.status!=='ignored' && a._dEurMisaligned && ROLE==='admin'
             ? '<button class="ba ba-ghost" style="font-size:12px;padding:6px 12px;color:var(--bl)" onclick="alignDAnomaly('+i+')" title="Aligner brut/net/commission sur le montant EUR du CSV Airbnb">⚡ Aligner EUR</button>'
@@ -10236,6 +10259,10 @@ function runReconciliation(parsed) {
     // → La vérité prioritaire est le MAD versé. Le guard EUR classique < 1 ne s'applique pas.
     if (crmAc && res._payoutMAD
         && (crmAc.type_norm === 'AIRCOVER' || crmAc.type_norm === 'AJUSTEMENT')) {
+      // Guard anti re-flag : mad_reel validé manuellement depuis un lot mixte.
+      // _payoutMAD = total du lot → non comparable à la valeur individuelle déjà validée.
+      if (crmAc.mad_reel != null
+          && crmAc.mad_reel_source === 'CSV Airbnb complexe / validation manuelle') return;
       // Guard : si EUR CRM déjà parfaitement aligné avec CSV (|écart| < 0.01€), retour silencieux.
       // Cas : fixDMadAnomaly a aligné net=csv.net → _payoutMAD du lot peut être non fiable
       // (représente parfois le lot entier, pas la transaction seule). Pas besoin de vérifier le MAD.
@@ -10261,9 +10288,14 @@ function runReconciliation(parsed) {
         });
       } else {
         // MAD non conforme → anomalie sur le MAD, pas l'EUR (qui peut coïncider faussement)
-        var madEcart = Math.round((crmMAD - res._payoutMAD) * 100) / 100;
-        var dLvl     = Math.abs(madEcart) >= 5 ? 'anomaly' : 'minor';
-        var dTL      = res.isAircover ? 'Versement AirCover' : 'Versement de résolution';
+        var madEcart   = Math.round((crmMAD - res._payoutMAD) * 100) / 100;
+        var dLvl       = Math.abs(madEcart) >= 5 ? 'anomaly' : 'minor';
+        var dTL        = res.isAircover ? 'Versement AirCover' : 'Versement de résolution';
+        var dFiable    = isPayoutMadFiable(res);
+        // Suggestion MAD pour lot mixte : taux_lot × EUR CSV (approximatif, indicatif seulement)
+        var dSuggestion = (!dFiable && (res._batchNetEUR || 0) > 0.01)
+                          ? Math.round(res._batchTotalMAD / res._batchNetEUR * res.net * 100) / 100
+                          : null;
         pushResult({
           csv: { code: res.code, voyageur: res.voyageur, logement: res.logement,
                  checkin: res.date, checkout: '', nuits: 0,
@@ -10274,9 +10306,10 @@ function runReconciliation(parsed) {
                + ' (Δ ' + (madEcart >= 0 ? '+' : '') + madEcart.toFixed(2) + ' MAD'
                + ' ≈ ' + (madEcart >= 0 ? '+' : '') + (madEcart / taux).toFixed(2) + ' EUR)'
                + (dRealRate ? ' · taux réel ' + dRealRate.toFixed(2) + ' MAD/EUR' : '')
-               + ' → ⚡ Corriger MAD ou ✏️ Modifier',
+               + (dFiable ? ' → ⚡ Aligner EUR + MAD réel' : ' → ⚡ Saisir MAD réel ou ✏️ Modifier'),
           level: dLvl, checkId: 'D', csvType: 'resolution', status: 'pending',
           _deviseAmbigue: false, _dMadEcart: madEcart, _payoutMADReal: res._payoutMAD,
+          _madFiable: dFiable, _madSuggestion: dSuggestion, _batchTotalMAD: res._batchTotalMAD || 0,
           isAircover: res.isAircover, dossier: res.dossier, subtype: res.subtype,
           _section: 'anomaly',
         });
@@ -10543,45 +10576,53 @@ async function alignDAnomaly(i) {
   } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
 }
 
-// Synchronisation EUR + MAD pour AIRCOVER / AJUSTEMENT (Check D, _dMadEcart détecté)
-// Règle : quand le CSV Airbnb fournit les deux (EUR et MAD versé), les deux sont synchronisés :
-//   net/brut = EUR du CSV Airbnb   (source de vérité EUR — jamais recalculé depuis MAD/taux)
-//   mad_reel = MAD versé Airbnb    (enregistré pour vérification future sans affecter les KPI)
-//   taux_reel = MAD / EUR          (taux réel du virement)
-//   override_manual = true
-// AIRCOVER/AJUSTEMENT ne sont PAS dans MAD_REEL_ELIGIBLE → mad_reel n'affecte PAS les KPI.
-// Check D utilisera mad_reel (si présent) pour la comparaison MAD future → plus de fausse anomalie.
+// Aligner EUR + MAD réel pour AIRCOVER/AJUSTEMENT — cas LOT FIABLE (_madFiable=true).
+// Le _payoutMAD est le MAD exact de cette transaction (lot mono-transaction, pas de déduction).
+// Patch : brut/net=EUR CSV, mad_reel=_payoutMAD, taux_reel=MAD/EUR, mad_reel_source='CSV Airbnb payout'.
+// AIRCOVER/AJUSTEMENT sont désormais dans MAD_REEL_ELIGIBLE → mad_reel utilisé par rNetMAD().
 async function fixDMadAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
   if (!a || !a.crm || !a._payoutMADReal) return;
+  if (!a._madFiable) { alert('Ce cas nécessite une saisie manuelle du MAD (lot mixte).'); return; }
   if (a.csv.devise !== 'EUR') { alert('Devise CSV non EUR — alignement impossible.'); return; }
-  var csvNet    = Math.round((a.csv.net || 0) * 100) / 100;
+  var csvNet   = Math.round((a.csv.net || 0) * 100) / 100;
+  var madReel  = Math.round((a._payoutMADReal) * 100) / 100;
   if (csvNet <= 0) { alert('Montant CSV invalide.'); return; }
+  var tauxReel = Math.round(madReel / csvNet * 10000) / 10000;
   var typeLabel = a.isAircover ? 'AirCover' : 'Résolution';
   var tauxF     = parseFloat((document.getElementById('reconcil-taux')||{}).value) || 10.5;
-  var crmMadCurr = Math.round((a.crm.net||0) * tauxF * 100) / 100;
+  var crmMadCurr = a.crm.mad_reel != null
+                   ? a.crm.mad_reel
+                   : Math.round((a.crm.net||0) * tauxF * 100) / 100;
 
   if (!confirm(
-    '⚡ Aligner EUR depuis CSV Airbnb — ' + typeLabel + '\n\n' +
+    '⚡ Aligner EUR + MAD réel — ' + typeLabel + '\n\n' +
     'Dossier : ' + (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '') + '\n\n' +
-    'CRM actuel : net = ' + (a.crm.net||0).toFixed(2) + ' EUR (≈ ' + crmMadCurr.toFixed(0) + ' MAD estimé)\n' +
-    'CSV Airbnb : net = ' + csvNet.toFixed(2) + ' EUR\n\n' +
+    'CRM actuel : net = ' + (a.crm.net||0).toFixed(2) + ' EUR · MAD = ' + crmMadCurr.toFixed(2) + ' DH\n' +
+    'CSV Airbnb : net = ' + csvNet.toFixed(2) + ' EUR · MAD réel = ' + madReel.toFixed(2) + ' DH\n\n' +
     'Correction :\n' +
-    '  brut = net = ' + csvNet.toFixed(2) + ' EUR  (EUR du CSV Airbnb)\n' +
-    '  commission = 0, com_pct = 0, override_manual = true\n\n' +
-    'mad_reel et taux_reel ne sont pas modifiés (non éligibles pour AIRCOVER/AJUSTEMENT).\n\n' +
+    '  brut = net = ' + csvNet.toFixed(2) + ' EUR\n' +
+    '  mad_reel = ' + madReel.toFixed(2) + ' DH\n' +
+    '  taux_reel = ' + tauxReel.toFixed(4) + '\n' +
+    '  mad_reel_source = "CSV Airbnb payout"\n' +
+    '  override_manual = true\n\n' +
     'Confirmer ?'
   )) return;
 
-  var dateTag = new Date().toISOString().slice(0, 10);
+  var now     = new Date().toISOString();
+  var dateTag = now.slice(0, 10);
   var noteTag = '[Réconcil ' + dateTag + ' ' + typeLabel + ' CSV=' + (a.csv.code||'?')
-              + ' EUR aligné ' + csvNet.toFixed(2) + '€]';
+              + ' EUR=' + csvNet.toFixed(2) + '€ MAD=' + madReel.toFixed(2) + ' DH]';
   var patch = {
-    brut:            csvNet,
-    net:             csvNet,
-    commission:      0,
-    com_pct:         0,
-    override_manual: true,
+    brut:               csvNet,
+    net:                csvNet,
+    commission:         0,
+    com_pct:            0,
+    mad_reel:           madReel,
+    taux_reel:          tauxReel,
+    mad_reel_source:    'CSV Airbnb payout',
+    mad_reel_updated_at: now,
+    override_manual:    true,
     notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
   };
   try {
@@ -10594,7 +10635,78 @@ async function fixDMadAnomaly(i) {
     a._dMadEcart = null;
     updateReconcilBadge();
     renderAnomaliesList();
-    showToast('✅ EUR aligné — ' + typeLabel + ' ' + (a.csv.code || ''));
+    showToast('✅ EUR + MAD réel alignés — ' + typeLabel + ' ' + (a.csv.code || ''));
+  } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
+}
+
+// Aligner EUR + MAD réel pour AIRCOVER/AJUSTEMENT — cas LOT MIXTE (_madFiable=false).
+// Le _payoutMAD est le total du lot (plusieurs transactions) → non fiable individuellement.
+// L'utilisateur saisit le MAD exact depuis son relevé Airbnb. La valeur devient définitive.
+// Guard anti re-flag : mad_reel_source='CSV Airbnb complexe / validation manuelle' → le Check D
+// ne recompare plus cette ligne contre _payoutMAD du lot aux imports suivants.
+async function fixDMadManual(i) {
+  var a = RECONCIL_ANOMALIES[i];
+  if (!a || !a.crm) return;
+  var input = document.getElementById('mad-manual-input-' + i);
+  if (!input) return;
+  var val = parseFloat(input.value);
+  if (isNaN(val) || val <= 0) { alert('Montant MAD invalide — saisir une valeur positive.'); return; }
+  var csvNet = Math.round((a.csv.net || 0) * 100) / 100;
+  if (csvNet <= 0) { alert('Montant EUR CSV invalide.'); return; }
+  var tauxImpl = Math.round(val / csvNet * 10000) / 10000;
+  var typeLabel = a.isAircover ? 'AirCover' : 'Résolution';
+
+  // Guard taux hors plage économique
+  if (tauxImpl < 3 || tauxImpl > 30) {
+    if (!confirm('⚠️ Taux implicite ' + tauxImpl.toFixed(4) + ' MAD/EUR hors plage [3–30].\nVérifier la valeur saisie.\n\nContinuer quand même ?')) return;
+  }
+  // Guard contamination : valeur ≈ total du lot → probablement une erreur de saisie
+  if ((a._batchTotalMAD || 0) > 0.01 && Math.abs(val - a._batchTotalMAD) < 1) {
+    if (!confirm('⚠️ Valeur saisie ≈ total du lot (' + (a._batchTotalMAD||0).toFixed(2) + ' MAD).\nCela semble être le total du virement, pas le montant de cette transaction.\n\nVérifier sur votre relevé Airbnb.\n\nContinuer quand même ?')) return;
+  }
+
+  var now     = new Date().toISOString();
+  var dateTag = now.slice(0, 10);
+  var noteTag = '[Réconcil ' + dateTag + ' ' + typeLabel + ' CSV=' + (a.csv.code||'?')
+              + ' EUR=' + csvNet.toFixed(2) + '€ MAD=' + val.toFixed(2) + ' DH manuel]';
+
+  if (!confirm(
+    '⚡ Aligner EUR + MAD réel (saisie manuelle) — ' + typeLabel + '\n\n' +
+    'Dossier : ' + (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '') + '\n\n' +
+    'Correction :\n' +
+    '  brut = net = ' + csvNet.toFixed(2) + ' EUR\n' +
+    '  mad_reel = ' + val.toFixed(2) + ' DH\n' +
+    '  taux_reel = ' + tauxImpl.toFixed(4) + '\n' +
+    '  mad_reel_source = "CSV Airbnb complexe / validation manuelle"\n' +
+    '  override_manual = true\n\n' +
+    'Cette valeur devient la vérité définitive pour cette transaction.\n' +
+    'Le _payoutMAD du lot ne recréera plus d\'anomalie aux imports suivants.\n\n' +
+    'Confirmer ?'
+  )) return;
+
+  var patch = {
+    brut:               csvNet,
+    net:                csvNet,
+    commission:         0,
+    com_pct:            0,
+    mad_reel:           Math.round(val * 100) / 100,
+    taux_reel:          tauxImpl,
+    mad_reel_source:    'CSV Airbnb complexe / validation manuelle',
+    mad_reel_updated_at: now,
+    override_manual:    true,
+    notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
+  };
+  try {
+    var res2 = await SUPA.from('resa').update(patch).eq('id', a.crm.id);
+    if (res2.error) throw res2.error;
+    Object.assign(a.crm, patch);
+    var dbRow = DB.resa.find(function(r) { return r.id === a.crm.id; });
+    if (dbRow) Object.assign(dbRow, patch);
+    a.status = 'validated';
+    a._dMadEcart = null;
+    updateReconcilBadge();
+    renderAnomaliesList();
+    showToast('✅ EUR + MAD réel alignés — ' + typeLabel + ' ' + (a.csv.code || ''));
   } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
 }
 
