@@ -502,7 +502,8 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-02 | Fix(reconcil): B-MADAPPLIED étendu aux lignes `override_manual=true` qui ont aussi un mad_reel (cas Eva Jakob — mad_reel appliqué + EUR corrigé via alignement, arrondi résiduel détecté correctement) (`1550368`) |
 | 2026-06-02 | Fix(reconcil): infos techniques masquées par défaut dans Anomalies CSV — lignes purement informatives (type non financier, doublon technique…) n'encombrent pas la file principale (`c7a1f6b`) |
 | 2026-06-02 | Fix(reconcil): classification Anomalies CSV — niveaux affinés : arrondi ≤0.10€ → info, 0.10–1€ → minor, ≥1€ → anomaly/crit selon contexte (`042c3f1`) |
-| 2026-06-03 | **STABLE** : Réconciliation Airbnb — B-MADAPPLIED + classification infos techniques — commit `1550368` (HEAD) |
+| 2026-06-03 | **STABLE** : Réconciliation Airbnb — B-MADAPPLIED + classification infos techniques — commit `1550368` |
+| 2026-06-03 | fix(reconcil): Check D — matching AirCover/Résolution prioritaire par subtype CSV. Remplace `DB.resa.find()` non prioritaire par sélection en 2 passes (`_dPrefCands` / `_dFallCands`). Cas HMPJ5EQJZA corrigé : AirCover 86 EUR → `-AIRC` (AIRCOVER), pas `-Resol` (AJUSTEMENT). Anomalie "matching ambigu" si plusieurs candidats du même type. `airbnbBaseRef()` et `_dMatch()` inchangés — commit `342fe81` (HEAD) |
 | 2026-06-03 | ⚠️ Problème identifié (non corrigé) : `buildForm('resa')` affiche `rec.brut × EUR_MAD` (taux global) au lieu de `rec.brut × rec.taux_reel` → montants MAD faux dans le formulaire Modifier réservation pour les records avec taux_reel renseigné. Les données en base sont correctes. À corriger avant toute modification manuelle via le formulaire. |
 
 ---
