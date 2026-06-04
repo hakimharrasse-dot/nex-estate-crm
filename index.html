@@ -3721,7 +3721,7 @@ function renderResa() {
         '<div class="r-card-row3">'+
           '<span>📅 '+(r.checkin||'—')+'</span>'+
           '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
-          '<span class="r-card-net">'+(r.mad_reel!=null?Math.round(r.mad_reel).toLocaleString('fr-MA'):e2m(r.net||0).toLocaleString('fr-MA'))+' MAD'+(r.mad_reel!=null?' <span style="font-size:10px;color:var(--bl);font-weight:600;vertical-align:middle" title="'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · taux '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'">●</span>':'')+'</span>'+
+          '<span class="r-card-net">'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?Math.round(r.mad_reel).toLocaleString('fr-MA'):e2m(r.net||0).toLocaleString('fr-MA'))+' MAD'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?' <span style="font-size:10px;color:var(--bl);font-weight:600;vertical-align:middle" title="'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · taux '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'">●</span>':'')+'</span>'+
         '</div>'+
         '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
       '</div>';
@@ -3741,7 +3741,7 @@ function renderResa() {
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
         '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+(r.mad_reel!=null?Math.round(r.mad_reel).toLocaleString('fr-MA')+' MAD<br><span style="font-size:10px;color:var(--bl);font-weight:400">'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'</span>':e2m(r.net||0).toLocaleString('fr-MA')+' MAD')+'</td>'+
+        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?Math.round(r.mad_reel).toLocaleString('fr-MA')+' MAD<br><span style="font-size:10px;color:var(--bl);font-weight:400">'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'</span>':e2m(r.net||0).toLocaleString('fr-MA')+' MAD')+'</td>'+
         (function(){
           var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
           if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
@@ -10236,7 +10236,11 @@ function runReconciliation(parsed) {
     // → La vérité prioritaire est le MAD versé. Le guard EUR classique < 1 ne s'applique pas.
     if (crmAc && res._payoutMAD
         && (crmAc.type_norm === 'AIRCOVER' || crmAc.type_norm === 'AJUSTEMENT')) {
-      // Priorité mad_reel si déjà enregistré (après fixDMadAnomaly) — sinon fallback net × taux
+      // Guard : si EUR CRM déjà parfaitement aligné avec CSV (|écart| < 0.01€), retour silencieux.
+      // Cas : fixDMadAnomaly a aligné net=csv.net → _payoutMAD du lot peut être non fiable
+      // (représente parfois le lot entier, pas la transaction seule). Pas besoin de vérifier le MAD.
+      if (Math.abs((crmAc.net||0) - res.net) < 0.01) return;
+      // Priorité mad_reel si déjà enregistré — sinon fallback net × taux
       var crmMAD    = (crmAc.mad_reel != null)
                       ? crmAc.mad_reel
                       : Math.round((crmAc.net||0) * taux * 100) / 100;
@@ -10550,43 +10554,34 @@ async function alignDAnomaly(i) {
 async function fixDMadAnomaly(i) {
   var a = RECONCIL_ANOMALIES[i];
   if (!a || !a.crm || !a._payoutMADReal) return;
-  if (a.csv.devise !== 'EUR') { alert('Devise CSV non EUR — synchronisation impossible.'); return; }
-  var csvNet   = Math.round((a.csv.net || 0) * 100) / 100;
+  if (a.csv.devise !== 'EUR') { alert('Devise CSV non EUR — alignement impossible.'); return; }
+  var csvNet    = Math.round((a.csv.net || 0) * 100) / 100;
   if (csvNet <= 0) { alert('Montant CSV invalide.'); return; }
-  var tauxReel = Math.round(a._payoutMADReal / csvNet * 10000) / 10000; // 4 décimales
   var typeLabel = a.isAircover ? 'AirCover' : 'Résolution';
   var tauxF     = parseFloat((document.getElementById('reconcil-taux')||{}).value) || 10.5;
   var crmMadCurr = Math.round((a.crm.net||0) * tauxF * 100) / 100;
 
   if (!confirm(
-    '⚡ Synchroniser EUR + MAD depuis CSV Airbnb — ' + typeLabel + '\n\n' +
+    '⚡ Aligner EUR depuis CSV Airbnb — ' + typeLabel + '\n\n' +
     'Dossier : ' + (a.crm.ref || a.crm.id) + ' — ' + (a.crm.voyageur || '') + '\n\n' +
-    'CRM actuel : net = ' + (a.crm.net||0).toFixed(2) + ' EUR (≈ ' + crmMadCurr.toFixed(0) + ' MAD)\n' +
-    'CSV Airbnb : net = ' + csvNet.toFixed(2) + ' EUR · MAD versé = ' + a._payoutMADReal.toFixed(2) + ' MAD\n\n' +
+    'CRM actuel : net = ' + (a.crm.net||0).toFixed(2) + ' EUR (≈ ' + crmMadCurr.toFixed(0) + ' MAD estimé)\n' +
+    'CSV Airbnb : net = ' + csvNet.toFixed(2) + ' EUR\n\n' +
     'Correction :\n' +
-    '  brut = net = ' + csvNet.toFixed(2) + ' EUR  (EUR CSV, source de vérité)\n' +
-    '  mad_reel = ' + a._payoutMADReal.toFixed(2) + ' MAD  (MAD Airbnb réel)\n' +
-    '  taux_reel = ' + tauxReel.toFixed(4) + '  (' + a._payoutMADReal.toFixed(2) + ' ÷ ' + csvNet.toFixed(2) + ')\n' +
-    '  commission = 0, override_manual = true\n\n' +
-    'Les KPI restent inchangés (AIRCOVER/AJUSTEMENT exclus de MAD_REEL_ELIGIBLE).\n\n' +
+    '  brut = net = ' + csvNet.toFixed(2) + ' EUR  (EUR du CSV Airbnb)\n' +
+    '  commission = 0, com_pct = 0, override_manual = true\n\n' +
+    'mad_reel et taux_reel ne sont pas modifiés (non éligibles pour AIRCOVER/AJUSTEMENT).\n\n' +
     'Confirmer ?'
   )) return;
 
-  var now     = new Date().toISOString();
-  var dateTag = now.slice(0, 10);
+  var dateTag = new Date().toISOString().slice(0, 10);
   var noteTag = '[Réconcil ' + dateTag + ' ' + typeLabel + ' CSV=' + (a.csv.code||'?')
-              + ' EUR=' + csvNet.toFixed(2) + '€ MAD=' + a._payoutMADReal.toFixed(2)
-              + ' taux=' + tauxReel.toFixed(4) + ']';
+              + ' EUR aligné ' + csvNet.toFixed(2) + '€]';
   var patch = {
-    brut:               csvNet,
-    net:                csvNet,
-    commission:         0,
-    com_pct:            0,
-    mad_reel:           a._payoutMADReal,
-    taux_reel:          tauxReel,
-    mad_reel_source:    'CSV Airbnb AirCover/Résolution',
-    mad_reel_updated_at: now,
-    override_manual:    true,
+    brut:            csvNet,
+    net:             csvNet,
+    commission:      0,
+    com_pct:         0,
+    override_manual: true,
     notes: ((a.crm.notes || '') + ' | ' + noteTag).replace(/^\s*\|\s*/, ''),
   };
   try {
@@ -10599,7 +10594,7 @@ async function fixDMadAnomaly(i) {
     a._dMadEcart = null;
     updateReconcilBadge();
     renderAnomaliesList();
-    showToast('✅ EUR + MAD synchronisés — ' + typeLabel + ' ' + (a.csv.code || ''));
+    showToast('✅ EUR aligné — ' + typeLabel + ' ' + (a.csv.code || ''));
   } catch(e) { alert('Erreur Supabase : ' + (e.message || e)); }
 }
 
