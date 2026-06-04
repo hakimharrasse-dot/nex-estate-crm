@@ -5740,9 +5740,16 @@ async function saveResa() {
     ? (gv('fi-dp') || null)
     : calcDatePaiement(src, typeNorm, ci, co, dc);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
-  var brutEur = brutMad / EUR_MAD;
+  // Récupérer l'enregistrement existant pour préserver brut/net EUR quand taux_reel/mad_reel existent
+  var _exRec = M_ID ? DB.resa.find(function(x){return x.id===M_ID;}) : null;
+  var _hasTauxReel = _exRec && _exRec.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
+  var _hasMadReel  = _exRec && _exRec.mad_reel  != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
+  // brutEur : si taux_reel connu → diviser par taux_reel (pas EUR_MAD) pour rester cohérent
+  // sinon fallback division EUR_MAD (comportement historique)
+  var brutEur = _hasTauxReel ? (brutMad / _exRec.taux_reel) : (brutMad / EUR_MAD);
   var comEur = brutEur * comPct;
-  var netEur = brutEur - comEur;
+  // netEur : si mad_reel connu → conserver rec.net en base (mad_reel est le NET réel, pas recalculer)
+  var netEur = _hasMadReel ? (_exRec.net||0) : (brutEur - comEur);
   var taxeMad = parseFloat(gv('fi-taxe'))||0;
   var taxeEur = taxeMad / EUR_MAD;
   var entry={
@@ -5754,10 +5761,10 @@ async function saveResa() {
     children:parseInt(gv('fi-children'))||0,
     checkin:ci, checkout:co, nuits_sejour:diffNuits(ci,co), nuits_fact:nf,
     nb_personnes:parseInt(gv('fi-np'))||1,
-    brut: Math.round(brutEur*100)/100,
+    brut: _hasTauxReel ? (_exRec.brut||Math.round(brutEur*100)/100) : Math.round(brutEur*100)/100,
     com_pct:comPct,
-    commission: Math.round(comEur*100)/100,
-    net: Math.round(netEur*100)/100,
+    commission: _hasMadReel ? (_exRec.commission||0) : Math.round(comEur*100)/100,
+    net: _hasMadReel ? (_exRec.net||0) : Math.round(netEur*100)/100,
     taxe_sejour: Math.round(taxeEur*100)/100,
     type_norm:gv('fi-type')||'RESERVATION',
     mode_paiement:gv('fi-mode')||'Virement plateforme',
