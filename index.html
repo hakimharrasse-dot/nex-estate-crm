@@ -9587,11 +9587,19 @@ function parseAirbnbCSV(text, taux) {
   // _pResolEUR → "Versement de résolution" EUR → payoutByCodeResol (map séparé)
   // Même taux de change par batch, but destinations distinctes pour éviter la
   // contamination entre la réservation principale et sa résolution (même code).
-  var payoutByCode = {}, payoutByCodeResol = {};
+  // _resolBatchList[code] = [{batchId, madAmt}] — liste ordonnée par code,
+  // consommée séquentiellement dans la passe principale via _resolBatchIdx[code].
+  // Remplace l'ancien payoutByCodeResol qui accumulait plusieurs payouts sur la même référence
+  // (bug : HMPJ5EQJZA avec 2 payouts distincts donnait 920.22 + 503.72 = 1423.94 faux).
+  var payoutByCode = {};
+  var _resolBatchList = {}, _resolBatchIdx = {};
   var _pMad = 0, _pEUR = [], _pResolEUR = [], _pMADtx = [], _pNegEUR = [];
   var _batchCount = 0, _codeToBatchId = {}, _batchTotalMADMap = {}, _batchNetEURMap = {}, _batchNegLinesMap = {}, _batchPosLinesMap = {};
   function _flushP() {
     var _j, _it;
+    // Pré-calcul du batchId : _batchCount sera incrémenté plus bas, on anticipe sa valeur
+    // pour que la liste des résolutions puisse référencer le bon batch dès maintenant.
+    var _nextBid = _pMad > 0 ? _batchCount + 1 : 0;
     if (_pMad > 0 && (_pEUR.length || _pResolEUR.length)) {
       var _sumE = 0;
       for (_j = 0; _j < _pEUR.length;     _j++) _sumE += _pEUR[_j].amt;
@@ -9609,9 +9617,13 @@ function parseAirbnbCSV(text, taux) {
             _it = _pEUR[_j];
             payoutByCode[_it.code] = Math.round(((payoutByCode[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
           }
+          // Stockage par batch (pas d'accumulation) : chaque résolution conserve son propre MAD.
+          // Ex HMPJ5EQJZA : batch A (920.22) puis batch B (503.72) → deux entrées distinctes,
+          // jamais additionnées. La passe principale consomme séquentiellement via _resolBatchIdx.
           for (_j = 0; _j < _pResolEUR.length; _j++) {
             _it = _pResolEUR[_j];
-            payoutByCodeResol[_it.code] = Math.round(((payoutByCodeResol[_it.code] || 0) + _it.amt * _rate) * 100) / 100;
+            if (!_resolBatchList[_it.code]) _resolBatchList[_it.code] = [];
+            _resolBatchList[_it.code].push({ batchId: _nextBid, madAmt: Math.round(_it.amt * _rate * 100) / 100 });
           }
         }
       }
@@ -9764,6 +9776,11 @@ function parseAirbnbCSV(text, taux) {
       var dlw = details.toLowerCase();
       var isAc = dlw.indexOf('clsf-') >= 0 || dlw.indexOf('aircover') >= 0;
       var mDos = details.match(/CLSF-\w+/i);
+      // Consommation séquentielle : chaque résolution prend l'entrée suivante de sa liste batch.
+      // Même ordre que la pré-passe (newest-first) → correspondance 1-pour-1 garantie.
+      var _rIdx   = _resolBatchIdx[code] || 0;
+      var _rBatch = (_resolBatchList[code] || [])[_rIdx] || null;
+      _resolBatchIdx[code] = _rIdx + 1;
       resolutions.push({
         code: code,
         date:     normDateCSV(c[iDebut]||''),
@@ -9776,12 +9793,12 @@ function parseAirbnbCSV(text, taux) {
         dossier:    mDos ? mDos[0].toUpperCase() : '',
         details:    details,
         subtype:    isAc ? 'aircover' : 'resolution',
-        _payoutMAD:     payoutByCodeResol[code] || null,
-        _batchId:       _codeToBatchId[code] || 0,
-        _batchTotalMAD: _codeToBatchId[code] ? (_batchTotalMADMap[_codeToBatchId[code]] || 0) : 0,
-        _batchNetEUR:   _codeToBatchId[code] ? (_batchNetEURMap[_codeToBatchId[code]] || 0) : 0,
-        _batchNegLines: _codeToBatchId[code] ? (_batchNegLinesMap[_codeToBatchId[code]] || null) : null,
-        _batchPosLines: _codeToBatchId[code] ? (_batchPosLinesMap[_codeToBatchId[code]] || null) : null,
+        _payoutMAD:     _rBatch ? _rBatch.madAmt : null,
+        _batchId:       _rBatch ? _rBatch.batchId : 0,
+        _batchTotalMAD: _rBatch ? (_batchTotalMADMap[_rBatch.batchId] || 0) : 0,
+        _batchNetEUR:   _rBatch ? (_batchNetEURMap[_rBatch.batchId]   || 0) : 0,
+        _batchNegLines: _rBatch ? (_batchNegLinesMap[_rBatch.batchId] || null) : null,
+        _batchPosLines: _rBatch ? (_batchPosLinesMap[_rBatch.batchId] || null) : null,
         _rawLines:  [{ type: type, montant: montant, devise: devise, mEur: Math.round(mEur*100)/100, date: normDateCSV(c[iDebut]||''), details: details }],
       });
     }
