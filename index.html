@@ -5580,9 +5580,22 @@ function buildForm(type, editId) {
         '<datalist id="fi-resa-ref-list">'+buildServResaOptions()+'</datalist>'+
         '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — sélectionnez ou collez le code</div>'+
       '</div>'+
-      '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
-      (function(){var _ps=v('pay_source','')||'';return '<div><label class="fl">Plateforme d\'encaissement</label><select class="fse" id="fi-pay-source"><option value=""'+(_ps===''?' selected':'')+'>Terrain / Direct</option><option value="Airbnb"'+(_ps==='Airbnb'?' selected':'')+'>Airbnb</option><option value="Booking"'+(_ps==='Booking'?' selected':'')+'>Booking</option><option value="Autre"'+(_ps==='Autre'?' selected':'')+'>Autre</option></select></div>';})()+
+      (function(){
+        var _ps=v('pay_source','')||'';
+        var _isPlat=_ps!=='';
+        return '<div><label class="fl">Plateforme d\'encaissement</label>'+
+          '<select class="fse" id="fi-pay-source" onchange="(function(ps){var fc=document.getElementById(\'ff-serv-col\');if(fc)fc.style.display=ps?\'none\':\'block\';})(this.value)">'+
+          '<option value=""'+(_ps===''?' selected':'')+'>Terrain / Direct</option>'+
+          '<option value="Airbnb"'+(_ps==='Airbnb'?' selected':'')+'>Airbnb</option>'+
+          '<option value="Booking"'+(_ps==='Booking'?' selected':'')+'>Booking</option>'+
+          '<option value="Autre"'+(_ps==='Autre'?' selected':'')+'>Autre</option>'+
+          '</select></div>'+
+          '<div class="ff" id="ff-serv-col" style="display:'+(_isPlat?'none':'block')+'">'+
+            '<label class="fl">Collecté par</label>'+
+            '<select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select>'+
+          '</div>';
+      })()+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
       '</div>';
@@ -5866,7 +5879,8 @@ async function saveServ() {
   if(!d||!m){alert('Date et montant requis');return;}
   var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
   var _paySrc  = gv('fi-pay-source') || null;
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
+  var _col     = _paySrc ? null : (gv('fi-col') || null);
+  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:_col,pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
   closeModal(); renderServ();
 }
 
