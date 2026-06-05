@@ -5806,15 +5806,18 @@ async function saveBiz() {
   var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName&&m.active;}):null;
   var paidById=paidByMember?paidByMember.id:null;
   var scope = gv('fi-scope') || 'property';
+  var _existBiz = M_ID ? DB.business.find(function(x){return x.id===M_ID;}) : null;
+  var _recurId  = _existBiz ? (_existBiz.recurring_charge_id || null) : null;
+  var _recurMo  = _existBiz ? (_existBiz.recurring_month    || null) : null;
   if(scope === 'global') {
-    await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st')});
+    await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st')});
+      await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
     }
   }
   closeModal(); renderBiz();
