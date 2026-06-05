@@ -3491,10 +3491,7 @@ function renderDash() {
     return {s:s,n:n};
   }).filter(function(x){return x.n>0;}).sort(function(a,b){return b.n-a.n;});
   var bestSrc=srcNet[0];
-  set('d-decisions',
-    (bestAp&&bestAp.n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(bestAp.ap)+'</div><div class="dec-sub">'+fmt(bestAp.n)+'</div></div>':'')+
-    (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div><div class="dec-sub">'+fmt(bestSrc.n)+'</div></div>':'')
-  );
+  // set('d-decisions') déplacé après caAirbnbReel pour enrichir Meilleure source si Airbnb+extras
 
   // ── Performance par appartement (enhanced) ──
   var perf_mk=P['d']==='mois'?MO['d'].toISOString().slice(0,7):null;
@@ -3524,6 +3521,12 @@ function renderDash() {
   // ── CA Airbnb réel — calculé ici avec revRes pour cohérence avec la carte source ──
   var _caResaAirbnb = sumNetMAD(revRes.filter(function(r){ return r.source === 'Airbnb'; }));
   var caAirbnbReel  = _caResaAirbnb + extrasAirbnbPayes;
+  // ── Décisions rapides — ici pour pouvoir enrichir Meilleure source avec extras Airbnb ──
+  set('d-decisions',
+    (bestAp&&bestAp.n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(bestAp.ap)+'</div><div class="dec-sub">'+fmt(bestAp.n)+'</div></div>':'')+
+    (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div>'+
+      '<div class="dec-sub">'+fmt(bestSrc.n)+(bestSrc.s==='Airbnb'&&extrasAirbnbPayes>0?'<br><span style="font-size:10px;opacity:.8">réel '+fmt(caAirbnbReel)+'</span>':'')+'</div></div>':'')
+  );
   var _kbAr = document.getElementById('kc-airbnb-reel');
   if (_kbAr) {
     _kbAr.style.display = extrasAirbnbPayes > 0 ? '' : 'none';
