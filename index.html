@@ -908,7 +908,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <div class="vw" id="vw-serv">
   <div class="vh">
     <div><div class="vt" style="color:var(--go)">Services Additionnels</div><div class="vsub">Navette, late check-out, clim, extras...</div></div>
-    <button class="ba bas" onclick="openModal('serv')">+ Ajouter</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="ba ba-ghost admin-only" onclick="openPlatFixModal()" title="Mettre à jour les plateformes manquantes sur les anciens services" style="font-size:12px">🏷 Plateformes</button>
+      <button class="ba bas" onclick="openModal('serv')">+ Ajouter</button>
+    </div>
   </div>
   <div class="kg">
     <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--go)" id="s-tot">0 MAD</div><div class="ks" id="s-cnt">0 services</div></div>
@@ -1495,6 +1498,21 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
     </div>
     <div id="audit-occ-body" style="font-size:13px;color:var(--tx)"></div>
+  </div>
+</div>
+
+<div id="plat-fix-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:905;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:800px;margin:0 auto;background:var(--s1);border-radius:14px;border:1px solid var(--br);padding:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:17px;font-weight:700;color:var(--tx)">🏷 Mise à jour des plateformes d'encaissement</div>
+      <button onclick="document.getElementById('plat-fix-ov').style.display='none'"
+        style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
+    </div>
+    <div id="plat-fix-body" style="font-size:13px;color:var(--tx)"></div>
+    <div id="plat-fix-actions" style="display:none;margin-top:16px;gap:10px;flex-wrap:wrap">
+      <button onclick="applyPlatFix()" style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer">✅ Appliquer la sélection</button>
+      <button onclick="document.getElementById('plat-fix-ov').style.display='none'" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:9px 20px;font-size:13px;cursor:pointer">Annuler</button>
+    </div>
   </div>
 </div>
 
@@ -3525,7 +3543,9 @@ function renderDash() {
   set('d-decisions',
     (bestAp&&bestAp.n>0?'<div class="dec-card"><div class="dec-icon">🏠</div><div class="dec-lbl">Meilleur appart</div><div class="dec-val">'+aptShort(bestAp.ap)+'</div><div class="dec-sub">'+fmt(bestAp.n)+'</div></div>':'')+
     (bestSrc?'<div class="dec-card"><div class="dec-icon">📊</div><div class="dec-lbl">Meilleure source</div><div class="dec-val">'+bestSrc.s+'</div>'+
-      '<div class="dec-sub">'+fmt(bestSrc.n)+(bestSrc.s==='Airbnb'&&extrasAirbnbPayes>0?'<br><span style="font-size:10px;opacity:.8">réel '+fmt(caAirbnbReel)+'</span>':'')+'</div></div>':'')
+      '<div class="dec-sub">'+fmt(bestSrc.n)+'</div>'+
+      (bestSrc.s==='Airbnb'&&extrasAirbnbPayes>0?'<div class="dec-sub" style="font-weight:600;color:var(--or);margin-top:2px">Réel : '+fmt(caAirbnbReel)+'</div>':'')+
+      '</div>':'')
   );
   var _kbAr = document.getElementById('kc-airbnb-reel');
   if (_kbAr) {
@@ -3538,11 +3558,15 @@ function renderDash() {
     var x=revRes.filter(function(r){return r.source===src;});
     if(!x.length) return '';
     var n=sumNetMAD(x);
-    var sub=x.length+' rés.';
     if(src==='Airbnb'&&extrasAirbnbPayes>0){
-      sub+='<br><span style="font-size:11px;color:var(--td)">+ '+fmt(extrasAirbnbPayes)+' extras → réel '+fmt(caAirbnbReel)+'</span>';
+      return '<div class="rc"><div>'+
+        '<div class="rn">'+src+'</div>'+
+        '<div class="rsb">'+x.length+' rés.</div>'+
+        '<div style="font-size:12px;font-weight:600;color:var(--or);margin-top:4px">Réel Airbnb : '+fmt(caAirbnbReel)+'</div>'+
+        '<div style="font-size:10px;color:var(--td);margin-top:1px">dont '+fmt(extrasAirbnbPayes)+' extras</div>'+
+        '</div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
     }
-    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+sub+'</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
+    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
 
   // ── Mode 2 : CA consommé par nuits — vue analytique alternative ──
@@ -5900,6 +5924,75 @@ async function saveServ() {
   var _pay     = (_paySrc==='Airbnb'||_paySrc==='Booking') ? null : (gv('fi-pay') || null);
   await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
   closeModal(); renderServ();
+}
+
+function openPlatFixModal() {
+  var ov   = document.getElementById('plat-fix-ov');
+  var body = document.getElementById('plat-fix-body');
+  var acts = document.getElementById('plat-fix-actions');
+  if (!ov || !body) return;
+  var candidates = DB.serv.filter(function(s){ return !s.pay_source && s.resa_ref; });
+  if (!candidates.length) {
+    body.innerHTML = '<div style="color:var(--td);padding:16px 0">✅ Aucun service avec réservation liée sans plateforme définie.</div>';
+    acts.style.display = 'none';
+    ov.style.display = '';
+    return;
+  }
+  var rows = candidates.map(function(s){
+    var base   = airbnbBaseRef(s.resa_ref);
+    var linked = DB.resa.find(function(r){ return r.ref && airbnbBaseRef(r.ref) === base; });
+    return {s:s, linked:linked, isAirbnb:!!(linked && linked.source==='Airbnb')};
+  }).sort(function(a,b){ return (b.isAirbnb?1:0)-(a.isAirbnb?1:0); });
+  var html = '<div style="margin-bottom:10px;color:var(--td);font-size:12px">'+candidates.length+
+    ' service(s) avec réservation liée sans plateforme. Cases Airbnb pré-cochées si la réservation liée est Airbnb.</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="border-bottom:2px solid var(--br)">'+
+    '<th style="padding:6px 4px;text-align:center;width:32px"><input type="checkbox" id="plat-fix-all" onchange="'+
+      'Array.from(document.querySelectorAll(\'.pfchk\')).forEach(function(c){c.checked=this.checked;}.bind(this))'+
+    '"></th>'+
+    '<th style="padding:6px 8px;text-align:left">Date</th>'+
+    '<th style="padding:6px 8px;text-align:left">Appart</th>'+
+    '<th style="padding:6px 8px;text-align:left">Service</th>'+
+    '<th style="padding:6px 8px;text-align:right">Montant</th>'+
+    '<th style="padding:6px 8px;text-align:left">resa_ref</th>'+
+    '<th style="padding:6px 8px;text-align:left">Source liée</th>'+
+    '</tr></thead><tbody>';
+  rows.forEach(function(row){
+    var s=row.s, l=row.linked;
+    var srcLbl = l ? l.source : '—';
+    var srcCol = row.isAirbnb ? 'var(--bl)' : (l ? 'var(--or)' : 'var(--td)');
+    html += '<tr style="border-bottom:1px solid var(--br)">'+
+      '<td style="padding:6px 4px;text-align:center"><input type="checkbox" class="pfchk" data-id="'+escHtml(s.id)+'"'+(row.isAirbnb?' checked':'')+'></td>'+
+      '<td style="padding:6px 8px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+escHtml(s.date||'')+'</td>'+
+      '<td style="padding:6px 8px">'+escHtml(aptShort(s.appart||''))+'</td>'+
+      '<td style="padding:6px 8px">'+escHtml(s.svc||'')+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-weight:500;color:var(--go)">'+Math.round(s.montant||0).toLocaleString('fr-MA')+' MAD</td>'+
+      '<td style="padding:6px 8px;font-family:\'DM Mono\',monospace;color:var(--td);font-size:11px">'+escHtml(s.resa_ref)+'</td>'+
+      '<td style="padding:6px 8px"><span style="font-weight:600;font-size:11px;color:'+srcCol+'">'+escHtml(srcLbl)+'</span></td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  body.innerHTML = html;
+  acts.style.display = 'flex';
+  ov.style.display = '';
+}
+
+async function applyPlatFix() {
+  var checked = Array.from(document.querySelectorAll('.pfchk:checked'));
+  if (!checked.length) { showToast('⚠️ Aucune ligne sélectionnée'); return; }
+  var ids = checked.map(function(c){ return c.getAttribute('data-id'); });
+  var ok = 0, errors = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var id = ids[i];
+    var res = await SUPA.from(TABLE.serv).update({pay_source:'Airbnb', pay:null, col:null}).eq('id', id);
+    if (res.error) { errors++; continue; }
+    var idx = DB.serv.findIndex(function(x){ return x.id === id; });
+    if (idx >= 0) { DB.serv[idx].pay_source = 'Airbnb'; DB.serv[idx].pay = null; DB.serv[idx].col = null; }
+    ok++;
+  }
+  document.getElementById('plat-fix-ov').style.display = 'none';
+  showToast('✅ ' + ok + ' service(s) mis à jour en Airbnb'+(errors?' · '+errors+' erreur(s)':''));
+  if (CUR === 'serv') renderServ();
 }
 
 async function savePerso() {
