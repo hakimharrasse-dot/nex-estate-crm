@@ -4522,7 +4522,7 @@ function renderTaxe() {
         '</div>'+
         '<div class="r-card-row2">'+
           chip(r.col,colClass(r.col))+
-          chip(r.pay||'Cash','eau')+
+          chip(r.pay||(r.pay_source||'Cash'),'eau')+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
         '<div class="r-card-row3">'+
@@ -4609,7 +4609,7 @@ function renderServ() {
         '</div>'+
         '<div class="r-card-row2">'+
           chip(r.col,colClass(r.col))+
-          chip(r.pay||'Cash','eau')+
+          chip(r.pay||(r.pay_source||'Cash'),'eau')+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
         '<div class="r-card-row3">'+
@@ -5580,12 +5580,22 @@ function buildForm(type, editId) {
         '<datalist id="fi-resa-ref-list">'+buildServResaOptions()+'</datalist>'+
         '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — sélectionnez ou collez le code</div>'+
       '</div>'+
-      field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
       (function(){
         var _ps=v('pay_source','')||'';
+        var _isPlatNoMode=(_ps==='Airbnb'||_ps==='Booking');
         var _isPlat=_ps!=='';
-        return '<div><label class="fl">Plateforme d\'encaissement</label>'+
-          '<select class="fse" id="fi-pay-source" onchange="(function(ps){var fc=document.getElementById(\'ff-serv-col\');if(fc)fc.style.display=ps?\'none\':\'block\';})(this.value)">'+
+        return '<div class="ff" id="ff-serv-pay" style="display:'+(_isPlatNoMode?'none':'block')+'">'+
+            '<label class="fl">Mode de paiement</label>'+
+            '<select class="fse" id="fi-pay">'+['Cash','Virement MAD','Virement EUR'].map(function(o){return '<option'+(v('pay','Cash')===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select>'+
+          '</div>'+
+          '<div><label class="fl">Plateforme d\'encaissement</label>'+
+          '<select class="fse" id="fi-pay-source" onchange="(function(ps){'+
+            'var fp=document.getElementById(\'ff-serv-pay\');'+
+            'var fc=document.getElementById(\'ff-serv-col\');'+
+            'var hide=ps===\'Airbnb\'||ps===\'Booking\';'+
+            'if(fp)fp.style.display=hide?\'none\':\'block\';'+
+            'if(fc)fc.style.display=ps?\'none\':\'block\';'+
+          '})(this.value)">'+
           '<option value=""'+(_ps===''?' selected':'')+'>Terrain / Direct</option>'+
           '<option value="Airbnb"'+(_ps==='Airbnb'?' selected':'')+'>Airbnb</option>'+
           '<option value="Booking"'+(_ps==='Booking'?' selected':'')+'>Booking</option>'+
@@ -5880,7 +5890,8 @@ async function saveServ() {
   var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
   var _paySrc  = gv('fi-pay-source') || null;
   var _col     = _paySrc ? null : (gv('fi-col') || null);
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:_col,pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
+  var _pay     = (_paySrc==='Airbnb'||_paySrc==='Booking') ? null : (gv('fi-pay') || null);
+  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
   closeModal(); renderServ();
 }
 
