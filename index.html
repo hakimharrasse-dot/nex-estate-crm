@@ -3294,14 +3294,13 @@ function renderDash() {
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
-  // ── CA Airbnb réel — services additionnels payés via Airbnb ──
+  // ── Extras services additionnels payés via Airbnb (calculé tôt, utilisé plus bas) ──
   // Anti-doublon : exclure si resa_ref pointe vers une ligne AIRCOVER ou AJUSTEMENT dans DB.resa
   var _airbizTypes = ['AIRCOVER','AJUSTEMENT'];
   var extrasAirbnbPayes = filterPer(DB.serv,'d').filter(function(r){
     if (r.pay_source !== 'Airbnb') return false;
     if (r.statut !== 'Payé') return false;
     if (fa && r.appart !== fa) return false;
-    // Anti-doublon V1 : lié via resa_ref à une ligne AIRCOVER ou AJUSTEMENT
     if (r.resa_ref) {
       var _linked = DB.resa.find(function(x){
         return x.source === 'Airbnb'
@@ -3313,9 +3312,7 @@ function renderDash() {
     }
     return true;
   }).reduce(function(s,r){ return s + (r.montant||0); }, 0);
-  // CA Airbnb dans DB.resa (RESERVATION + AIRCOVER + AJUSTEMENT + ANNULATION_PAYEE + RELOCATION source Airbnb)
-  var _caResaAirbnb = sumNetMAD(_revPayeDash.filter(function(r){ return r.source === 'Airbnb'; }));
-  var caAirbnbReel  = _caResaAirbnb + extrasAirbnbPayes;
+  // _caResaAirbnb et caAirbnbReel calculés après revRes (ligne ~3490) pour cohérence
 
   // ── Nouveaux calculs cash ──
   var bizPeriod=filterPer(DB.business,'d').filter(function(r){return r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'&&(!fa||(r.appart===fa||r.scope==='global'));});
@@ -3353,12 +3350,6 @@ function renderDash() {
   set('d-dep',fmt(cur.dep));
   set('d-tax',fmt(taxeCollectee));
   set('d-ext',fmt(extras));
-  var _kbAr = document.getElementById('kc-airbnb-reel');
-  if (_kbAr) {
-    _kbAr.style.display = extrasAirbnbPayes > 0 ? '' : 'none';
-    set('d-airbnb-reel', fmt(caAirbnbReel));
-    set('d-airbnb-reel-det', 'Resa Airbnb ' + fmt(_caResaAirbnb) + ' + extras ' + fmt(extrasAirbnbPayes));
-  }
   set('d-occ',Math.round(cur.occ)+' %');
   set('d-occ-det',cur.nuitsSej+' / '+joursDispo+' nuits');
   set('d-adr',fmt(cur.adr));
@@ -3530,12 +3521,25 @@ function renderDash() {
       '<button onclick="auditOccupUI(\''+apEsc+'\')" style="font-size:10px;background:none;border:none;color:var(--tm);cursor:pointer;padding:2px 0;text-align:left;margin-top:2px">🔍 voir détail</button>'+
     '</div>';
   }).join(''));
+  // ── CA Airbnb réel — calculé ici avec revRes pour cohérence avec la carte source ──
+  var _caResaAirbnb = sumNetMAD(revRes.filter(function(r){ return r.source === 'Airbnb'; }));
+  var caAirbnbReel  = _caResaAirbnb + extrasAirbnbPayes;
+  var _kbAr = document.getElementById('kc-airbnb-reel');
+  if (_kbAr) {
+    _kbAr.style.display = extrasAirbnbPayes > 0 ? '' : 'none';
+    set('d-airbnb-reel', fmt(caAirbnbReel));
+    set('d-airbnb-reel-det', 'Resa Airbnb ' + fmt(_caResaAirbnb) + ' + extras ' + fmt(extrasAirbnbPayes));
+  }
   var sources=['Airbnb','Booking.com','Direct','VRBO'];
   set('d-recap-src',sources.map(function(src){
     var x=revRes.filter(function(r){return r.source===src;});
     if(!x.length) return '';
     var n=sumNetMAD(x);
-    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+x.length+' rés.</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
+    var sub=x.length+' rés.';
+    if(src==='Airbnb'&&extrasAirbnbPayes>0){
+      sub+='<br><span style="font-size:11px;color:var(--td)">+ '+fmt(extrasAirbnbPayes)+' extras → réel '+fmt(caAirbnbReel)+'</span>';
+    }
+    return '<div class="rc"><div><div class="rn">'+src+'</div><div class="rsb">'+sub+'</div></div><div class="rv" style="color:var(--or)">'+fmt(n)+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
 
   // ── Mode 2 : CA consommé par nuits — vue analytique alternative ──
