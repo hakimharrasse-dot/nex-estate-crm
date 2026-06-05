@@ -689,6 +689,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="kg">
     <div class="kc"><div class="kl">Taxe suivie</div><div class="kv" style="color:var(--te)" id="d-tax">0 MAD</div><div class="ks">Total taxe saisie — argent État</div></div>
     <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
+    <div class="kc" id="kc-airbnb-reel" style="display:none"><div class="kl">CA Airbnb réel ⓘ</div><div class="kv" style="color:var(--bl)" id="d-airbnb-reel">0 MAD</div><div class="ks" id="d-airbnb-reel-det"></div></div>
   </div>
   <div class="sl">Performance par appartement</div>
   <div class="ap-perf-row" id="d-recap-ap"></div>
@@ -3293,6 +3294,29 @@ function renderDash() {
   var taxeCollectee=sum(filterPer(DB.taxe,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
   var extras=sum(filterPer(DB.serv,'d').filter(function(r){return !fa||r.appart===fa;}),'montant');
 
+  // ── CA Airbnb réel — services additionnels payés via Airbnb ──
+  // Anti-doublon : exclure si resa_ref pointe vers une ligne AIRCOVER ou AJUSTEMENT dans DB.resa
+  var _airbizTypes = ['AIRCOVER','AJUSTEMENT'];
+  var extrasAirbnbPayes = filterPer(DB.serv,'d').filter(function(r){
+    if (r.pay_source !== 'Airbnb') return false;
+    if (r.statut !== 'Payé') return false;
+    if (fa && r.appart !== fa) return false;
+    // Anti-doublon V1 : lié via resa_ref à une ligne AIRCOVER ou AJUSTEMENT
+    if (r.resa_ref) {
+      var _linked = DB.resa.find(function(x){
+        return x.source === 'Airbnb'
+          && _airbizTypes.indexOf(x.type_norm) >= 0
+          && x.ref && (x.ref.toUpperCase() === r.resa_ref.toUpperCase()
+            || airbnbBaseRef(x.ref) === airbnbBaseRef(r.resa_ref));
+      });
+      if (_linked) return false;
+    }
+    return true;
+  }).reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  // CA Airbnb dans DB.resa (RESERVATION + AIRCOVER + AJUSTEMENT + ANNULATION_PAYEE + RELOCATION source Airbnb)
+  var _caResaAirbnb = sumNetMAD(_revPayeDash.filter(function(r){ return r.source === 'Airbnb'; }));
+  var caAirbnbReel  = _caResaAirbnb + extrasAirbnbPayes;
+
   // ── Nouveaux calculs cash ──
   var bizPeriod=filterPer(DB.business,'d').filter(function(r){return r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'&&(!fa||(r.appart===fa||r.scope==='global'));});
   var depAtt=sum(bizPeriod.filter(function(r){return r.statut==='En attente';}),'montant');
@@ -3329,6 +3353,12 @@ function renderDash() {
   set('d-dep',fmt(cur.dep));
   set('d-tax',fmt(taxeCollectee));
   set('d-ext',fmt(extras));
+  var _kbAr = document.getElementById('kc-airbnb-reel');
+  if (_kbAr) {
+    _kbAr.style.display = extrasAirbnbPayes > 0 ? '' : 'none';
+    set('d-airbnb-reel', fmt(caAirbnbReel));
+    set('d-airbnb-reel-det', 'Resa Airbnb ' + fmt(_caResaAirbnb) + ' + extras ' + fmt(extrasAirbnbPayes));
+  }
   set('d-occ',Math.round(cur.occ)+' %');
   set('d-occ-det',cur.nuitsSej+' / '+joursDispo+' nuits');
   set('d-adr',fmt(cur.adr));
@@ -5552,6 +5582,7 @@ function buildForm(type, editId) {
       '</div>'+
       '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
+      (function(){var _ps=v('pay_source','')||'';return '<div><label class="fl">Plateforme d\'encaissement</label><select class="fse" id="fi-pay-source"><option value=""'+(_ps===''?' selected':'')+'>Terrain / Direct</option><option value="Airbnb"'+(_ps==='Airbnb'?' selected':'')+'>Airbnb</option><option value="Booking"'+(_ps==='Booking'?' selected':'')+'>Booking</option><option value="Autre"'+(_ps==='Autre'?' selected':'')+'>Autre</option></select></div>';})()+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
       '</div>';
@@ -5834,7 +5865,8 @@ async function saveServ() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
   var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef});
+  var _paySrc  = gv('fi-pay-source') || null;
+  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:gv('fi-col'),pay:gv('fi-pay'),montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
   closeModal(); renderServ();
 }
 
