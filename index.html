@@ -2523,30 +2523,48 @@ function updateGenPersoPreview() {
   html += '<div style="margin-bottom:8px;font-weight:600;color:var(--tm)">'+eligible.length+' charge(s) éligible(s)</div>';
   if (alreadyCount > 0) html += '<div style="color:var(--or);margin-bottom:6px">⚠️ '+alreadyCount+' déjà générée(s) — doublons évités</div>';
 
-  if (toGenerate.length) {
-    html += '<div style="color:var(--gr);font-weight:500;margin-bottom:8px">✅ '+toGenerate.length+' à générer</div>';
-    toGenerate.slice(0,8).forEach(function(r){
+  // Partitionner toGenerate en "vraiment nouvelles" vs "doublons manuels"
+  var realNew = [];
+  var ignoredManual = [];
+  toGenerate.forEach(function(r){
+    var isDoublon = manualThisMonth.some(function(p){
+      return p.cat === r.cat &&
+             r.montant > 0 &&
+             Math.abs((p.montant||0) - r.montant) / r.montant <= 0.1;
+    });
+    if (isDoublon) ignoredManual.push(r);
+    else realNew.push(r);
+  });
+
+  if (realNew.length) {
+    html += '<div style="color:var(--gr);font-weight:500;margin-bottom:8px">✅ '+realNew.length+' à générer</div>';
+    realNew.slice(0,8).forEach(function(r){
       var freqLbl = {mensuelle:'Mens.',trimestrielle:'Trim.',annuelle:'Ann.'}[r.frequence]||r.frequence;
-      // Anti-doublon : même catégorie et montant ±10%
-      var doublon = manualThisMonth.some(function(p){
-        return p.cat === r.cat &&
-               r.montant > 0 &&
-               Math.abs((p.montant||0) - r.montant) / r.montant <= 0.1;
-      });
       html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--br)">'+
-        '<span>'+escHtml(r.label)+' <span style="color:var(--td);font-size:11px">'+freqLbl+'</span>'+
-        (doublon ? ' <span style="background:#f59e0b22;color:#b45309;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600">⚠️ doublon manuel possible</span>' : '')+
-        '</span>'+
+        '<span>'+escHtml(r.label)+' <span style="color:var(--td);font-size:11px">'+freqLbl+'</span></span>'+
         '<span style="font-weight:600;font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</span></div>';
     });
-    if (toGenerate.length > 8) html += '<div style="color:var(--td);margin-top:4px">... et '+(toGenerate.length-8)+' autres</div>';
-  } else {
+    if (realNew.length > 8) html += '<div style="color:var(--td);margin-top:4px">... et '+(realNew.length-8)+' autres</div>';
+  } else if (!ignoredManual.length) {
     html += '<div style="color:var(--td)">Toutes les charges ont déjà été générées pour ce mois.</div>';
   }
 
-  // ── Totaux récapitulatifs ──
+  if (ignoredManual.length) {
+    html += '<div style="margin-top:10px;padding:8px 10px;background:#f59e0b14;border-radius:8px;border:1px solid #f59e0b44">';
+    html += '<div style="font-weight:600;color:#b45309;margin-bottom:6px;font-size:12px">⚠️ Ignorées — doublon manuel détecté ('+ignoredManual.length+')</div>';
+    ignoredManual.forEach(function(r){
+      var freqLbl = {mensuelle:'Mens.',trimestrielle:'Trim.',annuelle:'Ann.'}[r.frequence]||r.frequence;
+      html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:#92400e">'+
+        '<span>'+escHtml(r.label)+' <span style="opacity:.7">'+freqLbl+'</span></span>'+
+        '<span style="font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</span></div>';
+    });
+    html += '<div style="font-size:11px;color:#b45309;margin-top:6px;opacity:.8">Une dépense manuelle similaire existe déjà ce mois-ci.</div>';
+    html += '</div>';
+  }
+
+  // ── Totaux récapitulatifs (basés sur realNew uniquement) ──
   var actives = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
-  var totGen  = toGenerate.reduce(function(s,r){return s+(r.montant||0);},0);
+  var totGen  = realNew.reduce(function(s,r){return s+(r.montant||0);},0);
   var totMens = actives.filter(function(r){return r.frequence==='mensuelle';})
                        .reduce(function(s,r){return s+(r.montant||0);},0);
   var totTrim = actives.filter(function(r){return r.frequence==='trimestrielle';})
@@ -2578,10 +2596,29 @@ async function confirmGenerateRecurPerso() {
   var genIdSet = {};
   DB.perso.filter(function(r){ return r.recurring_month === GEN_PERSO_MONTH; })
     .forEach(function(r){ if(r.recurring_charge_id) genIdSet[r.recurring_charge_id] = true; });
-  var toGenerate = eligible.filter(function(r){ return !genIdSet[r.id]; });
+
+  // Exclure doublons récurrents (déjà générés)
+  var afterRecur = eligible.filter(function(r){ return !genIdSet[r.id]; });
+
+  // Exclure doublons manuels : même mois, même cat, montant ±10%, sans recurring_charge_id
+  var manualThisMonth = DB.perso.filter(function(p){
+    return !p.recurring_charge_id &&
+           p.date && p.date.slice(0,7) === GEN_PERSO_MONTH;
+  });
+  var toGenerate = afterRecur.filter(function(r){
+    return !manualThisMonth.some(function(p){
+      return p.cat === r.cat &&
+             r.montant > 0 &&
+             Math.abs((p.montant||0) - r.montant) / r.montant <= 0.1;
+    });
+  });
+  var skippedManual = afterRecur.length - toGenerate.length;
 
   if (!toGenerate.length) {
-    showToast('⚠️ Toutes les charges ont déjà été générées pour ce mois');
+    var msg = skippedManual > 0
+      ? '⚠️ Toutes les charges sont soit déjà générées, soit ignorées (doublons manuels)'
+      : '⚠️ Toutes les charges ont déjà été générées pour ce mois';
+    showToast(msg);
     closeGeneratePersoModal();
     return;
   }
@@ -2612,7 +2649,9 @@ async function confirmGenerateRecurPerso() {
   if (!listRes.error) DB.perso = listRes.data || [];
 
   closeGeneratePersoModal();
-  showToast('✅ '+toGenerate.length+' charge(s) générée(s) pour '+GEN_PERSO_MONTH);
+  var toastMsg = '✅ '+toGenerate.length+' charge(s) générée(s) pour '+GEN_PERSO_MONTH;
+  if (skippedManual > 0) toastMsg += ' · '+skippedManual+' ignorée(s) (doublon manuel)';
+  showToast(toastMsg);
   renderPerso();
 }
 
