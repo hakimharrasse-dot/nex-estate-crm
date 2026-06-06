@@ -1189,6 +1189,81 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <tbody id="p-tb"></tbody>
   </table><div class="empty hidden" id="p-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense</div></div>
   <div id="p-cards" class="p-cards"></div>
+
+  <!-- ── Charges récurrentes perso ─────────────────────────── -->
+
+  <!-- Modal ajouter / modifier -->
+  <div class="ov hidden" id="rcp-ov" onclick="if(event.target===this)closeRecurPersoModal()">
+    <div class="mbox">
+      <div class="mt" id="rcp-ov-title">Nouvelle charge récurrente</div>
+      <div class="fg">
+        <div class="ff ffw"><label class="fl">Libellé *</label><input class="fi" id="rcp-label" type="text" placeholder="ex: Netflix, Loyer perso…"></div>
+        <div class="ff"><label class="fl">Catégorie</label><select class="fse" id="rcp-cat"></select></div>
+        <div class="ff"><label class="fl">Montant (MAD) *</label><input class="fi" id="rcp-montant" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="ff"><label class="fl">Fréquence</label>
+          <select class="fse" id="rcp-freq">
+            <option value="mensuelle">Mensuelle</option>
+            <option value="trimestrielle">Trimestrielle</option>
+            <option value="annuelle">Annuelle</option>
+          </select>
+        </div>
+        <div class="ff"><label class="fl">Jour du mois</label><input class="fi" id="rcp-jour" type="number" min="1" max="31" value="1"></div>
+        <div class="ff"><label class="fl">Date début *</label><input class="fi" id="rcp-debut" type="date"></div>
+        <div class="ff"><label class="fl">Date fin (optionnel)</label><input class="fi" id="rcp-fin" type="date"></div>
+        <div class="ff ffw"><label class="fl">Notes</label><input class="fi" id="rcp-notes" type="text" placeholder="Optionnel"></div>
+      </div>
+      <div class="fac">
+        <button class="ba bar" onclick="saveRecurPersoModal()">Enregistrer</button>
+        <button class="ba ba-ghost" onclick="closeRecurPersoModal()">Annuler</button>
+      </div>
+      <div class="login-err hidden" id="rcp-err" style="text-align:left;margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Modal générer le mois -->
+  <div class="ov hidden" id="gcp-ov" onclick="if(event.target===this)closeGeneratePersoModal()">
+    <div class="mbox">
+      <div class="mt">Générer les charges perso du mois</div>
+      <div class="fg">
+        <div class="ff ffw">
+          <label class="fl">Mois de génération</label>
+          <input class="fi" id="gcp-month-input" type="month" oninput="updateGenPersoPreview()">
+        </div>
+      </div>
+      <div id="gcp-preview" style="margin:10px 0;font-size:13px;color:var(--td)"></div>
+      <div class="fac">
+        <button class="ba bar" onclick="confirmGenerateRecurPerso()">Générer</button>
+        <button class="ba ba-ghost" onclick="closeGeneratePersoModal()">Annuler</button>
+      </div>
+      <div class="login-err hidden" id="gcp-err" style="text-align:left;margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- En-tête bloc -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:32px;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+    <div class="sl" style="margin:0">Charges récurrentes perso</div>
+    <div style="display:flex;gap:8px">
+      <button class="ba" style="background:var(--gr);color:#fff;border-color:var(--gr)" onclick="openGeneratePersoModal()">⚡ Générer le mois</button>
+      <button class="ba bar" onclick="openRecurPersoModal(null)">+ Ajouter</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Libellé</th>
+      <th>Catégorie</th>
+      <th>Montant</th>
+      <th class="hm">Fréquence</th>
+      <th class="hm">Jour</th>
+      <th class="hm">Début / Fin</th>
+      <th>Statut</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="rcp-tb"></tbody>
+  </table>
+  <div class="empty hidden" id="rcp-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🔄</div>Aucune charge récurrente perso</div></div>
+
 </div>
 
 <!-- ═══ VIEW: ADMIN UTILISATEURS ═══ -->
@@ -2121,6 +2196,7 @@ function getEligibleCharges(mk) {
   var lastD  = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
   var mEnd   = mk + '-' + String(lastD).padStart(2,'0');
   return DB.recur.filter(function(r){
+    if (r.type === 'perso') return false;
     if (!r.active) return false;
     if (r.date_debut > mEnd) return false;
     if (r.date_fin && r.date_fin < mStart) return false;
@@ -2221,7 +2297,7 @@ function renderRecurAdmin() {
   var em = document.getElementById('recur-em');
   if (!tb) return;
 
-  var list = DB.recur.slice().sort(function(a,b){
+  var list = DB.recur.filter(function(r){ return r.type !== 'perso'; }).slice().sort(function(a,b){
     if (a.active !== b.active) return a.active ? -1 : 1;
     return (a.label||'').localeCompare(b.label||'');
   });
@@ -2250,6 +2326,278 @@ function renderRecurAdmin() {
         (r.active
           ? '<button class="ba ba-sm" style="color:var(--re);border-color:var(--re)" onclick="recurToggleActive(\''+r.id+'\',false)">Désactiver</button>'
           : '<button class="ba ba-sm" style="color:var(--gr);border-color:var(--gr)" onclick="recurToggleActive(\''+r.id+'\',true)">Activer</button>'
+        )+
+      '</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// ============================================================
+// CHARGES RÉCURRENTES PERSO
+// ============================================================
+
+var RECUR_PERSO_ID = null;
+var GEN_PERSO_MONTH = '';
+
+function diffMoisRecur(mk, dateDebut) {
+  var pa = mk.split('-'), pb = dateDebut.slice(0,7).split('-');
+  return (parseInt(pa[0]) - parseInt(pb[0])) * 12 + (parseInt(pa[1]) - parseInt(pb[1]));
+}
+
+function getEligibleChargesPerso(mk) {
+  if (!mk) return [];
+  var mStart = mk + '-01';
+  var parts  = mk.split('-');
+  var lastD  = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
+  var mEnd   = mk + '-' + String(lastD).padStart(2,'0');
+  return DB.recur.filter(function(r) {
+    if (r.type !== 'perso') return false;
+    if (!r.active) return false;
+    if (r.date_debut > mEnd) return false;
+    if (r.date_fin && r.date_fin < mStart) return false;
+    var freq = r.frequence || 'mensuelle';
+    if (freq === 'mensuelle') return true;
+    if (freq === 'trimestrielle') return diffMoisRecur(mk, r.date_debut) % 3 === 0;
+    if (freq === 'annuelle') return mk.slice(5,7) === r.date_debut.slice(5,7);
+    return true;
+  });
+}
+
+function openRecurPersoModal(id) {
+  RECUR_PERSO_ID = id || null;
+  var rec = id ? DB.recur.find(function(r){ return r.id === id; }) : null;
+  var v   = function(f, def){ return rec ? (rec[f] != null ? rec[f] : (def||'')) : (def||''); };
+
+  var titleEl = document.getElementById('rcp-ov-title');
+  if (titleEl) titleEl.textContent = id ? 'Modifier la charge' : 'Nouvelle charge récurrente';
+
+  var catSel = document.getElementById('rcp-cat');
+  if (catSel) catSel.innerHTML = CATS_P.map(function(c){
+    return '<option'+(v('cat')===c?' selected':'')+'>'+c+'</option>';
+  }).join('');
+
+  var freqSel = document.getElementById('rcp-freq');
+  if (freqSel) freqSel.value = v('frequence','mensuelle');
+
+  ['rcp-label','rcp-montant','rcp-jour','rcp-debut','rcp-fin','rcp-notes'].forEach(function(fid){
+    var el = document.getElementById(fid);
+    var key = fid.replace('rcp-','');
+    var keyMap = {'label':'label','montant':'montant','jour':'jour','debut':'date_debut','fin':'date_fin','notes':'notes'};
+    if (el) el.value = v(keyMap[key] || key, key==='jour'?1:0);
+  });
+
+  var errEl = document.getElementById('rcp-err');
+  if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
+  document.getElementById('rcp-ov').classList.remove('hidden');
+}
+
+function closeRecurPersoModal() {
+  RECUR_PERSO_ID = null;
+  document.getElementById('rcp-ov').classList.add('hidden');
+}
+
+async function saveRecurPersoModal() {
+  var label   = (document.getElementById('rcp-label')||{}).value||'';
+  var cat     = (document.getElementById('rcp-cat')||{}).value||CATS_P[0];
+  var montant = parseFloat((document.getElementById('rcp-montant')||{}).value)||0;
+  var freq    = (document.getElementById('rcp-freq')||{}).value||'mensuelle';
+  var jour    = parseInt((document.getElementById('rcp-jour')||{}).value)||1;
+  var debut   = (document.getElementById('rcp-debut')||{}).value||'';
+  var fin     = (document.getElementById('rcp-fin')||{}).value||'';
+  var notes   = (document.getElementById('rcp-notes')||{}).value||'';
+
+  var errEl   = document.getElementById('rcp-err');
+  var showErr = function(msg) {
+    if (errEl) { errEl.textContent=msg; errEl.classList.remove('hidden'); }
+    showToast('❌ '+msg);
+  };
+
+  if (!label.trim())  { showErr('Le libellé est requis'); return; }
+  if (!debut)         { showErr('La date de début est requise'); return; }
+  if (montant <= 0)   { showErr('Le montant doit être > 0'); return; }
+  if (jour < 1 || jour > 31) { showErr('Jour invalide (1–31)'); return; }
+
+  var payload = {
+    label:      label.trim(),
+    cat:        cat,
+    montant:    montant,
+    scope:      'global',
+    appart:     null,
+    frequence:  freq,
+    jour:       jour,
+    date_debut: debut,
+    date_fin:   fin || null,
+    notes:      notes.trim() || null,
+    active:     true,
+    type:       'perso',
+  };
+
+  var isNew = !RECUR_PERSO_ID;
+  var res;
+  if (isNew) {
+    res = await SUPA.from(TABLE.recur).insert(payload).select().single();
+  } else {
+    var existing = DB.recur.find(function(r){ return r.id === RECUR_PERSO_ID; });
+    payload.id     = RECUR_PERSO_ID;
+    payload.active = existing ? existing.active : true;
+    res = await SUPA.from(TABLE.recur).upsert(payload, {onConflict:'id'}).select().single();
+  }
+  if (res.error) { showErr(res.error.message || 'Erreur Supabase'); return; }
+
+  var listRes = await SUPA.from(TABLE.recur).select('*').order('label');
+  if (!listRes.error) DB.recur = listRes.data || [];
+
+  closeRecurPersoModal();
+  renderRecurPerso();
+  showToast(isNew ? '✅ Charge ajoutée' : '✅ Charge mise à jour');
+}
+
+async function recurPersoToggleActive(id, active) {
+  var res = await SUPA.from(TABLE.recur).update({ active: active }).eq('id', id);
+  if (res.error) { showToast('❌ ' + (res.error.message||'Erreur')); return; }
+  var m = DB.recur.find(function(r){ return r.id === id; });
+  if (m) m.active = active;
+  renderRecurPerso();
+  showToast(active ? '✅ Charge activée' : '✅ Charge désactivée');
+}
+
+function openGeneratePersoModal() {
+  GEN_PERSO_MONTH = today().slice(0,7);
+  var inp = document.getElementById('gcp-month-input');
+  if (inp) inp.value = GEN_PERSO_MONTH;
+  var errEl = document.getElementById('gcp-err');
+  if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
+  updateGenPersoPreview();
+  document.getElementById('gcp-ov').classList.remove('hidden');
+}
+
+function closeGeneratePersoModal() {
+  document.getElementById('gcp-ov').classList.add('hidden');
+}
+
+function updateGenPersoPreview() {
+  var inp = document.getElementById('gcp-month-input');
+  GEN_PERSO_MONTH = inp ? inp.value : GEN_PERSO_MONTH;
+  var prev = document.getElementById('gcp-preview');
+  if (!prev) return;
+  if (!GEN_PERSO_MONTH) { prev.innerHTML = '<em>Choisissez un mois.</em>'; return; }
+
+  var eligible = getEligibleChargesPerso(GEN_PERSO_MONTH);
+  var genIdSet = {};
+  DB.perso.filter(function(r){ return r.recurring_month === GEN_PERSO_MONTH; })
+    .forEach(function(r){ if(r.recurring_charge_id) genIdSet[r.recurring_charge_id] = true; });
+  var toGenerate = eligible.filter(function(r){ return !genIdSet[r.id]; });
+
+  if (!eligible.length) {
+    prev.innerHTML = '<div style="padding:10px;background:var(--s2);border-radius:8px">Aucune charge perso active applicable pour ce mois.</div>';
+    return;
+  }
+  var alreadyCount = eligible.length - toGenerate.length;
+  var html = '<div style="padding:10px;background:var(--s2);border-radius:8px;font-size:13px">';
+  html += '<div style="margin-bottom:8px;font-weight:600;color:var(--tm)">'+eligible.length+' charge(s) éligible(s)</div>';
+  if (alreadyCount > 0) html += '<div style="color:var(--or);margin-bottom:6px">⚠️ '+alreadyCount+' déjà générée(s) — doublons évités</div>';
+  if (toGenerate.length) {
+    html += '<div style="color:var(--gr);font-weight:500;margin-bottom:8px">✅ '+toGenerate.length+' à générer</div>';
+    toGenerate.slice(0,6).forEach(function(r){
+      var freqLbl = {mensuelle:'Mens.',trimestrielle:'Trim.',annuelle:'Ann.'}[r.frequence]||r.frequence;
+      html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--br)">'+
+        '<span>'+escHtml(r.label)+' <span style="color:var(--td);font-size:11px">'+freqLbl+'</span></span>'+
+        '<span style="font-weight:600;font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</span></div>';
+    });
+    if (toGenerate.length > 6) html += '<div style="color:var(--td);margin-top:4px">... et '+(toGenerate.length-6)+' autres</div>';
+  } else {
+    html += '<div style="color:var(--td)">Toutes les charges ont déjà été générées pour ce mois.</div>';
+  }
+  html += '</div>';
+  prev.innerHTML = html;
+}
+
+async function confirmGenerateRecurPerso() {
+  var errEl   = document.getElementById('gcp-err');
+  var showErr = function(msg) {
+    if (errEl) { errEl.textContent=msg; errEl.classList.remove('hidden'); }
+    showToast('❌ '+msg);
+  };
+  if (!GEN_PERSO_MONTH) { showErr('Choisissez un mois'); return; }
+
+  var eligible = getEligibleChargesPerso(GEN_PERSO_MONTH);
+  var genIdSet = {};
+  DB.perso.filter(function(r){ return r.recurring_month === GEN_PERSO_MONTH; })
+    .forEach(function(r){ if(r.recurring_charge_id) genIdSet[r.recurring_charge_id] = true; });
+  var toGenerate = eligible.filter(function(r){ return !genIdSet[r.id]; });
+
+  if (!toGenerate.length) {
+    showToast('⚠️ Toutes les charges ont déjà été générées pour ce mois');
+    closeGeneratePersoModal();
+    return;
+  }
+
+  var parts   = GEN_PERSO_MONTH.split('-');
+  var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
+
+  var inserts = toGenerate.map(function(r){
+    var d  = Math.min(r.jour, lastDay);
+    var ds = String(d).padStart(2,'0');
+    return {
+      id:                   uid(),
+      date:                 GEN_PERSO_MONTH + '-' + ds,
+      cat:                  r.cat,
+      "desc":               r.label,
+      montant:              r.montant,
+      rec:                  r.frequence,
+      statut:               'En attente',
+      recurring_charge_id:  String(r.id),
+      recurring_month:      GEN_PERSO_MONTH,
+    };
+  });
+
+  var res = await SUPA.from(TABLE.perso).insert(inserts).select();
+  if (res.error) { showErr(res.error.message || 'Erreur Supabase'); return; }
+
+  var listRes = await SUPA.from(TABLE.perso).select('*');
+  if (!listRes.error) DB.perso = listRes.data || [];
+
+  closeGeneratePersoModal();
+  showToast('✅ '+toGenerate.length+' charge(s) générée(s) pour '+GEN_PERSO_MONTH);
+  renderPerso();
+}
+
+function renderRecurPerso() {
+  if (ROLE !== 'admin') return;
+  var tb = document.getElementById('rcp-tb');
+  var em = document.getElementById('rcp-em');
+  if (!tb) return;
+
+  var list = DB.recur.filter(function(r){ return r.type === 'perso'; })
+    .slice().sort(function(a,b){
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      return (a.label||'').localeCompare(b.label||'');
+    });
+
+  if (!list.length) {
+    tb.innerHTML = '';
+    if (em) em.classList.remove('hidden');
+    return;
+  }
+  if (em) em.classList.add('hidden');
+
+  var freqLbl = {mensuelle:'Mensuelle',trimestrielle:'Trimestrielle',annuelle:'Annuelle'};
+  tb.innerHTML = list.map(function(r){
+    var finLbl = r.date_fin ? escHtml(r.date_fin) : '∞';
+    return '<tr style="opacity:'+(r.active?1:.5)+'">'+
+      '<td style="font-weight:500">'+escHtml(r.label)+'</td>'+
+      '<td><span class="ch ch-'+catClass(r.cat)+'" style="font-size:12px;padding:2px 8px">'+escHtml(r.cat)+'</span></td>'+
+      '<td style="font-weight:600;font-family:\'DM Mono\',monospace;color:var(--pu)">'+fmt(r.montant)+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td)">'+(freqLbl[r.frequence]||r.frequence)+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td);text-align:center">'+r.jour+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(r.date_debut)+' → '+finLbl+'</td>'+
+      '<td><span class="ch '+(r.active?'ch-ok':'ch-att')+'" style="font-size:12px">'+
+        (r.active?'Active':'Inactive')+'</span></td>'+
+      '<td style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+
+        '<button class="ba ba-sm" onclick="openRecurPersoModal(\''+r.id+'\')">✏️</button>'+
+        (r.active
+          ? '<button class="ba ba-sm" style="color:var(--re);border-color:var(--re)" onclick="recurPersoToggleActive(\''+r.id+'\',false)">Désactiver</button>'
+          : '<button class="ba ba-sm" style="color:var(--gr);border-color:var(--gr)" onclick="recurPersoToggleActive(\''+r.id+'\',true)">Activer</button>'
         )+
       '</td>'+
     '</tr>';
@@ -3057,7 +3405,7 @@ function renderView(k) {
   else if(k==='d') renderDash();
   else if(k==='dup') renderDoublons();
   else if(k==='gn') renderGainsCards();
-  else renderPerso();
+  else { renderPerso(); renderRecurPerso(); }
 }
 
 // ============================================================
@@ -7210,7 +7558,7 @@ window.addEventListener('resize', function(){
     else if(CUR==='business')  renderBiz();
     else if(CUR==='taxe')      renderTaxe();
     else if(CUR==='serv')      renderServ();
-    else if(CUR==='perso')     renderPerso();
+    else if(CUR==='perso')     { renderPerso(); renderRecurPerso(); }
     else if(CUR==='doublons')  renderDoublons();
   }, 150);
 });
