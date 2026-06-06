@@ -790,6 +790,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
   </div>
   <div id="b-recap-paye" style="display:none"></div>
+  <div id="b-lisse-block" style="display:none;margin-bottom:12px"></div>
   <div class="sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
   <!-- Gains par femme de ménage -->
@@ -1410,6 +1411,14 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
         <div class="ff ffw"><label class="fl">Libellé *</label><input class="fi" id="rc-label" type="text" placeholder="ex: Loyer Agdal 13"></div>
         <div class="ff"><label class="fl">Catégorie</label><select class="fse" id="rc-cat"></select></div>
         <div class="ff"><label class="fl">Montant (MAD) *</label><input class="fi" id="rc-montant" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="ff"><label class="fl">Fréquence</label>
+          <select class="fse" id="rc-freq">
+            <option value="mensuelle">Mensuelle</option>
+            <option value="trimestrielle">Trimestrielle</option>
+            <option value="semestrielle">Semestrielle</option>
+            <option value="annuelle">Annuelle</option>
+          </select>
+        </div>
         <div class="ff"><label class="fl">Portée</label>
           <select class="fse" id="rc-scope" onchange="onRecurScopeChange()">
             <option value="property">Par appartement</option>
@@ -1471,15 +1480,17 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <thead><tr>
       <th>Libellé</th>
       <th>Catégorie</th>
-      <th>Montant</th>
+      <th>Montant réel</th>
+      <th class="hm">Fréquence</th>
+      <th class="hm">Lissé/mois</th>
       <th class="hm">Portée</th>
-      <th class="hm">Jour</th>
       <th class="hm">Début / Fin</th>
       <th>Statut</th>
       <th></th>
     </tr></thead>
     <tbody id="recur-tb"></tbody>
   </table>
+  <div id="recur-lisse-summary"></div>
   <div class="empty hidden" id="recur-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🔄</div>Aucune charge récurrente</div></div>
 </div>
 
@@ -2131,6 +2142,8 @@ function openRecurModal(id) {
     var el = document.getElementById(fid);
     if (el) el.value = fields[fid];
   });
+  var freqSel = document.getElementById('rc-freq');
+  if (freqSel) freqSel.value = v('frequence','mensuelle');
   var scopeSel = document.getElementById('rc-scope');
   if (scopeSel) scopeSel.value = v('scope','property');
   var apSel = document.getElementById('rc-appart');
@@ -2183,7 +2196,7 @@ async function saveRecurModal() {
     montant:    montant,
     scope:      scope,
     appart:     scope === 'property' ? appart : null,
-    frequence:  'mensuelle',
+    frequence:  (document.getElementById('rc-freq')||{}).value||'mensuelle',
     jour:       jour,
     date_debut: debut,
     date_fin:   fin || null,
@@ -2245,6 +2258,11 @@ function getEligibleCharges(mk) {
     if (!r.active) return false;
     if (r.date_debut > mEnd) return false;
     if (r.date_fin && r.date_fin < mStart) return false;
+    var freq = r.frequence || 'mensuelle';
+    if (freq === 'mensuelle') return true;
+    if (freq === 'trimestrielle') return diffMoisRecur(mk, r.date_debut) % 3 === 0;
+    if (freq === 'semestrielle')  return diffMoisRecur(mk, r.date_debut) % 6 === 0;
+    if (freq === 'annuelle')      return mk.slice(5,7) === (r.date_debut||'').slice(5,7);
     return true;
   });
 }
@@ -2354,15 +2372,21 @@ function renderRecurAdmin() {
   }
   if (em) em.classList.add('hidden');
 
+  var freqLblMap = {mensuelle:'Mens.',trimestrielle:'Trim.',semestrielle:'Sem.',annuelle:'Ann.'};
+  var freqDivMap = {mensuelle:1,trimestrielle:3,semestrielle:6,annuelle:12};
   tb.innerHTML = list.map(function(r){
     var scopeLbl = r.scope === 'global' ? '🌐 Global' : escHtml(r.appart||'—');
     var finLbl   = r.date_fin ? escHtml(r.date_fin) : '∞';
+    var freq     = r.frequence || 'mensuelle';
+    var freqLbl  = freqLblMap[freq] || freq;
+    var lisse    = (r.montant||0) / (freqDivMap[freq]||1);
     return '<tr style="opacity:'+(r.active?1:.5)+'">'+
       '<td style="font-weight:500">'+escHtml(r.label)+'</td>'+
       '<td><span class="ch" style="background:var(--s2);color:var(--tm);font-size:12px;padding:2px 8px">'+escHtml(r.cat)+'</span></td>'+
       '<td style="font-weight:600;font-family:\'DM Mono\',monospace;color:var(--re)">'+fmt(r.montant)+'</td>'+
+      '<td class="hm" style="font-size:12px;color:var(--td);text-align:center">'+freqLbl+'</td>'+
+      '<td class="hm" style="font-size:12px;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(lisse)+'</td>'+
       '<td class="hm" style="font-size:12px;color:var(--td)">'+scopeLbl+'</td>'+
-      '<td class="hm" style="font-size:12px;color:var(--td);text-align:center">'+r.jour+'</td>'+
       '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(r.date_debut)+' → '+finLbl+'</td>'+
       '<td><span class="ch '+(r.active?'ch-ok':'ch-att')+'" style="font-size:12px">'+
         (r.active?'Active':'Inactive')+'</span></td>'+
@@ -2375,6 +2399,17 @@ function renderRecurAdmin() {
       '</td>'+
     '</tr>';
   }).join('');
+
+  // Résumé lissage en bas du tableau
+  var lisseCalc = calcLissePro();
+  var sumEl = document.getElementById('recur-lisse-summary');
+  if (sumEl) {
+    sumEl.innerHTML =
+      '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;padding:12px 16px;background:var(--s2);border-radius:10px;border:1px solid var(--br);margin-top:10px;font-size:13px">'+
+      '<div><span style="color:var(--td)">Budget mensuel lissé</span> <span style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl);margin-left:8px">'+fmt(lisseCalc.lisse)+'</span></div>'+
+      '<div><span style="color:var(--td)">Budget annuel théorique</span> <span style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--or);margin-left:8px">'+fmt(lisseCalc.annuel)+'</span></div>'+
+      '</div>';
+  }
 }
 
 // ============================================================
@@ -2397,6 +2432,37 @@ function calcLissePerso() {
     lisse:   totMens + totTrim / 3 + totAnn / 12,
     annTheo: totMens * 12 + totTrim * 4 + totAnn
   };
+}
+// ─────────────────────────────────────────────────────────────────────
+
+// ── Budget lissé Dépenses Pro ─────────────────────────────────────────
+function calcLissePro() {
+  if (!DB.recur || !DB.recur.length) return { lisse: 0, annuel: 0 };
+  var actives = DB.recur.filter(function(r){ return r.type !== 'perso' && r.active; });
+  var divMap  = { mensuelle: 1, trimestrielle: 3, semestrielle: 6, annuelle: 12 };
+  var lisse   = actives.reduce(function(s, r) {
+    var div = divMap[r.frequence || 'mensuelle'] || 1;
+    return s + (r.montant || 0) / div;
+  }, 0);
+  var annuel  = actives.reduce(function(s, r) {
+    var mult = { mensuelle: 12, trimestrielle: 4, semestrielle: 2, annuelle: 1 };
+    return s + (r.montant || 0) * (mult[r.frequence || 'mensuelle'] || 12);
+  }, 0);
+  return { lisse: lisse, annuel: annuel };
+}
+
+function bizLissageNMois(fromYM, toYM) {
+  if (!DB.recur || !fromYM || !toYM) return 0;
+  var actives = DB.recur.filter(function(r){ return r.type !== 'perso' && r.active; });
+  var parts = fromYM.split('-'); var fromY = +parts[0]; var fromM = +parts[1];
+  var parts2 = toYM.split('-'); var toY = +parts2[0]; var toM = +parts2[1];
+  var nMois = (toY - fromY) * 12 + (toM - fromM) + 1;
+  if (nMois < 1) nMois = 1;
+  var divMap = { mensuelle: 1, trimestrielle: 3, semestrielle: 6, annuelle: 12 };
+  return actives.reduce(function(s, r) {
+    var div = divMap[r.frequence || 'mensuelle'] || 1;
+    return s + (r.montant || 0) / div * nMois;
+  }, 0);
 }
 // ─────────────────────────────────────────────────────────────────────
 
@@ -4694,6 +4760,40 @@ function renderBiz() {
       recapPayeEl.innerHTML='';
     }
   }
+  // ── Bloc lissage charges fixes pro ──
+  var lisseEl = document.getElementById('b-lisse-block');
+  if (lisseEl && DB.recur && DB.recur.some(function(r){ return r.type !== 'perso' && r.active; })) {
+    var lc = calcLissePro();
+    var perBP = P['b'];
+    var projLabel = '', projVal = 0;
+    if (perBP === 'mois') {
+      projLabel = 'Ce mois (lissé)';
+      projVal = lc.lisse;
+    } else if (perBP === 'annee') {
+      projLabel = 'Projection annuelle';
+      projVal = lc.annuel;
+    } else {
+      var fromYM = (CUSTOM_FROM['b']||'').slice(0,7);
+      var toYM   = (CUSTOM_TO['b']||'').slice(0,7);
+      projLabel = 'Projection période';
+      projVal = bizLissageNMois(fromYM, toYM);
+    }
+    lisseEl.style.display = '';
+    lisseEl.innerHTML =
+      '<div style="background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(76,175,125,.06));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:24px;align-items:center">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px">📊 BUDGET CHARGES FIXES</div>'+
+      '<div style="display:flex;gap:24px;flex-wrap:wrap">'+
+        '<div><div style="font-size:11px;color:var(--td);margin-bottom:2px">Budget/mois lissé</div>'+
+          '<div style="font-size:17px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(lc.lisse)+'</div></div>'+
+        '<div><div style="font-size:11px;color:var(--td);margin-bottom:2px">'+projLabel+'</div>'+
+          '<div style="font-size:17px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--or)">'+fmt(projVal)+'</div></div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-left:auto;font-style:italic">Lissage ≠ cash réel — indicatif uniquement</div>'+
+      '</div>';
+  } else if (lisseEl) {
+    lisseEl.style.display = 'none';
+  }
+
   var mk=MO.b.toISOString().slice(0,7);
   // Recap ménage par appart (hors global)
   set('b-recap',APPARTS.map(function(ap){
