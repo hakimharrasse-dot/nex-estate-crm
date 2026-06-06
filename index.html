@@ -4834,30 +4834,18 @@ function renderBiz() {
       return s + (rc.montant||0)/div*nMois;
     },0);
 
-    // Détail par charge — matching hybride Option D
-    // Global : cat + scope + correspondance libellé obligatoire
-    // Par appartement : cat + appart suffit (unique par définition)
-    function rcLabelMatchRow(rc, row) {
-      // Mots significatifs du libellé de la charge (≥3 chars, hors stop-words)
-      var rcWords = normLabel(rc.label || rc.cat).split(' ')
-        .filter(function(w){ return w.length >= 3 && !LABEL_STOP_WORDS[w]; });
-      if (!rcWords.length) return true; // libellé vide → on accepte (cat+scope suffit)
-      // Texte côté dépense : description + libellé de la charge si renseigné
-      var rowText = normLabel((row.desc || '') + ' ' + (row.fmen || ''));
-      return rcWords.some(function(w){ return rowText.indexOf(w) !== -1; });
-    }
+    // Détail par charge — matching strict Option A
+    // Global : recurring_charge_id UNIQUEMENT (fiable à 100%)
+    // Par appartement : recurring_charge_id OU (cat + même appart) — fallback historique
 
     var detailRows = proActives.map(function(rc) {
       var cashRC = periodRows.filter(function(row) {
-        // Règle 1 : ID exact — toujours prioritaire
+        // Règle 1 : ID exact — toujours prioritaire (toutes charges)
         if (row.recurring_charge_id != null && String(row.recurring_charge_id) === String(rc.id)) return true;
-        // Règle 2 : cat + scope + condition libellé
+        // Règle 2 : fallback uniquement pour les charges par appartement (cat + appart)
+        // Les charges globales NE tombent PAS dans ce fallback → zéro sur-comptage
+        if (rc.scope === 'global') return false;
         if (row.cat !== rc.cat) return false;
-        if (rc.scope === 'global') {
-          if (row.appart) return false; // charge globale → exclure les lignes avec appart
-          return rcLabelMatchRow(rc, row); // libellé obligatoire, aucune tolérance montant
-        }
-        // Par appartement : cat + même appart suffit
         return row.appart === rc.appart;
       }).reduce(function(s,r){ return s+(r.montant||0); },0);
       var div      = divMap[rc.frequence||'mensuelle']||1;
@@ -6542,6 +6530,16 @@ function buildForm(type, editId) {
       '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
       '<div class="ff" id="ff-paid-by" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Payé par</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
+      '<div class="ff"><label class="fl">Charge récurrente liée <span style="font-size:11px;color:var(--td)">(optionnel — pour le suivi budget)</span></label>'+
+      '<select class="fse" id="fi-recur-charge">'+
+      '<option value="">— Aucune (dépense ponctuelle) —</option>'+
+      (DB.recur||[]).filter(function(r){ return r.type !== 'perso' && r.active; }).map(function(r){
+        var sel = rec && rec.recurring_charge_id != null && String(rec.recurring_charge_id) === String(r.id) ? ' selected' : '';
+        var scopeLbl = r.scope === 'global' ? ' · Global' : (r.appart ? ' · '+aptShort(r.appart) : '');
+        return '<option value="'+r.id+'"'+sel+'>'+escHtml(r.label||r.cat)+scopeLbl+' — '+Math.round(r.montant||0)+' MAD</option>';
+      }).join('')+
+      '</select>'+
+      '<div style="font-size:11px;color:var(--td);margin-top:4px">Lie cette dépense à une charge fixe pour un calcul Cash réel fiable</div></div>'+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Statut','fi-st','select',v('statut',M_ID?v('statut','En attente'):'En attente'),['Payé','En attente'])+
       '</div>';
@@ -6852,7 +6850,10 @@ async function saveBiz() {
   var paidById=paidByMember?paidByMember.id:null;
   var scope = gv('fi-scope') || 'property';
   var _existBiz = M_ID ? DB.business.find(function(x){return x.id===M_ID;}) : null;
-  var _recurId  = _existBiz ? (_existBiz.recurring_charge_id || null) : null;
+  var _recurChargeEl = document.getElementById('fi-recur-charge');
+  var _recurId = _recurChargeEl
+    ? (_recurChargeEl.value ? parseInt(_recurChargeEl.value) : null)
+    : (_existBiz ? (_existBiz.recurring_charge_id || null) : null);
   var _recurMo  = _existBiz ? (_existBiz.recurring_month    || null) : null;
   if(scope === 'global') {
     await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
