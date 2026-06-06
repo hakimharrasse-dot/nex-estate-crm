@@ -2461,7 +2461,7 @@ var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
 var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Règlement terrain','Autre'];
 function catLabel(c){return c==='Règlement terrain'?'Solde équipe déjà comptabilisé':c;}
-var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Médicaments','Compléments alimentaires','Vêtements','Sport / Salle','Loisirs / Sorties','Transport / Carburant','Dons / Aides','Autre perso'];
+var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Maison / Réparations / Électroménager','Charges foyer','Voiture / Entretien','Transport / Carburant','Médicaments','Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances','Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
@@ -2557,11 +2557,13 @@ function catClass(c) {
     'Ameublement / Décoration':'loisir','Travaux / Rénovation':'autre','Assurance':'autre',
     'Frais bancaires':'credit','Transport / déplacements':'autre','Outils / logiciels':'abo',
     'Crédit personnel':'credit','Loyer perso':'loyer','Pension enfants':'pension',
-    'Famille / Femme':'famille','Crèche / École':'famille','Abonnements':'abo',
-    'Alimentation / Grande surface':'alim','Resto / Snack / Café':'loisir',
-    'Médicaments':'sante','Compléments alimentaires':'sante','Vêtements':'loisir',
-    'Sport / Salle':'sante','Loisirs / Sorties':'loisir','Transport / Carburant':'autre',
-    'Dons / Aides':'dons'
+    'Famille / Femme':'famille','Crèche / École':'famille','Enfant / Loisirs enfant':'famille',
+    'Abonnements':'abo','Alimentation / Grande surface':'alim','Resto / Snack / Café':'loisir',
+    'Maison / Réparations / Électroménager':'loisir','Charges foyer':'abo',
+    'Voiture / Entretien':'alim','Transport / Carburant':'autre',
+    'Médicaments':'sante','Compléments alimentaires':'sante','Hygiène / Bien-être':'sante',
+    'Cotisations / Assurances':'credit','Vêtements':'loisir',
+    'Sport / Salle':'sante','Loisirs / Sorties':'loisir','Dons / Aides':'dons'
   };
   return m[c]||'autre';
 }
@@ -4690,7 +4692,7 @@ function renderPerso() {
   var tot=fc==='Dons / Aides'
     ?rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0)
     :sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
-  var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École'].indexOf(r.cat)>=0;}),'montant');
+  var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
   var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
   set('p-tot',fmt(tot)); set('p-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
