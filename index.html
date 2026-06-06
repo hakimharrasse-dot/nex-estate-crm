@@ -2365,12 +2365,18 @@ function renderRecurAdmin() {
 var RECUR_PERSO_ID = null;
 
 // ── Contrôle doublons Dépenses Perso ─────────────────────────────────
+// Catégories fixes : détectées même si les deux lignes sont manuelles
+var CATS_P_FIXED = ['Abonnements','Crédit personnel','Loyer perso','Pension enfants',
+                    'Crèche / École','Cotisations / Assurances','Sport / Salle','Charges foyer'];
+
 function openPersoDupControl() {
   var body   = document.getElementById('perso-dup-body');
   var delBtn = document.getElementById('perso-dup-del-btn');
   if (!body) return;
 
-  // Détecter les groupes suspects : même mois + même cat + montant ±10%
+  // Détecter les groupes suspects :
+  //   même mois + même cat + montant ±10%
+  //   ET (au moins une ligne récurrente OU catégorie fixe)
   var rows = DB.perso.slice();
   var groups = [];
   var used = {};
@@ -2389,7 +2395,12 @@ function openPersoDupControl() {
       var mA = a.montant||0, mB = b.montant||0;
       if (mA <= 0 && mB <= 0) continue;
       var ref = Math.max(mA, mB);
-      if (Math.abs(mA - mB) / ref <= 0.1) group.push(b);
+      if (Math.abs(mA - mB) / ref > 0.1) continue;
+      // Filtre : récurrent impliqué OU catégorie fixe
+      var hasRecur = !!a.recurring_charge_id || !!b.recurring_charge_id;
+      var isCatFixe = CATS_P_FIXED.indexOf(a.cat) >= 0;
+      if (!hasRecur && !isCatFixe) continue;
+      group.push(b);
     }
     if (group.length >= 2) {
       group.forEach(function(r){ used[r.id] = true; });
@@ -2410,8 +2421,11 @@ function openPersoDupControl() {
   groups.forEach(function(group, gi){
     var mois = (group[0].date||'').slice(0,7);
     var cat  = group[0].cat||'';
-    html += '<div style="margin-bottom:14px;padding:10px;background:var(--s2);border-radius:8px;border:1px solid var(--br)">';
-    html += '<div style="font-weight:600;font-size:12px;color:var(--tm);margin-bottom:8px">'+escHtml(mois)+' · '+escHtml(cat)+'</div>';
+    html += '<div data-dup-group="'+gi+'" style="margin-bottom:14px;padding:10px;background:var(--s2);border-radius:8px;border:1px solid var(--br)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<span style="font-weight:600;font-size:12px;color:var(--tm)">'+escHtml(mois)+' · '+escHtml(cat)+'</span>'+
+      '<button class="ba ba-ghost" style="font-size:11px;padding:2px 8px;color:var(--td)" onclick="ignorePersoDupGroup(this)">✕ Ignorer</button>'+
+    '</div>';
 
     // Trier : Payé / manuel en premier (à conserver), En attente / généré ensuite
     group.sort(function(a,b){
@@ -2459,6 +2473,17 @@ function updatePersoDupBtn() {
   btn.disabled = n === 0;
   btn.style.opacity = n > 0 ? '1' : '.5';
   btn.textContent = 'Supprimer les lignes cochées ('+n+')';
+}
+
+function ignorePersoDupGroup(btn) {
+  // Masque le groupe parent sans toucher à la base
+  var group = btn.closest('[data-dup-group]') || btn.parentElement.parentElement;
+  if (group) {
+    // Décocher les cases du groupe avant de le masquer
+    group.querySelectorAll('.perso-dup-chk').forEach(function(c){ c.checked = false; });
+    group.style.display = 'none';
+    updatePersoDupBtn();
+  }
 }
 
 function closePersoDupControl() {
