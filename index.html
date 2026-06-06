@@ -2415,8 +2415,8 @@ function openPersoDupControl() {
       var hasRecur = !!a.recurring_charge_id || !!b.recurring_charge_id;
       var isCatFixe = CATS_P_FIXED.indexOf(a.cat) >= 0;
       if (!hasRecur && !isCatFixe) continue;
-      // Paires 100% manuelles : exiger aussi un libellé similaire
-      if (!hasRecur && !labelsAreSimilar(a.desc, b.desc)) continue;
+      // Toujours exiger un libellé similaire (manuel ou récurrent)
+      if (!labelsAreSimilar(a.desc, b.desc)) continue;
       group.push(b);
     }
     if (group.length >= 2) {
