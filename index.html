@@ -1173,11 +1173,45 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="sl">Résumé par catégorie</div>
   <div class="rg" id="p-recap"></div>
+
+  <!-- ── Charges fixes personnelles — bloc rétractable ── -->
+  <div id="rcp-block" style="margin:16px 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--s2);border-radius:12px;border:1px solid var(--br);flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div class="sl" style="margin:0">⚡ Charges fixes</div>
+        <div id="rcp-mini-kpis" style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--td)"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="ba" style="background:var(--gr);color:#fff;border-color:var(--gr)" onclick="openGeneratePersoModal()">⚡ Générer</button>
+        <button class="ba bar" onclick="openRecurPersoModal(null)">+ Ajouter</button>
+        <button class="ba ba-ghost" id="rcp-toggle" onclick="toggleRecurPersoBlock()">▾ Détails</button>
+      </div>
+    </div>
+    <div id="rcp-detail" class="hidden" style="margin-top:10px">
+      <div class="tw"><table>
+        <thead><tr>
+          <th>Libellé</th>
+          <th>Catégorie</th>
+          <th>Montant</th>
+          <th class="hm">Fréquence</th>
+          <th class="hm">Jour</th>
+          <th class="hm">Début / Fin</th>
+          <th>Statut</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="rcp-tb"></tbody>
+      </table>
+      <div class="empty hidden" id="rcp-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🔄</div>Aucune charge récurrente perso</div>
+    </div>
+  </div>
+
   <div class="fb"><div class="fr">
     <div class="tabs">
       <button class="tab" id="ptj" onclick="setPer('p','jour')">Jour</button>
       <button class="tab" id="pts" onclick="setPer('p','semaine')">Semaine</button>
       <button class="tab onp" id="ptm" onclick="setPer('p','mois')">Mois</button>
+      <button class="tab" id="pttri" onclick="setPer('p','trimestre')">Trim.</button>
+      <button class="tab" id="pta" onclick="setPer('p','annee')">Année</button>
     </div>
     <div id="p-nav"></div>
     <select class="fsel" id="p-fcat" onchange="persoFilter()"><option value="">Toutes catégories</option></select>
@@ -1239,30 +1273,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
 
-  <!-- En-tête bloc -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:32px;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-    <div class="sl" style="margin:0">Charges récurrentes perso</div>
-    <div style="display:flex;gap:8px">
-      <button class="ba" style="background:var(--gr);color:#fff;border-color:var(--gr)" onclick="openGeneratePersoModal()">⚡ Générer le mois</button>
-      <button class="ba bar" onclick="openRecurPersoModal(null)">+ Ajouter</button>
-    </div>
-  </div>
-
-  <!-- Table -->
-  <div class="tw"><table>
-    <thead><tr>
-      <th>Libellé</th>
-      <th>Catégorie</th>
-      <th>Montant</th>
-      <th class="hm">Fréquence</th>
-      <th class="hm">Jour</th>
-      <th class="hm">Début / Fin</th>
-      <th>Statut</th>
-      <th></th>
-    </tr></thead>
-    <tbody id="rcp-tb"></tbody>
-  </table>
-  <div class="empty hidden" id="rcp-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🔄</div>Aucune charge récurrente perso</div></div>
 
 </div>
 
@@ -2337,6 +2347,15 @@ function renderRecurAdmin() {
 // ============================================================
 
 var RECUR_PERSO_ID = null;
+
+function toggleRecurPersoBlock() {
+  var detail = document.getElementById('rcp-detail');
+  var btn    = document.getElementById('rcp-toggle');
+  if (!detail) return;
+  var opening = detail.classList.contains('hidden');
+  detail.classList.toggle('hidden');
+  if (btn) btn.textContent = opening ? '▴ Masquer' : '▾ Détails';
+}
 var GEN_PERSO_MONTH = '';
 
 function diffMoisRecur(mk, dateDebut) {
@@ -2488,26 +2507,61 @@ function updateGenPersoPreview() {
     .forEach(function(r){ if(r.recurring_charge_id) genIdSet[r.recurring_charge_id] = true; });
   var toGenerate = eligible.filter(function(r){ return !genIdSet[r.id]; });
 
+  // Entrées manuelles du même mois (pas de recurring_charge_id)
+  var manualThisMonth = DB.perso.filter(function(r){
+    return !r.recurring_charge_id &&
+           r.date && r.date.slice(0,7) === GEN_PERSO_MONTH;
+  });
+
   if (!eligible.length) {
     prev.innerHTML = '<div style="padding:10px;background:var(--s2);border-radius:8px">Aucune charge perso active applicable pour ce mois.</div>';
     return;
   }
+
   var alreadyCount = eligible.length - toGenerate.length;
   var html = '<div style="padding:10px;background:var(--s2);border-radius:8px;font-size:13px">';
   html += '<div style="margin-bottom:8px;font-weight:600;color:var(--tm)">'+eligible.length+' charge(s) éligible(s)</div>';
   if (alreadyCount > 0) html += '<div style="color:var(--or);margin-bottom:6px">⚠️ '+alreadyCount+' déjà générée(s) — doublons évités</div>';
+
   if (toGenerate.length) {
     html += '<div style="color:var(--gr);font-weight:500;margin-bottom:8px">✅ '+toGenerate.length+' à générer</div>';
-    toGenerate.slice(0,6).forEach(function(r){
+    toGenerate.slice(0,8).forEach(function(r){
       var freqLbl = {mensuelle:'Mens.',trimestrielle:'Trim.',annuelle:'Ann.'}[r.frequence]||r.frequence;
-      html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--br)">'+
-        '<span>'+escHtml(r.label)+' <span style="color:var(--td);font-size:11px">'+freqLbl+'</span></span>'+
+      // Anti-doublon : même catégorie et montant ±10%
+      var doublon = manualThisMonth.some(function(p){
+        return p.cat === r.cat &&
+               r.montant > 0 &&
+               Math.abs((p.montant||0) - r.montant) / r.montant <= 0.1;
+      });
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--br)">'+
+        '<span>'+escHtml(r.label)+' <span style="color:var(--td);font-size:11px">'+freqLbl+'</span>'+
+        (doublon ? ' <span style="background:#f59e0b22;color:#b45309;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600">⚠️ doublon manuel possible</span>' : '')+
+        '</span>'+
         '<span style="font-weight:600;font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</span></div>';
     });
-    if (toGenerate.length > 6) html += '<div style="color:var(--td);margin-top:4px">... et '+(toGenerate.length-6)+' autres</div>';
+    if (toGenerate.length > 8) html += '<div style="color:var(--td);margin-top:4px">... et '+(toGenerate.length-8)+' autres</div>';
   } else {
     html += '<div style="color:var(--td)">Toutes les charges ont déjà été générées pour ce mois.</div>';
   }
+
+  // ── Totaux récapitulatifs ──
+  var actives = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
+  var totGen  = toGenerate.reduce(function(s,r){return s+(r.montant||0);},0);
+  var totMens = actives.filter(function(r){return r.frequence==='mensuelle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var totTrim = actives.filter(function(r){return r.frequence==='trimestrielle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var totAnn  = actives.filter(function(r){return r.frequence==='annuelle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var lisse   = totMens + totTrim/3 + totAnn/12;
+  var annTheo = totMens*12 + totTrim*4 + totAnn;
+
+  html += '<div style="margin-top:12px;padding-top:10px;border-top:2px solid var(--br);display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px">';
+  html += '<div style="color:var(--td)">À générer ce mois</div><div style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--pu)">'+fmt(totGen)+'</div>';
+  html += '<div style="color:var(--td)">Mensuel actif (fixes)</div><div style="font-weight:700;font-family:\'DM Mono\',monospace">'+fmt(totMens)+'</div>';
+  html += '<div style="color:var(--td)">Coût mensuel lissé</div><div style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(lisse)+'</div>';
+  html += '<div style="color:var(--td)">Total annuel théorique</div><div style="font-weight:700;font-family:\'DM Mono\',monospace">'+fmt(annTheo)+'</div>';
+  html += '</div>';
   html += '</div>';
   prev.innerHTML = html;
 }
@@ -2567,6 +2621,30 @@ function renderRecurPerso() {
   var tb = document.getElementById('rcp-tb');
   var em = document.getElementById('rcp-em');
   if (!tb) return;
+
+  // ── Mini KPIs dans le bandeau toujours visible ──
+  var actives = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
+  var totMens = actives.filter(function(r){return r.frequence==='mensuelle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var totTrim = actives.filter(function(r){return r.frequence==='trimestrielle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var totAnn  = actives.filter(function(r){return r.frequence==='annuelle';})
+                       .reduce(function(s,r){return s+(r.montant||0);},0);
+  var lisse   = totMens + totTrim/3 + totAnn/12;
+  var annTheo = totMens*12 + totTrim*4 + totAnn;
+  var miniEl  = document.getElementById('rcp-mini-kpis');
+  if (miniEl) {
+    if (!actives.length) {
+      miniEl.innerHTML = '<span style="opacity:.5">Aucune charge active</span>';
+    } else {
+      miniEl.innerHTML =
+        '<span title="Coût mensuel moyen lissé (mensuelles + trim/3 + ann/12)">📅 Lissé&nbsp;<strong style="color:var(--bl)">'+fmt(lisse)+'</strong></span>'+
+        '<span style="opacity:.3">|</span>'+
+        '<span title="Total annuel théorique">📆 Annuel&nbsp;<strong>'+fmt(annTheo)+'</strong></span>'+
+        '<span style="opacity:.3">|</span>'+
+        '<span>'+actives.length+' active'+(actives.length>1?'s':'')+'</span>';
+    }
+  }
 
   var list = DB.recur.filter(function(r){ return r.type === 'perso'; })
     .slice().sort(function(a,b){
