@@ -3214,7 +3214,7 @@ var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATI
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
 var R_SEARCH = '';     // recherche live réservations
 var R_PAGE=1; var R_PER=20;
-var B_PAGE=1; var B_PER=20;
+var B_PAGE=1; var B_PER=20; var B_LISSE_DETAIL=false;
 var T_PAGE=1; var T_PER=20;
 var S_PAGE=1; var S_PER=20;
 var P_PAGE=1; var P_PER=20;
@@ -4732,6 +4732,32 @@ function bizPeriodLabel() {
   return '';
 }
 
+function bizNMois() {
+  var p = P['b'];
+  if (p === 'mois')     return 1;
+  if (p === 'annee')    return 12;
+  if (p === 'trimestre') return 3;
+  if (p === 'bimestre') return 2;
+  if (p === 'semestre') return 6;
+  if (p === 'custom') {
+    var f = (CUSTOM_FROM['b']||'').slice(0,7);
+    var t = (CUSTOM_TO['b']||'').slice(0,7);
+    if (!f || !t) return 1;
+    var fp = f.split('-'), tp = t.split('-');
+    var n = (parseInt(tp[0])-parseInt(fp[0]))*12 + (parseInt(tp[1])-parseInt(fp[1])) + 1;
+    return Math.max(1, n);
+  }
+  return 1; // cumul : pas de multiplication
+}
+
+function toggleBLisseDetail() {
+  B_LISSE_DETAIL = !B_LISSE_DETAIL;
+  var det = document.getElementById('b-lisse-detail');
+  var btn = document.getElementById('b-lisse-toggle');
+  if (det) det.style.display = B_LISSE_DETAIL ? '' : 'none';
+  if (btn) btn.textContent = B_LISSE_DETAIL ? '▴ Masquer détail' : '▾ Détail par charge';
+}
+
 function renderBiz() {
   renderNav('b');
   renderGainsCards();
@@ -4788,8 +4814,12 @@ function renderBiz() {
   var lisseEl = document.getElementById('b-lisse-block');
   var proActives = (DB.recur||[]).filter(function(r){ return r.type !== 'perso' && r.active; });
   if (lisseEl && proActives.length) {
-    // Cash réel : recurring_charge_id non null OU match strict cat + scope/appart
     var periodRows = filterPer(DB.business, 'b');
+    var nMois = bizNMois();
+    var divMap = { mensuelle:1, trimestrielle:3, semestrielle:6, annuelle:12 };
+    var freqLbl = { mensuelle:'Mens.', trimestrielle:'Trim.', semestrielle:'Sem.', annuelle:'Ann.' };
+
+    // Cash réel global : recurring_charge_id non null OU match strict cat + scope/appart
     function isChargeFixePro(row) {
       if (row.recurring_charge_id != null) return true;
       return proActives.some(function(rc) {
@@ -4798,49 +4828,92 @@ function renderBiz() {
         return row.appart === rc.appart;
       });
     }
-    var cashReel = periodRows.filter(isChargeFixePro).reduce(function(s,r){ return s+(r.montant||0); }, 0);
+    var cashReelGlobal = periodRows.filter(isChargeFixePro).reduce(function(s,r){ return s+(r.montant||0); },0);
 
-    // Budget lissé sur la période
-    var perBP = P['b'];
-    var budgetLisse = 0, periodeLabel = '';
-    if (perBP === 'mois') {
-      var lc = calcLissePro();
-      budgetLisse  = lc.lisse;
-      periodeLabel = 'ce mois';
-    } else if (perBP === 'annee') {
-      budgetLisse  = calcLissePro().annuel;
-      periodeLabel = 'cette année';
-    } else {
-      var fYM = (CUSTOM_FROM['b']||'').slice(0,7);
-      var tYM = (CUSTOM_TO['b']||'').slice(0,7);
-      budgetLisse  = bizLissageNMois(fYM, tYM);
-      periodeLabel = 'la période';
-    }
+    // Budget lissé global
+    var budgetGlobal = proActives.reduce(function(s,rc){
+      var div = divMap[rc.frequence||'mensuelle']||1;
+      return s + (rc.montant||0)/div*nMois;
+    },0);
 
-    var ecart     = cashReel - budgetLisse;
-    var ecartCol  = ecart >= 0 ? 'var(--gr)' : 'var(--re)';
-    var ecartSign = ecart >= 0 ? '+' : '';
+    var ecartGlobal  = cashReelGlobal - budgetGlobal;
+    var ecartGCol    = ecartGlobal >= 0 ? 'var(--gr)' : 'var(--or)';
+    var ecartGSign   = ecartGlobal >= 0 ? '+' : '';
+    var ecartGSub    = ecartGlobal <= 0 ? 'sous le budget lissé ✅' : 'au-dessus du budget lissé ⚠️';
 
-    lisseEl.style.display = '';
-    lisseEl.innerHTML =
+    // Détail par charge — cash réel spécifique à chaque charge
+    var detailRows = proActives.map(function(rc) {
+      var cashRC = periodRows.filter(function(row) {
+        if (String(row.recurring_charge_id) === String(rc.id)) return true;
+        if (row.cat !== rc.cat) return false;
+        if (rc.scope === 'global') return !row.appart || row.scope === 'global';
+        return row.appart === rc.appart;
+      }).reduce(function(s,r){ return s+(r.montant||0); },0);
+      var div      = divMap[rc.frequence||'mensuelle']||1;
+      var lisseRC  = (rc.montant||0)/div*nMois;
+      var ecartRC  = cashRC - lisseRC;
+      return { rc:rc, cashRC:cashRC, lisseRC:lisseRC, ecartRC:ecartRC };
+    });
+
+    // Rendu
+    var isCumul = P['b'] === 'cumul';
+    var html =
       '<div style="background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(76,175,125,.06));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px;margin-bottom:12px">📊 BUDGET CHARGES FIXES — '+bizPeriodLabel()+'</div>'+
-      '<div style="display:flex;gap:0;flex-wrap:wrap;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
-        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px">📊 BUDGET CHARGES FIXES — '+bizPeriodLabel()+'</div>'+
+        '<button id="b-lisse-toggle" onclick="toggleBLisseDetail()" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--br);background:var(--s2);color:var(--tx);cursor:pointer">'+(B_LISSE_DETAIL?'▴ Masquer détail':'▾ Détail par charge')+'</button>'+
+      '</div>'+
+      // Couche 1 — KPI cards style perso
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
+        '<div style="padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
           '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Cash réel charges fixes</div>'+
-          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(cashReel)+'</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(cashReelGlobal)+'</div>'+
         '</div>'+
-        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
+        '<div style="padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
           '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Budget lissé période</div>'+
-          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetLisse)+'</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetGlobal)+'</div>'+
         '</div>'+
-        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2)">'+
+        '<div style="padding:10px 16px;background:var(--s2)">'+
           '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Écart (cash − budget)</div>'+
-          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+ecartCol+'">'+ecartSign+fmt(ecart)+'</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+ecartGCol+'">'+ecartGSign+fmt(ecartGlobal)+'</div>'+
+          '<div style="font-size:11px;margin-top:2px;color:'+ecartGCol+'">'+ecartGSub+'</div>'+
         '</div>'+
+      '</div>'+
+      // Couche 2 — détail dépliable
+      '<div id="b-lisse-detail" style="display:'+(B_LISSE_DETAIL?'':'none')+'">'+
+      '<div style="margin-top:12px;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
+      '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:10px;font-weight:700;color:var(--td);padding:6px 10px;background:var(--s3);text-transform:uppercase;letter-spacing:.4px">'+
+        '<div>Charge</div><div>Portée</div><div>Fréq.</div><div style="text-align:right">Cash réel</div><div style="text-align:right">Lissé</div><div style="text-align:right">Écart</div>'+
+      '</div>'+
+      detailRows.map(function(d,i) {
+        var rc = d.rc;
+        var ec = d.ecartRC, ecC = ec>=0?'var(--gr)':'var(--or)', ecS = ec>=0?'+':'';
+        var portee = rc.scope==='global' ? '🌐 Global' : aptShort(rc.appart||'');
+        var bg = i%2===0?'var(--s2)':'var(--s1)';
+        return '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:'+bg+';border-top:1px solid var(--br);align-items:center">'+
+          '<div style="font-weight:600;color:var(--tx)">'+escHtml(rc.label||rc.cat)+'</div>'+
+          '<div style="color:var(--td);font-size:11px">'+escHtml(portee)+'</div>'+
+          '<div><span style="font-size:10px;padding:2px 5px;border-radius:4px;background:var(--s3);color:var(--td)">'+(freqLbl[rc.frequence||'mensuelle']||rc.frequence||'')+'</span></div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(d.cashRC)+'</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(d.lisseRC)+'</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:'+ecC+'">'+ecS+fmt(ec)+'</div>'+
+        '</div>';
+      }).join('')+
+      // Ligne total
+      '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:var(--s3);border-top:2px solid var(--br);align-items:center;font-weight:700">'+
+        '<div>Total</div><div></div><div></div>'+
+        '<div style="text-align:right;font-family:\'DM Mono\',monospace">'+fmt(cashReelGlobal)+'</div>'+
+        '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetGlobal)+'</div>'+
+        '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:'+ecartGCol+'">'+ecartGSign+fmt(ecartGlobal)+'</div>'+
+      '</div>'+
+      '</div>'+
+      (isCumul?'<div style="font-size:11px;color:var(--td);margin-top:6px;font-style:italic">Mode cumulé : lissage affiché sur 1 mois uniquement</div>':'')+
       '</div>'+
       '<div style="font-size:11px;color:var(--td);margin-top:8px;font-style:italic">Lissage ≠ cash réel · comparaison analytique uniquement</div>'+
       '</div>';
+
+    lisseEl.style.display = '';
+    lisseEl.innerHTML = html;
   } else if (lisseEl) {
     lisseEl.style.display = 'none';
   }
