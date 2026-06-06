@@ -2374,14 +2374,18 @@ function normLabel(s) {
     .normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
 }
+var LABEL_STOP_WORDS = {
+  mens:1, mensuel:1, mensuelle:1, annuel:1, annuelle:1,
+  trimestriel:1, trimestrielle:1, charge:1, charges:1,
+  paiement:1, paiements:1, perso:1, personnel:1, personnelle:1
+};
 function labelsAreSimilar(a, b) {
   var na = normLabel(a), nb = normLabel(b);
   if (!na || !nb) return false;
-  if (na === nb) return true;
-  if (na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0) return true;
-  var min = Math.min(na.length, nb.length), pfx = 0;
-  for (var i = 0; i < min; i++) { if (na[i] === nb[i]) pfx++; else break; }
-  return pfx >= 4;
+  var wordsA = na.split(' ').filter(function(w){ return w.length >= 3 && !LABEL_STOP_WORDS[w]; });
+  var wordsB = nb.split(' ').filter(function(w){ return w.length >= 3 && !LABEL_STOP_WORDS[w]; });
+  if (!wordsA.length || !wordsB.length) return false;
+  return wordsA.some(function(w){ return wordsB.indexOf(w) >= 0; });
 }
 
 function openPersoDupControl() {
