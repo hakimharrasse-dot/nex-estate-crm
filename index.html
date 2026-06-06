@@ -791,7 +791,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="b-recap-paye" style="display:none"></div>
   <div id="b-lisse-block" style="display:none;margin-bottom:12px"></div>
-  <div class="sl">Ménage par appartement — mois en cours</div>
+  <div class="sl" id="b-recap-sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
   <!-- Gains par femme de ménage -->
   <div class="wb">
@@ -4713,6 +4713,25 @@ function showToast(msg) {
 // ============================================================
 // RENDER: BUSINESS
 // ============================================================
+function bizPeriodLabel() {
+  var p = P['b'];
+  var mo = MO['b'];
+  if (p === 'mois') return mo.toLocaleDateString('fr-FR', {month:'long', year:'numeric'}).toUpperCase();
+  if (p === 'annee') return String(YR['b']);
+  if (p === 'bimestre' || p === 'trimestre' || p === 'semestre') {
+    var n = p==='bimestre'?2:p==='trimestre'?3:6;
+    var lbl = {bimestre:'Bimestre',trimestre:'Trimestre',semestre:'Semestre'}[p];
+    var endMo = new Date(mo.getFullYear(), mo.getMonth()+n-1, 1);
+    return lbl+' '+MONTHS_FR[mo.getMonth()]+' – '+MONTHS_FR[endMo.getMonth()]+' '+mo.getFullYear();
+  }
+  if (p === 'custom') {
+    var f = (CUSTOM_FROM['b']||'').slice(0,7), t = (CUSTOM_TO['b']||'').slice(0,7);
+    return f === t ? f : f+' → '+t;
+  }
+  if (p === 'cumul') return 'Tout l\'historique';
+  return '';
+}
+
 function renderBiz() {
   renderNav('b');
   renderGainsCards();
@@ -4800,7 +4819,7 @@ function renderBiz() {
     lisseEl.style.display = '';
     lisseEl.innerHTML =
       '<div style="background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(76,175,125,.06));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px;margin-bottom:12px">📊 BUDGET CHARGES FIXES — '+periodeLabel.toUpperCase()+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px;margin-bottom:12px">📊 BUDGET CHARGES FIXES — '+bizPeriodLabel()+'</div>'+
       '<div style="display:flex;gap:0;flex-wrap:wrap;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
         '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
           '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Cash réel charges fixes</div>'+
@@ -4822,6 +4841,8 @@ function renderBiz() {
   }
 
   var mk=MO.b.toISOString().slice(0,7);
+  var slEl = document.getElementById('b-recap-sl');
+  if (slEl) slEl.textContent = 'Ménage par appartement — ' + bizPeriodLabel().toLowerCase();
   // Recap ménage par appart (hors global)
   set('b-recap',APPARTS.map(function(ap){
     var x=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.cat==='Ménage'&&r.appart===ap;});
