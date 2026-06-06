@@ -4862,7 +4862,14 @@ function renderBiz() {
         if (row.cat !== rc.cat) return false;
         if (rc.scope === 'global') {
           if (row.appart) return false; // charge globale → exclure les lignes avec appart
-          return rcLabelMatchRow(rc, row); // global : libellé obligatoire
+          if (!rcLabelMatchRow(rc, row)) return false; // libellé obligatoire
+          // Tolérance montant ±40% sur le montant réel de la charge (pas le lissé)
+          var rcMontant = rc.montant || 0;
+          if (rcMontant > 0) {
+            var ecartPct = Math.abs((row.montant || 0) - rcMontant) / rcMontant;
+            if (ecartPct > 0.40) return false;
+          }
+          return true;
         }
         // Par appartement : cat + même appart suffit
         return row.appart === rc.appart;
