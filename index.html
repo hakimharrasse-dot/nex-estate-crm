@@ -1180,7 +1180,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab onp" id="ptm" onclick="setPer('p','mois')">Mois</button>
     </div>
     <div id="p-nav"></div>
-    <select class="fsel" id="p-fcat" onchange="persoFilter()"><option value="">Toutes catégories</option><option>Crédit personnel</option><option>Loyer perso</option><option>Pension enfants</option><option>Famille / Femme</option><option>Crèche / École</option><option>Abonnements</option><option>Alimentation / Grande surface</option><option>Resto / Snack / Café</option><option>Médicaments</option><option>Compléments alimentaires</option><option>Vêtements</option><option>Sport / Salle</option><option>Loisirs / Sorties</option><option>Transport / Carburant</option><option>Dons / Aides</option><option>Autre perso</option></select>
+    <select class="fsel" id="p-fcat" onchange="persoFilter()"><option value="">Toutes catégories</option></select>
     <select class="fsel" id="p-fst" onchange="persoFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
   </div></div>
   <div id="p-pgbar" class="r-pgbar"></div>
@@ -4681,6 +4681,11 @@ function renderServ() {
 // ============================================================
 function renderPerso() {
   renderNav('p');
+  // Peuple le filtre catégorie depuis CATS_P (source unique)
+  var fcSel=document.getElementById('p-fcat');
+  if(fcSel&&fcSel.options.length<=1){
+    CATS_P.forEach(function(c){var o=document.createElement('option');o.value=c;o.text=c;fcSel.appendChild(o);});
+  }
   var rows=filterPer(DB.perso,'p');
   var fc=val('p-fcat'),fs=val('p-fst');
   if(fc)rows=rows.filter(function(r){
