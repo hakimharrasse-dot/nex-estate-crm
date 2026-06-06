@@ -525,7 +525,14 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-06 | fix(dashboard): CA Airbnb réel — `_caResaAirbnb` déplacé après `revRes` pour cohérence signe ; carte Airbnb "Répartition par source" enrichie : "Réel Airbnb : X MAD / dont Y MAD extras" (`5025043`) |
 | 2026-06-06 | fix(dashboard): dec-card "Meilleure source" enrichie — "Réel : X MAD" en orange si Airbnb+extras (`9ff251a`) |
 | 2026-06-06 | feat(serv+dash): modal "🏷 Plateformes" (admin) — liste les services `pay_source=null && resa_ref`, croise DB.resa, pré-coche Airbnb, PATCH sur sélection uniquement (`398e53e`) |
-| 2026-06-06 | **STABLE** : Module CA Airbnb réel validé — Airbnb mai 2026 : 67 621 MAD resa + 776 MAD extras = 68 397 MAD réel ← **HEAD `398e53e`** |
+| 2026-06-06 | **STABLE** : Module CA Airbnb réel validé — Airbnb mai 2026 : 67 621 MAD resa + 776 MAD extras = 68 397 MAD réel ← commit `398e53e` |
+| 2026-06-06 | feat(perso): CATS_P 16→22 catégories — 6 nouvelles, migration 13 "Autre perso", filtre catégorie dynamique depuis CATS_P |
+| 2026-06-06 | feat(perso): charges récurrentes perso — table recurring_charges type=perso, génération mensuelle/trimestrielle/annuelle dans perso |
+| 2026-06-06 | feat(perso): bloc "Charges fixes" rétractable entre résumé catégories et filtres, mini KPIs, tabs Trim/Année, anti-doublon génération, totaux lissés |
+| 2026-06-06 | fix(perso): exclure réellement les doublons manuels à la génération — section "Ignorées" dans la prévisualisation |
+| 2026-06-06 | feat(perso): contrôle doublons — bouton 🔍, détection affinée (récurrent+catFixe+libellé similaire), suppression manuelle avec cases |
+| 2026-06-06 | feat(perso): budget lissé — calcLissePerso() partagée, rangée KPI contextuelle vue Mois (charges fixes réelles / budget lissé / écart) |
+| 2026-06-06 | **STABLE** : Module Dépenses Perso complet — ← **HEAD `1c249fd`** |
 
 ---
 
@@ -1204,3 +1211,210 @@ Si un service a `resa_ref` pointant vers une ligne `DB.resa` de type `AIRCOVER` 
 - `computePeriodKPIs()` — pas de `serv` injecté dans le CA principal
 - `isRevRow()` / `sumNetMAD()` / `rNetMAD()` — inchangés
 - Les données des anciens services (`pay_source=null`) — comportement inchangé (inclus dans "Extras collectés", exclus de `extrasAirbnbPayes`)
+
+---
+
+## 19. Module Dépenses Perso — Architecture complète (stabilisé 2026-06-06)
+
+### Vue d'ensemble
+
+Module admin-only de gestion des dépenses personnelles. Table `perso` dans Supabase. Vue `vw-perso` dans le CRM. Fonctions clés : `renderPerso()`, `renderRecurPerso()`, `calcLissePerso()`.
+
+### Table `perso` — colonnes
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | text PK | `uid()` JS |
+| `date` | text | Format `YYYY-MM-DD` |
+| `cat` | text | Catégorie — CATS_P (22 items) |
+| `desc` | text | Description libre |
+| `montant` | numeric | Montant MAD |
+| `rec` | text | Récurrence (info libre, non utilisé pour génération) |
+| `statut` | text | `Payé` / `En attente` |
+| `prest` | text | Prestataire (optionnel) |
+| `don` | numeric NULL | Pourboire / don associé (toujours catégorisé Dons/Aides) |
+| `recurring_charge_id` | text NULL | UUID de `recurring_charges` si généré automatiquement |
+| `recurring_month` | text NULL | Format `YYYY-MM` — mois de génération |
+
+### CATS_P — liste officielle (22 catégories, IMMUABLE)
+
+```javascript
+var CATS_P = [
+  'Crédit personnel','Loyer perso','Pension enfants','Famille / Femme',
+  'Crèche / École','Enfant / Loisirs enfant','Abonnements',
+  'Alimentation / Grande surface','Resto / Snack / Café',
+  'Maison / Réparations / Électroménager','Charges foyer',
+  'Voiture / Entretien','Transport / Carburant','Médicaments',
+  'Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances',
+  'Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'
+];
+```
+
+**Source unique de vérité** pour le formulaire d'ajout ET le filtre catégorie. Ne jamais dupliquer cette liste.
+
+### Règles métier Dons / Pourboires — IMMUABLES
+
+- Le montant principal reste dans sa catégorie d'origine
+- Le pourboire/don est stocké dans `don` et catégorisé dans `Dons / Aides`
+- Le **Total période inclut montant + don** (non-Dons/Aides : `sum(montant) + sum(don)`)
+- Les catégories restent séparées dans le résumé — aucun double-comptage
+
+```javascript
+// Calcul Total période (dans renderPerso)
+var tot = fc === 'Dons / Aides'
+  ? rows.reduce(function(acc,r){ return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0)); }, 0)
+  : sum(rows,'montant') + rows.reduce(function(acc,r){ return acc+(r.cat!=='Dons / Aides'?(r.don||0):0); }, 0);
+```
+
+### Charges récurrentes perso — table `recurring_charges`
+
+Partagée avec les charges business. Discriminant : colonne `type text DEFAULT 'business'`.
+
+| Valeur type | Module |
+|---|---|
+| `'business'` | Charges récurrentes business (inchangé) |
+| `'perso'` | Charges fixes personnelles |
+
+**Guard non-régression business :**
+```javascript
+// Dans getEligibleCharges() (business) :
+if (r.type === 'perso') return false;
+
+// Dans renderRecurAdmin() (business) :
+var list = DB.recur.filter(function(r){ return r.type !== 'perso'; });
+```
+
+### Fréquences supportées
+
+| Fréquence | Logique d'éligibilité (`getEligibleChargesPerso(mk)`) |
+|---|---|
+| `mensuelle` | Toujours éligible si actif + dans les dates |
+| `trimestrielle` | `diffMoisRecur(mk, date_debut) % 3 === 0` |
+| `annuelle` | `mk.slice(5,7) === date_debut.slice(5,7)` (même mois calendaire) |
+
+```javascript
+function diffMoisRecur(mk, dateDebut) {
+  var pa = mk.split('-'), pb = dateDebut.split('-');
+  return (parseInt(pa[0])-parseInt(pb[0]))*12 + (parseInt(pa[1])-parseInt(pb[1]));
+}
+```
+
+### Génération dans `perso` — règles
+
+- `statut = 'En attente'` (jamais 'À payer')
+- `recurring_charge_id = String(r.id)` (text, pas uuid — évite les problèmes de type)
+- `recurring_month = GEN_PERSO_MONTH` (format `YYYY-MM`)
+- Anti-doublon récurrent : `recurring_charge_id + recurring_month` déjà existants → exclus
+- Anti-doublon manuel : entrée manuelle dans le mois (`!recurring_charge_id`) avec même cat + montant ±10% → **exclue de la génération** (affichée en section "Ignorées")
+
+### Critères anti-doublon manuel (génération + contrôle)
+
+```javascript
+// Entrées manuelles du même mois
+var manualThisMonth = DB.perso.filter(function(p){
+  return !p.recurring_charge_id && p.date && p.date.slice(0,7) === GEN_PERSO_MONTH;
+});
+
+// Est un doublon si :
+var isDoublon = manualThisMonth.some(function(p){
+  return p.cat === r.cat &&
+         r.montant > 0 &&
+         Math.abs((p.montant||0) - r.montant) / r.montant <= 0.1;
+});
+```
+
+### calcLissePerso() — budget lissé (fonction partagée)
+
+```javascript
+function calcLissePerso() {
+  if (!DB.recur || !DB.recur.length) return { lisse: 0, annTheo: 0 };
+  var actives = DB.recur.filter(function(r){ return r.type === 'perso' && r.active; });
+  var totMens = actives.filter(function(r){ return r.frequence === 'mensuelle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  var totTrim = actives.filter(function(r){ return r.frequence === 'trimestrielle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  var totAnn  = actives.filter(function(r){ return r.frequence === 'annuelle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  return {
+    lisse:   totMens + totTrim / 3 + totAnn / 12,
+    annTheo: totMens * 12 + totTrim * 4 + totAnn
+  };
+}
+```
+
+**Utilisée par :** `renderPerso()`, `renderRecurPerso()`, `updateGenPersoPreview()`. Ne jamais recalculer localement.
+
+**Budget lissé = affichage uniquement.** Ne jamais créer de lignes en base pour lisser une charge annuelle/trimestrielle.
+
+### Lecture KPIs Dépenses Perso (vue Mois)
+
+**Rangée 1 — toutes périodes :**
+- Total période (cash réel + dons)
+- Famille (Pension + Famille/Femme + Crèche + Enfant/Loisirs)
+- Crédits & Loyer
+- En attente
+
+**Rangée 2 — vue Mois uniquement (`p-kg-fixes`) :**
+- **Charges fixes du mois** = entrées `recurring_charge_id` OU `cat ∈ CATS_P_FIXED` dans le mois courant
+- **Budget lissé / mois** = `calcLissePerso().lisse`
+- **Écart fixes vs lissé** = charges fixes réelles − budget lissé (vert ≤ 0, orange > 0)
+
+```javascript
+var CATS_P_FIXED = ['Abonnements','Crédit personnel','Loyer perso','Pension enfants',
+                    'Crèche / École','Cotisations / Assurances','Sport / Salle','Charges foyer'];
+```
+
+### Contrôle doublons — `openPersoDupControl()`
+
+Bouton "🔍 Doublons" dans le header `vw-perso`.
+
+**Critère de suspicion (ordre ET) :**
+1. Même mois + même cat + montant ±10%
+2. ET (au moins une ligne a `recurring_charge_id` OU cat ∈ CATS_P_FIXED)
+3. ET libellés similaires (`labelsAreSimilar`) — **sauf** si récurrent + montant identique exact
+
+**Exception :** `recurring_charge_id` présent + montant exactement identique → suspect même sans libellé similaire (desc peut être vide ou divergent).
+
+**Catégories exclues** si zéro récurrent impliqué : Resto, Dons/Aides, Alimentation, Loisirs/Sorties, Maison, Transport, Médicaments, Hygiène, Vêtements, Famille/Femme, Enfant/Loisirs, Autre perso.
+
+**`labelsAreSimilar(a, b)` :**
+```javascript
+// Normalise : minuscules, sans accents, sans ponctuation
+// Découpe en mots ≥ 3 chars, retire les stop-words
+// ≥ 1 mot en commun → similaire
+var LABEL_STOP_WORDS = {
+  mens:1, mensuel:1, mensuelle:1, annuel:1, annuelle:1,
+  trimestriel:1, trimestrielle:1, charge:1, charges:1,
+  paiement:1, paiements:1, perso:1, personnel:1, personnelle:1
+};
+```
+
+**Suppression :** uniquement les lignes explicitement cochées → `DELETE FROM perso WHERE id IN (ids)`. Aucune suppression automatique.
+
+### Onglets période Dépenses Perso
+
+`Jour / Semaine / Mois / Trim. / Année` — IDs : `ptj, pts, ptm, pttri, pta`
+
+`filterPer(rows, 'p')` gère déjà `trimestre` et `annee`. `setPer('p', 'trimestre'/'annee')` inchangé.
+
+### Ce qu'il ne faut JAMAIS toucher
+
+- La logique dons/pourboires (champ `don`, calcul Total période)
+- Les 22 catégories CATS_P (migrées et stabilisées)
+- Les charges business et leur module (`getEligibleCharges`, `renderRecurAdmin`)
+- Le statut généré : toujours `'En attente'` (jamais `'À payer'`)
+- `recurring_charge_id` stocké en `text` (pas uuid) dans `perso`
+
+### Historique Dépenses Perso (2026-06-06)
+
+| Commit | Changement |
+|---|---|
+| Total période inclut dons | `sum(montant) + sum(don)` pour les lignes non-Dons/Aides |
+| CATS_P 16→22 catégories | 6 nouvelles catégories, migration 13 lignes "Autre perso" |
+| Filtre catégorie dynamique | `p-fcat` peuplé depuis CATS_P au lieu d'être hardcodé |
+| Charges récurrentes perso | Module complet : table `recurring_charges` type=perso, génération, fréquences |
+| Bloc rétractable | Bloc "Charges fixes" entre résumé catégories et filtres, mini KPIs toujours visibles |
+| Tabs Trim / Année | Boutons `pttri` / `pta` dans Dépenses Perso |
+| Anti-doublon génération | Exclut les doublons manuels à l'insertion, section "Ignorées" dans la prévisualisation |
+| Contrôle doublons | Bouton 🔍 Doublons, détection affinée, suppression manuelle avec cases à cocher |
+| Budget lissé | `calcLissePerso()`, rangée KPI contextuelle en vue Mois uniquement |
