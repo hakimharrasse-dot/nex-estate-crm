@@ -4689,7 +4689,7 @@ function renderPerso() {
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=fc==='Dons / Aides'
     ?rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0)
-    :sum(rows,'montant');
+    :sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
   var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École'].indexOf(r.cat)>=0;}),'montant');
   var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
