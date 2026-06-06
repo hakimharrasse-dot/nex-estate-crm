@@ -4841,12 +4841,30 @@ function renderBiz() {
     var ecartGSign   = ecartGlobal >= 0 ? '+' : '';
     var ecartGSub    = ecartGlobal <= 0 ? 'sous le budget lissé ✅' : 'au-dessus du budget lissé ⚠️';
 
-    // Détail par charge — cash réel spécifique à chaque charge
+    // Détail par charge — matching hybride Option D
+    // Global : cat + scope + correspondance libellé obligatoire
+    // Par appartement : cat + appart suffit (unique par définition)
+    function rcLabelMatchRow(rc, row) {
+      // Mots significatifs du libellé de la charge (≥3 chars, hors stop-words)
+      var rcWords = normLabel(rc.label || rc.cat).split(' ')
+        .filter(function(w){ return w.length >= 3 && !LABEL_STOP_WORDS[w]; });
+      if (!rcWords.length) return true; // libellé vide → on accepte (cat+scope suffit)
+      // Texte côté dépense : description + libellé de la charge si renseigné
+      var rowText = normLabel((row.desc || '') + ' ' + (row.fmen || ''));
+      return rcWords.some(function(w){ return rowText.indexOf(w) !== -1; });
+    }
+
     var detailRows = proActives.map(function(rc) {
       var cashRC = periodRows.filter(function(row) {
-        if (String(row.recurring_charge_id) === String(rc.id)) return true;
+        // Règle 1 : ID exact — toujours prioritaire
+        if (row.recurring_charge_id != null && String(row.recurring_charge_id) === String(rc.id)) return true;
+        // Règle 2 : cat + scope + condition libellé
         if (row.cat !== rc.cat) return false;
-        if (rc.scope === 'global') return !row.appart || row.scope === 'global';
+        if (rc.scope === 'global') {
+          if (row.appart) return false; // charge globale → exclure les lignes avec appart
+          return rcLabelMatchRow(rc, row); // global : libellé obligatoire
+        }
+        // Par appartement : cat + même appart suffit
         return row.appart === rc.appart;
       }).reduce(function(s,r){ return s+(r.montant||0); },0);
       var div      = divMap[rc.frequence||'mensuelle']||1;
