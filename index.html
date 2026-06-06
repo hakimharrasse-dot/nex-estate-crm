@@ -1163,7 +1163,23 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <div class="vw" id="vw-perso">
   <div class="vh">
     <div><div class="vt" style="background:linear-gradient(135deg,var(--pu),var(--bl));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Dépenses Personnelles</div><div class="vsub">Toutes tes dépenses du quotidien</div></div>
-    <button class="ba bap" onclick="openModal('perso')">+ Ajouter</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ba ba-ghost" onclick="openPersoDupControl()" title="Détecter les doublons dans Dépenses Perso">🔍 Doublons</button>
+      <button class="ba bap" onclick="openModal('perso')">+ Ajouter</button>
+    </div>
+  </div>
+
+  <!-- Modal contrôle doublons perso -->
+  <div class="ov hidden" id="perso-dup-ov" onclick="if(event.target===this)closePersoDupControl()">
+    <div class="mbox" style="max-width:560px">
+      <div class="mt">🔍 Contrôle doublons — Dépenses Perso</div>
+      <div id="perso-dup-body" style="max-height:55vh;overflow-y:auto;font-size:13px;margin:10px 0"></div>
+      <div class="fac">
+        <button class="ba bar" id="perso-dup-del-btn" onclick="confirmDeletePersoDups()" disabled style="opacity:.5">Supprimer les lignes cochées (0)</button>
+        <button class="ba ba-ghost" onclick="closePersoDupControl()">Fermer</button>
+      </div>
+      <div class="login-err hidden" id="perso-dup-err" style="text-align:left;margin-top:10px"></div>
+    </div>
   </div>
   <div class="kg">
     <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
@@ -2347,6 +2363,133 @@ function renderRecurAdmin() {
 // ============================================================
 
 var RECUR_PERSO_ID = null;
+
+// ── Contrôle doublons Dépenses Perso ─────────────────────────────────
+function openPersoDupControl() {
+  var body   = document.getElementById('perso-dup-body');
+  var delBtn = document.getElementById('perso-dup-del-btn');
+  if (!body) return;
+
+  // Détecter les groupes suspects : même mois + même cat + montant ±10%
+  var rows = DB.perso.slice();
+  var groups = [];
+  var used = {};
+
+  for (var i = 0; i < rows.length; i++) {
+    if (used[rows[i].id]) continue;
+    var a = rows[i];
+    var moisA = (a.date||'').slice(0,7);
+    if (!moisA) continue;
+    var group = [a];
+    for (var j = i+1; j < rows.length; j++) {
+      if (used[rows[j].id]) continue;
+      var b = rows[j];
+      if ((b.date||'').slice(0,7) !== moisA) continue;
+      if (b.cat !== a.cat) continue;
+      var mA = a.montant||0, mB = b.montant||0;
+      if (mA <= 0 && mB <= 0) continue;
+      var ref = Math.max(mA, mB);
+      if (Math.abs(mA - mB) / ref <= 0.1) group.push(b);
+    }
+    if (group.length >= 2) {
+      group.forEach(function(r){ used[r.id] = true; });
+      groups.push(group);
+    }
+  }
+
+  if (!groups.length) {
+    body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gr)">✅ Aucun doublon détecté dans Dépenses Perso.</div>';
+    if (delBtn) { delBtn.disabled=true; delBtn.style.opacity='.5'; delBtn.textContent='Supprimer les lignes cochées (0)'; }
+    document.getElementById('perso-dup-ov').classList.remove('hidden');
+    return;
+  }
+
+  // Construire le HTML du modal
+  var html = '<div style="margin-bottom:8px;color:var(--td)">'+groups.length+' groupe(s) suspect(s) — vérifiez et cochez les lignes à supprimer.</div>';
+
+  groups.forEach(function(group, gi){
+    var mois = (group[0].date||'').slice(0,7);
+    var cat  = group[0].cat||'';
+    html += '<div style="margin-bottom:14px;padding:10px;background:var(--s2);border-radius:8px;border:1px solid var(--br)">';
+    html += '<div style="font-weight:600;font-size:12px;color:var(--tm);margin-bottom:8px">'+escHtml(mois)+' · '+escHtml(cat)+'</div>';
+
+    // Trier : Payé / manuel en premier (à conserver), En attente / généré ensuite
+    group.sort(function(a,b){
+      var scoreA = (a.statut==='Payé' ? 0 : 1) + (!a.recurring_charge_id ? 0 : 1);
+      var scoreB = (b.statut==='Payé' ? 0 : 1) + (!b.recurring_charge_id ? 0 : 1);
+      return scoreA - scoreB;
+    });
+
+    group.forEach(function(r, ri){
+      // Suggestion : cocher si "En attente" ET généré par récurrence
+      var suggested = (r.statut === 'En attente') && !!r.recurring_charge_id;
+      var isFirst   = ri === 0; // le premier = meilleur candidat à conserver
+      var tagStyle  = r.statut==='Payé'
+        ? 'background:#d1fae522;color:#065f46'
+        : 'background:#fee2e222;color:#991b1b';
+      var srcTag = r.recurring_charge_id
+        ? '<span style="font-size:10px;color:var(--td);margin-left:4px">⚙️ récurrente</span>'
+        : '<span style="font-size:10px;color:var(--td);margin-left:4px">✍️ manuelle</span>';
+
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;'+(ri<group.length-1?'border-bottom:1px solid var(--br)':'')+'">'+
+        '<input type="checkbox" class="perso-dup-chk" data-id="'+escHtml(r.id)+'" onchange="updatePersoDupBtn()"'+(suggested?' checked':'')+
+          (isFirst&&!suggested?' title="Conserver (suggéré)"':'')+'>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.desc||r.cat)+'</div>'+
+          '<div style="font-size:11px;color:var(--td)">'+escHtml(r.date||'')+'</div>'+
+        '</div>'+
+        srcTag+
+        '<span style="font-size:11px;padding:2px 6px;border-radius:4px;'+tagStyle+'">'+escHtml(r.statut||'')+'</span>'+
+        '<span style="font-weight:700;font-family:\'DM Mono\',monospace;min-width:72px;text-align:right">'+fmt(r.montant)+'</span>'+
+      '</div>';
+    });
+    html += '</div>';
+  });
+
+  body.innerHTML = html;
+  updatePersoDupBtn();
+  document.getElementById('perso-dup-ov').classList.remove('hidden');
+}
+
+function updatePersoDupBtn() {
+  var chks = document.querySelectorAll('.perso-dup-chk:checked');
+  var btn  = document.getElementById('perso-dup-del-btn');
+  if (!btn) return;
+  var n = chks.length;
+  btn.disabled = n === 0;
+  btn.style.opacity = n > 0 ? '1' : '.5';
+  btn.textContent = 'Supprimer les lignes cochées ('+n+')';
+}
+
+function closePersoDupControl() {
+  document.getElementById('perso-dup-ov').classList.add('hidden');
+}
+
+async function confirmDeletePersoDups() {
+  var chks = document.querySelectorAll('.perso-dup-chk:checked');
+  var ids  = [];
+  chks.forEach(function(c){ if(c.dataset.id) ids.push(c.dataset.id); });
+  if (!ids.length) return;
+
+  var errEl = document.getElementById('perso-dup-err');
+  var showErr = function(msg){
+    if(errEl){ errEl.textContent=msg; errEl.classList.remove('hidden'); }
+    showToast('❌ '+msg);
+  };
+
+  var btn = document.getElementById('perso-dup-del-btn');
+  if (btn) btn.disabled = true;
+
+  var res = await SUPA.from(TABLE.perso).delete().in('id', ids);
+  if (res.error) { showErr('Erreur suppression : '+res.error.message); if(btn) btn.disabled=false; return; }
+
+  // Mettre à jour DB locale
+  DB.perso = DB.perso.filter(function(r){ return ids.indexOf(r.id) < 0; });
+  closePersoDupControl();
+  showToast('🗑️ '+ids.length+' ligne(s) supprimée(s)');
+  renderPerso();
+}
+// ─────────────────────────────────────────────────────────────────────
 
 function toggleRecurPersoBlock() {
   var detail = document.getElementById('rcp-detail');
