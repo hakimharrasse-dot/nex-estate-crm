@@ -780,11 +780,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: DÉPENSES BUSINESS ═══ -->
 <div class="vw" id="vw-business">
   <div class="vh">
-    <div><div class="vt">Dépenses Business</div><div class="vsub">Ménage, charges, maintenance</div></div>
+    <div><div class="vt">Dépenses Business</div><div class="vsub" id="b-vsub">Ménage, charges, maintenance</div></div>
     <button class="ba bab" onclick="openModal('business')">+ Ajouter</button>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl" id="b-kl-tot">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Ménage</div><div class="kv" id="b-men">0 MAD</div></div>
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
@@ -4752,6 +4752,11 @@ function renderBiz() {
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}), 'montant');
   set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
+  var _bpl = bizPeriodLabel();
+  var _bklTot = document.getElementById('b-kl-tot');
+  if (_bklTot) _bklTot.textContent = 'Total — ' + _bpl;
+  var _bVsub = document.getElementById('b-vsub');
+  if (_bVsub) _bVsub.textContent = 'Ménage, charges, maintenance — ' + _bpl;
   // ── Récap mouvements payés (visible uniquement quand filtre statut = Payé) ──
   var recapPayeEl=document.getElementById('b-recap-paye');
   if(recapPayeEl) {
