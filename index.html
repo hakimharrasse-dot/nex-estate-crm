@@ -1182,11 +1182,28 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div><div class="ks" id="p-delta-lisse" style="display:none"></div></div>
+    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
     <div class="kc"><div class="kl">Crédits & Loyer</div><div class="kv" id="p-crd">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="p-att">0 MAD</div></div>
-    <div class="kc"><div class="kl">Budget estimé / mois</div><div class="kv" style="color:var(--bl)" id="p-lisse">— MAD</div><div class="ks">Charges fixes lissées</div></div>
+  </div>
+  <!-- Rangée charges fixes — visible uniquement en vue Mois -->
+  <div class="kg" id="p-kg-fixes" style="display:none;border-top:1px solid var(--br);padding-top:2px">
+    <div class="kc" style="border-left:3px solid var(--bl)">
+      <div class="kl">Charges fixes du mois</div>
+      <div class="kv" style="color:var(--pu)" id="p-fixes-reel">— MAD</div>
+      <div class="ks">Générées ou saisies ce mois</div>
+    </div>
+    <div class="kc" style="border-left:3px solid var(--bl)">
+      <div class="kl">Budget lissé / mois</div>
+      <div class="kv" style="color:var(--bl)" id="p-lisse">— MAD</div>
+      <div class="ks">Estimé charges fixes</div>
+    </div>
+    <div class="kc" style="border-left:3px solid var(--bl)">
+      <div class="kl">Écart fixes vs lissé</div>
+      <div class="kv" id="p-ecart-fixes">—</div>
+      <div class="ks" id="p-ecart-fixes-sub"></div>
+    </div>
   </div>
   <div class="sl">Résumé par catégorie</div>
   <div class="rg" id="p-recap"></div>
@@ -5365,21 +5382,31 @@ function renderPerso() {
   set('p-tot',fmt(tot)); set('p-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('p-fam',fmt(fam)); set('p-crd',fmt(crd)); set('p-att',fmt(att));
 
-  // Budget lissé
-  var lisseData  = calcLissePerso();
-  var lisseEl    = document.getElementById('p-lisse');
-  var deltaEl    = document.getElementById('p-delta-lisse');
-  if (lisseEl) lisseEl.textContent = lisseData.lisse > 0 ? fmt(lisseData.lisse) : '—';
-  if (deltaEl) {
-    if (P['p'] === 'mois' && lisseData.lisse > 0) {
-      var delta = tot - lisseData.lisse;
-      var sign  = delta >= 0 ? '+' : '';
-      var color = delta <= 0 ? 'var(--gr)' : 'var(--re)';
-      deltaEl.textContent = 'vs estimé : ' + sign + fmt(delta);
-      deltaEl.style.color   = color;
-      deltaEl.style.display = '';
+  // Rangée charges fixes — visible uniquement en vue Mois
+  var kgFixes = document.getElementById('p-kg-fixes');
+  if (kgFixes) {
+    if (P['p'] === 'mois') {
+      var lisseData = calcLissePerso();
+      // Charges fixes du mois = entrées avec recurring_charge_id OU catégorie fixe, du mois courant
+      var moisCur   = MO['p'].toISOString().slice(0, 7);
+      var fixesMois = DB.perso.filter(function(r) {
+        if (!r.date || r.date.slice(0, 7) !== moisCur) return false;
+        return !!r.recurring_charge_id || CATS_P_FIXED.indexOf(r.cat) >= 0;
+      });
+      var totFixes  = sum(fixesMois, 'montant');
+      var ecart     = totFixes - lisseData.lisse;
+      var sign      = ecart >= 0 ? '+' : '';
+      var ecartColor = ecart <= 0 ? 'var(--gr)' : 'var(--re)';
+      var ecartSub   = ecart <= 0 ? 'sous le budget lissé ✅' : 'au-dessus du budget lissé ⚠️';
+
+      set('p-fixes-reel', fmt(totFixes));
+      set('p-lisse', lisseData.lisse > 0 ? fmt(lisseData.lisse) : '—');
+      var ecartEl = document.getElementById('p-ecart-fixes');
+      if (ecartEl) { ecartEl.textContent = lisseData.lisse > 0 ? sign + fmt(ecart) : '—'; ecartEl.style.color = ecartColor; }
+      set('p-ecart-fixes-sub', lisseData.lisse > 0 ? ecartSub : '');
+      kgFixes.style.display = '';
     } else {
-      deltaEl.style.display = 'none';
+      kgFixes.style.display = 'none';
     }
   }
   var allP=filterPer(DB.perso,'p');
