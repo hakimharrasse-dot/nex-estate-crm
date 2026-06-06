@@ -4762,33 +4762,60 @@ function renderBiz() {
   }
   // ── Bloc lissage charges fixes pro ──
   var lisseEl = document.getElementById('b-lisse-block');
-  if (lisseEl && DB.recur && DB.recur.some(function(r){ return r.type !== 'perso' && r.active; })) {
-    var lc = calcLissePro();
-    var perBP = P['b'];
-    var projLabel = '', projVal = 0;
-    if (perBP === 'mois') {
-      projLabel = 'Ce mois (lissé)';
-      projVal = lc.lisse;
-    } else if (perBP === 'annee') {
-      projLabel = 'Projection annuelle';
-      projVal = lc.annuel;
-    } else {
-      var fromYM = (CUSTOM_FROM['b']||'').slice(0,7);
-      var toYM   = (CUSTOM_TO['b']||'').slice(0,7);
-      projLabel = 'Projection période';
-      projVal = bizLissageNMois(fromYM, toYM);
+  var proActives = (DB.recur||[]).filter(function(r){ return r.type !== 'perso' && r.active; });
+  if (lisseEl && proActives.length) {
+    // Cash réel : recurring_charge_id non null OU match strict cat + scope/appart
+    var periodRows = filterPer(DB.business, 'b');
+    function isChargeFixePro(row) {
+      if (row.recurring_charge_id != null) return true;
+      return proActives.some(function(rc) {
+        if (rc.cat !== row.cat) return false;
+        if (rc.scope === 'global') return !row.appart || row.scope === 'global';
+        return row.appart === rc.appart;
+      });
     }
+    var cashReel = periodRows.filter(isChargeFixePro).reduce(function(s,r){ return s+(r.montant||0); }, 0);
+
+    // Budget lissé sur la période
+    var perBP = P['b'];
+    var budgetLisse = 0, periodeLabel = '';
+    if (perBP === 'mois') {
+      var lc = calcLissePro();
+      budgetLisse  = lc.lisse;
+      periodeLabel = 'ce mois';
+    } else if (perBP === 'annee') {
+      budgetLisse  = calcLissePro().annuel;
+      periodeLabel = 'cette année';
+    } else {
+      var fYM = (CUSTOM_FROM['b']||'').slice(0,7);
+      var tYM = (CUSTOM_TO['b']||'').slice(0,7);
+      budgetLisse  = bizLissageNMois(fYM, tYM);
+      periodeLabel = 'la période';
+    }
+
+    var ecart     = cashReel - budgetLisse;
+    var ecartCol  = ecart >= 0 ? 'var(--gr)' : 'var(--re)';
+    var ecartSign = ecart >= 0 ? '+' : '';
+
     lisseEl.style.display = '';
     lisseEl.innerHTML =
-      '<div style="background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(76,175,125,.06));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:24px;align-items:center">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px">📊 BUDGET CHARGES FIXES</div>'+
-      '<div style="display:flex;gap:24px;flex-wrap:wrap">'+
-        '<div><div style="font-size:11px;color:var(--td);margin-bottom:2px">Budget/mois lissé</div>'+
-          '<div style="font-size:17px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(lc.lisse)+'</div></div>'+
-        '<div><div style="font-size:11px;color:var(--td);margin-bottom:2px">'+projLabel+'</div>'+
-          '<div style="font-size:17px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--or)">'+fmt(projVal)+'</div></div>'+
+      '<div style="background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(76,175,125,.06));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--bl);letter-spacing:.5px;margin-bottom:12px">📊 BUDGET CHARGES FIXES — '+periodeLabel.toUpperCase()+'</div>'+
+      '<div style="display:flex;gap:0;flex-wrap:wrap;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
+        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
+          '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Cash réel charges fixes</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(cashReel)+'</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2);border-right:1px solid var(--br)">'+
+          '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Budget lissé période</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetLisse)+'</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:140px;padding:10px 16px;background:var(--s2)">'+
+          '<div style="font-size:11px;color:var(--td);margin-bottom:4px">Écart (cash − budget)</div>'+
+          '<div style="font-size:18px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+ecartCol+'">'+ecartSign+fmt(ecart)+'</div>'+
+        '</div>'+
       '</div>'+
-      '<div style="font-size:11px;color:var(--td);margin-left:auto;font-style:italic">Lissage ≠ cash réel — indicatif uniquement</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-top:8px;font-style:italic">Lissage ≠ cash réel · comparaison analytique uniquement</div>'+
       '</div>';
   } else if (lisseEl) {
     lisseEl.style.display = 'none';
