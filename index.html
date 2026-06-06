@@ -2369,6 +2369,21 @@ var RECUR_PERSO_ID = null;
 var CATS_P_FIXED = ['Abonnements','Crédit personnel','Loyer perso','Pension enfants',
                     'Crèche / École','Cotisations / Assurances','Sport / Salle','Charges foyer'];
 
+function normLabel(s) {
+  return (s||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
+}
+function labelsAreSimilar(a, b) {
+  var na = normLabel(a), nb = normLabel(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0) return true;
+  var min = Math.min(na.length, nb.length), pfx = 0;
+  for (var i = 0; i < min; i++) { if (na[i] === nb[i]) pfx++; else break; }
+  return pfx >= 4;
+}
+
 function openPersoDupControl() {
   var body   = document.getElementById('perso-dup-body');
   var delBtn = document.getElementById('perso-dup-del-btn');
@@ -2400,6 +2415,8 @@ function openPersoDupControl() {
       var hasRecur = !!a.recurring_charge_id || !!b.recurring_charge_id;
       var isCatFixe = CATS_P_FIXED.indexOf(a.cat) >= 0;
       if (!hasRecur && !isCatFixe) continue;
+      // Paires 100% manuelles : exiger aussi un libellé similaire
+      if (!hasRecur && !labelsAreSimilar(a.desc, b.desc)) continue;
       group.push(b);
     }
     if (group.length >= 2) {
