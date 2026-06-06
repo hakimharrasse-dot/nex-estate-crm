@@ -2121,7 +2121,7 @@ function openRecurModal(id) {
   if (titleEl) titleEl.textContent = id ? 'Modifier la charge' : 'Nouvelle charge récurrente';
 
   var catSel = document.getElementById('rc-cat');
-  if (catSel) catSel.innerHTML = CATS_B.map(function(c){
+  if (catSel) catSel.innerHTML = CATS_B_RECUR.map(function(c){
     return '<option'+(v('cat')===c?' selected':'')+'>'+c+'</option>';
   }).join('');
 
@@ -3139,7 +3139,8 @@ var EUR_MAD = 10.5;
 var EUR_MAD_DATE = '';
 var TAUX    = {rabat:4, sale:2};
 var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
-var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Avance caisse','Règlement terrain','Autre'];
+var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Salaires / Équipe','Charges sociales / CNSS','Comptabilité / Fiscalité','Téléphonie / Communication','Avance caisse','Règlement terrain','Autre'];
+var CATS_B_RECUR = CATS_B.filter(function(c){ return ['Avance caisse','Règlement terrain'].indexOf(c) === -1; });
 function catLabel(c){return c==='Règlement terrain'?'Solde équipe déjà comptabilisé':c;}
 var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Maison / Réparations / Électroménager','Charges foyer','Voiture / Entretien','Transport / Carburant','Médicaments','Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances','Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'];
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
