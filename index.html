@@ -4828,18 +4828,11 @@ function renderBiz() {
         return row.appart === rc.appart;
       });
     }
-    var cashReelGlobal = periodRows.filter(isChargeFixePro).reduce(function(s,r){ return s+(r.montant||0); },0);
-
     // Budget lissé global
     var budgetGlobal = proActives.reduce(function(s,rc){
       var div = divMap[rc.frequence||'mensuelle']||1;
       return s + (rc.montant||0)/div*nMois;
     },0);
-
-    var ecartGlobal  = cashReelGlobal - budgetGlobal;
-    var ecartGCol    = ecartGlobal >= 0 ? 'var(--gr)' : 'var(--or)';
-    var ecartGSign   = ecartGlobal >= 0 ? '+' : '';
-    var ecartGSub    = ecartGlobal <= 0 ? 'sous le budget lissé ✅' : 'au-dessus du budget lissé ⚠️';
 
     // Détail par charge — matching hybride Option D
     // Global : cat + scope + correspondance libellé obligatoire
@@ -4862,14 +4855,7 @@ function renderBiz() {
         if (row.cat !== rc.cat) return false;
         if (rc.scope === 'global') {
           if (row.appart) return false; // charge globale → exclure les lignes avec appart
-          if (!rcLabelMatchRow(rc, row)) return false; // libellé obligatoire
-          // Tolérance montant ±40% sur le montant réel de la charge (pas le lissé)
-          var rcMontant = rc.montant || 0;
-          if (rcMontant > 0) {
-            var ecartPct = Math.abs((row.montant || 0) - rcMontant) / rcMontant;
-            if (ecartPct > 0.40) return false;
-          }
-          return true;
+          return rcLabelMatchRow(rc, row); // libellé obligatoire, aucune tolérance montant
         }
         // Par appartement : cat + même appart suffit
         return row.appart === rc.appart;
@@ -4879,6 +4865,13 @@ function renderBiz() {
       var ecartRC  = cashRC - lisseRC;
       return { rc:rc, cashRC:cashRC, lisseRC:lisseRC, ecartRC:ecartRC };
     });
+
+    // Global = somme exacte du détail (cohérence garantie)
+    var cashReelGlobal = detailRows.reduce(function(s,d){ return s+d.cashRC; }, 0);
+    var ecartGlobal  = cashReelGlobal - budgetGlobal;
+    var ecartGCol    = ecartGlobal >= 0 ? 'var(--gr)' : 'var(--or)';
+    var ecartGSign   = ecartGlobal >= 0 ? '+' : '';
+    var ecartGSub    = ecartGlobal <= 0 ? 'sous le budget lissé ✅' : 'au-dessus du budget lissé ⚠️';
 
     // Rendu
     var isCumul = P['b'] === 'cumul';
