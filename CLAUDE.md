@@ -133,6 +133,7 @@ Le CRM dispose d'une section **Logements** permettant d'activer/archiver des bie
 | `montant` | numeric | Montant en **MAD** |
 | `statut` | text | `Payé` / `En attente` |
 | `resa_ref` | text NULL | Code réservation Airbnb lié — match prioritaire réconciliation (ajouté 2026-05-31) |
+| `pay_source` | text NULL | Plateforme d'encaissement : `null`=Terrain/Direct, `'Airbnb'`, `'Booking'`, `'Autre'` — ajouté 2026-06-06, nullable, migration `ALTER TABLE serv ADD COLUMN IF NOT EXISTS pay_source text` |
 
 ### `messages` — messagerie IA (module Messages IA, ajouté 2026-05)
 | Colonne | Type | Notes |
@@ -515,7 +516,16 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-04 | fix(reconcil): pre-pass CSV — `payoutByCodeResol` accumulait plusieurs payouts sur la même référence. Remplacé par `_resolBatchList[code]=[{batchId,madAmt}]` + consommation séquentielle `_resolBatchIdx`. HMPJ5EQJZA : 920.22 (23/05) + 503.72 (20/05) = 1 423.94 faux → chaque résolution reçoit maintenant son propre MAD. (`65541b9`) |
 | 2026-06-04 | **STABLE** : Réconciliation MAD réel AIRCOVER/AJUSTEMENT — pré-pass, Check D, KPI — commit `65541b9` |
 | 2026-06-05 | fix(modifier-resa): correction complète en 4 commits (`1f221d4`→`905f6f3`). `buildForm` : `brutMad = brut×taux_reel` (jamais `mad_reel`), `netMad = mad_reel` si disponible. `saveResa` : préserve `brut/net/commission` EUR et `mad_reel/taux_reel` quand `taux_reel` existe — aucune dérive possible. DB fix HMNMXRCNYQ (Ikram Badri) : `brut/net/commission` restaurés depuis `mad_reel/taux_reel` après altération par test. |
-| 2026-06-05 | **STABLE** : Modifier réservation — affichage MAD réel + Enregistrer idempotent — commit `905f6f3` ← **HEAD** |
+| 2026-06-05 | **STABLE** : Modifier réservation — affichage MAD réel + Enregistrer idempotent — commit `905f6f3` |
+| 2026-06-06 | feat(depenses-business): filtre statut `b-fst` — option "À payer" ajoutée pour les charges fixes importées (`7ce7530`) |
+| 2026-06-06 | fix(charges-fixes): `saveBiz` préserve `recurring_charge_id` et `recurring_month` lors d'un PATCH statut manuel — corrige la création de doublons à la regénération (`6ae6391`) |
+| 2026-06-06 | feat(serv): champ `pay_source` nullable — plateforme d'encaissement dans le formulaire Services additionnels ; `col`/`pay` automatiquement nullifiés pour Airbnb/Booking ; migration Supabase appliquée (`fd9ef52`) |
+| 2026-06-06 | fix(serv): "Collecté par" masqué quand `pay_source ≠ null` — `#ff-serv-col` toggle via `onchange` sur `fi-pay-source` (`ba4b06d`) |
+| 2026-06-06 | fix(serv): "Mode de paiement" masqué pour Airbnb/Booking — `#ff-serv-pay` toggle ; badge `chip(r.pay\|\|(r.pay_source\|\|'Cash'))` dans renderServ/renderTaxe (`d33e30d`) |
+| 2026-06-06 | fix(dashboard): CA Airbnb réel — `_caResaAirbnb` déplacé après `revRes` pour cohérence signe ; carte Airbnb "Répartition par source" enrichie : "Réel Airbnb : X MAD / dont Y MAD extras" (`5025043`) |
+| 2026-06-06 | fix(dashboard): dec-card "Meilleure source" enrichie — "Réel : X MAD" en orange si Airbnb+extras (`9ff251a`) |
+| 2026-06-06 | feat(serv+dash): modal "🏷 Plateformes" (admin) — liste les services `pay_source=null && resa_ref`, croise DB.resa, pré-coche Airbnb, PATCH sur sélection uniquement (`398e53e`) |
+| 2026-06-06 | **STABLE** : Module CA Airbnb réel validé — Airbnb mai 2026 : 67 621 MAD resa + 776 MAD extras = 68 397 MAD réel ← **HEAD `398e53e`** |
 
 ---
 
@@ -1102,3 +1112,95 @@ La section verte "Déjà dans services additionnels · N virement(s)" est affich
 - Ne pas refondre le module Réconciliation existant
 - Ne pas toucher au reste du module (Airbnb MAD réel, Booking)
 - Toute modification de `findServMatch` doit préserver les 3 critères et la priorité resa_ref
+
+---
+
+## 18. Module CA Airbnb réel — Services additionnels plateforme (stabilisé 2026-06-06)
+
+### Objectif
+
+Permettre de comparer le CRM avec le tableau de bord Airbnb en incluant les services additionnels payés via la plateforme (clim, late check-out, parking, extras voyageur...) dans un KPI "CA Airbnb réel", sans double-comptage et sans impacter le CA principal.
+
+### Champ `pay_source` dans `serv`
+
+| Valeur | Signification | `pay` stocké | `col` stocké |
+|---|---|---|---|
+| `null` | Terrain / Direct — paiement cash ou virement direct | valeur du select | valeur du select |
+| `'Airbnb'` | Service encaissé via Airbnb — virement plateforme | `null` | `null` |
+| `'Booking'` | Service encaissé via Booking.com (futur) | `null` | `null` |
+| `'Autre'` | Autre mode — préciser via `pay` | valeur du select | `null` |
+
+**Migration Supabase appliquée :** `ALTER TABLE serv ADD COLUMN IF NOT EXISTS pay_source text`
+
+**Règle formulaire :** quand `pay_source = 'Airbnb'` ou `'Booking'` →`ff-serv-pay` et `ff-serv-col` masqués dans le formulaire ; `saveServ()` force `pay=null, col=null`.
+
+### Calcul `extrasAirbnbPayes` dans `renderDash()`
+
+```javascript
+var extrasAirbnbPayes = filterPer(DB.serv, 'd').filter(function(r) {
+  if (r.pay_source !== 'Airbnb') return false;
+  if (r.statut !== 'Payé') return false;
+  if (fa && r.appart !== fa) return false;
+  // Anti-doublon V1 : exclure si resa_ref → AIRCOVER ou AJUSTEMENT dans DB.resa
+  if (r.resa_ref) {
+    var _linked = DB.resa.find(x => x.source==='Airbnb'
+      && ['AIRCOVER','AJUSTEMENT'].indexOf(x.type_norm) >= 0
+      && airbnbBaseRef(x.ref) === airbnbBaseRef(r.resa_ref));
+    if (_linked) return false;
+  }
+  return true;
+}).reduce((s, r) => s + (r.montant || 0), 0);
+```
+
+- `filterPer(DB.serv, 'd')` = même période que le dashboard (clé 'd')
+- Filtre `statut='Payé'` uniquement (pas les En attente)
+- Anti-doublon V1 : si `resa_ref` pointe vers un AIRCOVER/AJUSTEMENT dans DB.resa → exclu (déjà dans le CA via `sumNetMAD`)
+
+### Calcul `caAirbnbReel`
+
+```javascript
+// Calculé APRÈS revRes pour cohérence de signe (revRes = même base que carte source)
+var _caResaAirbnb = sumNetMAD(revRes.filter(r => r.source === 'Airbnb'));
+var caAirbnbReel  = _caResaAirbnb + extrasAirbnbPayes;
+```
+
+**Règle immuable :** `_caResaAirbnb` doit toujours être calculé à partir de `revRes` (défini ligne ~3490), jamais depuis `_revPayeDash` (ligne ~3290) — cela garantit la cohérence de signe avec la carte "Répartition par source".
+
+### Affichage Dashboard
+
+| Zone | Contenu | Condition |
+|---|---|---|
+| KPI `kc-airbnb-reel` (grille `.kg`) | "CA Airbnb réel ⓘ" + valeur + "Resa X MAD + extras Y MAD" | `extrasAirbnbPayes > 0` |
+| Carte Airbnb "Répartition par source" | "Réel Airbnb : X MAD" (orange, gras) + "dont Y MAD extras" | `extrasAirbnbPayes > 0` |
+| Dec-card "Meilleure source" | "Réel : X MAD" (orange, gras) sous le CA réservations | Airbnb = meilleure source ET `extrasAirbnbPayes > 0` |
+
+**Aucun de ces affichages ne modifie le CA principal (`netMad` / `computePeriodKPIs`).**
+
+### Distinctions importantes
+
+| KPI | Ce qu'il mesure | Fonction |
+|---|---|---|
+| CA encaissé | Toutes réservations Airbnb+Booking+Direct+VRBO (CA brut MAD) | `sumNetMAD(revPaye)` dans `computePeriodKPIs` |
+| CA réservations Airbnb | Réservations Airbnb uniquement (via `revRes`) | `_caResaAirbnb` |
+| Extras collectés | Tous services additionnels, tous statuts | `sum(DB.serv, 'montant')` |
+| Services payés | Tous services statut=Payé | `servPaye` |
+| **CA Airbnb réel** | Resa Airbnb + extras Airbnb payés (sans doublon) | `caAirbnbReel` |
+
+### Modal "🏷 Plateformes" — mise à jour historique
+
+- Bouton dans le header Services Additionnels (admin uniquement)
+- Overlay `plat-fix-ov` (z-index:905)
+- `openPlatFixModal()` : scanne `DB.serv` pour `pay_source=null && resa_ref`, croise avec `DB.resa` via `airbnbBaseRef`, pré-coche les lignes Airbnb
+- `applyPlatFix()` : PATCH `pay_source='Airbnb', pay=null, col=null` sur les lignes cochées uniquement — aucune mise à jour automatique massive
+- Les lignes sans `resa_ref` ne sont jamais proposées dans le modal
+
+### Règle anti-doublon — ne jamais modifier
+
+Si un service a `resa_ref` pointant vers une ligne `DB.resa` de type `AIRCOVER` ou `AJUSTEMENT` → le montant est déjà dans le CA via `rNetMAD()` → exclure de `extrasAirbnbPayes`.
+
+### Ce qu'il ne faut JAMAIS toucher
+
+- `findServMatch()` — la Réconciliation continue à reconnaître les services Airbnb comme `A_SERV` (vert) indépendamment de `pay_source`
+- `computePeriodKPIs()` — pas de `serv` injecté dans le CA principal
+- `isRevRow()` / `sumNetMAD()` / `rNetMAD()` — inchangés
+- Les données des anciens services (`pay_source=null`) — comportement inchangé (inclus dans "Extras collectés", exclus de `extrasAirbnbPayes`)
