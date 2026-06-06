@@ -1182,10 +1182,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div><div class="ks" id="p-delta-lisse" style="display:none"></div></div>
     <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
     <div class="kc"><div class="kl">Crédits & Loyer</div><div class="kv" id="p-crd">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="p-att">0 MAD</div></div>
+    <div class="kc"><div class="kl">Budget estimé / mois</div><div class="kv" style="color:var(--bl)" id="p-lisse">— MAD</div><div class="ks">Charges fixes lissées</div></div>
   </div>
   <div class="sl">Résumé par catégorie</div>
   <div class="rg" id="p-recap"></div>
@@ -2364,6 +2365,23 @@ function renderRecurAdmin() {
 
 var RECUR_PERSO_ID = null;
 
+// ── Budget lissé Dépenses Perso ──────────────────────────────────────
+function calcLissePerso() {
+  if (!DB.recur || !DB.recur.length) return { lisse: 0, annTheo: 0 };
+  var actives = DB.recur.filter(function(r){ return r.type === 'perso' && r.active; });
+  var totMens = actives.filter(function(r){ return r.frequence === 'mensuelle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  var totTrim = actives.filter(function(r){ return r.frequence === 'trimestrielle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  var totAnn  = actives.filter(function(r){ return r.frequence === 'annuelle'; })
+                       .reduce(function(s,r){ return s + (r.montant||0); }, 0);
+  return {
+    lisse:   totMens + totTrim / 3 + totAnn / 12,
+    annTheo: totMens * 12 + totTrim * 4 + totAnn
+  };
+}
+// ─────────────────────────────────────────────────────────────────────
+
 // ── Contrôle doublons Dépenses Perso ─────────────────────────────────
 // Catégories fixes : détectées même si les deux lignes sont manuelles
 var CATS_P_FIXED = ['Abonnements','Crédit personnel','Loyer perso','Pension enfants',
@@ -2753,16 +2771,10 @@ function updateGenPersoPreview() {
   }
 
   // ── Totaux récapitulatifs (basés sur realNew uniquement) ──
-  var actives = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
-  var totGen  = realNew.reduce(function(s,r){return s+(r.montant||0);},0);
-  var totMens = actives.filter(function(r){return r.frequence==='mensuelle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var totTrim = actives.filter(function(r){return r.frequence==='trimestrielle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var totAnn  = actives.filter(function(r){return r.frequence==='annuelle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var lisse   = totMens + totTrim/3 + totAnn/12;
-  var annTheo = totMens*12 + totTrim*4 + totAnn;
+  var totGen    = realNew.reduce(function(s,r){return s+(r.montant||0);},0);
+  var lisseCalc = calcLissePerso();
+  var lisse     = lisseCalc.lisse;
+  var annTheo   = lisseCalc.annTheo;
 
   html += '<div style="margin-top:12px;padding-top:10px;border-top:2px solid var(--br);display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px">';
   html += '<div style="color:var(--td)">À générer ce mois</div><div style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--pu)">'+fmt(totGen)+'</div>';
@@ -2852,15 +2864,10 @@ function renderRecurPerso() {
   if (!tb) return;
 
   // ── Mini KPIs dans le bandeau toujours visible ──
-  var actives = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
-  var totMens = actives.filter(function(r){return r.frequence==='mensuelle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var totTrim = actives.filter(function(r){return r.frequence==='trimestrielle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var totAnn  = actives.filter(function(r){return r.frequence==='annuelle';})
-                       .reduce(function(s,r){return s+(r.montant||0);},0);
-  var lisse   = totMens + totTrim/3 + totAnn/12;
-  var annTheo = totMens*12 + totTrim*4 + totAnn;
+  var lisseCalc = calcLissePerso();
+  var lisse     = lisseCalc.lisse;
+  var annTheo   = lisseCalc.annTheo;
+  var actives   = DB.recur.filter(function(r){ return r.type==='perso' && r.active; });
   var miniEl  = document.getElementById('rcp-mini-kpis');
   if (miniEl) {
     if (!actives.length) {
@@ -5357,6 +5364,24 @@ function renderPerso() {
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
   set('p-tot',fmt(tot)); set('p-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('p-fam',fmt(fam)); set('p-crd',fmt(crd)); set('p-att',fmt(att));
+
+  // Budget lissé
+  var lisseData  = calcLissePerso();
+  var lisseEl    = document.getElementById('p-lisse');
+  var deltaEl    = document.getElementById('p-delta-lisse');
+  if (lisseEl) lisseEl.textContent = lisseData.lisse > 0 ? fmt(lisseData.lisse) : '—';
+  if (deltaEl) {
+    if (P['p'] === 'mois' && lisseData.lisse > 0) {
+      var delta = tot - lisseData.lisse;
+      var sign  = delta >= 0 ? '+' : '';
+      var color = delta <= 0 ? 'var(--gr)' : 'var(--re)';
+      deltaEl.textContent = 'vs estimé : ' + sign + fmt(delta);
+      deltaEl.style.color   = color;
+      deltaEl.style.display = '';
+    } else {
+      deltaEl.style.display = 'none';
+    }
+  }
   var allP=filterPer(DB.perso,'p');
   set('p-recap',CATS_P.map(function(cat){
     var x=allP.filter(function(r){return r.cat===cat;});
