@@ -2771,13 +2771,20 @@ async function recurPersoToggleActive(id, active) {
 }
 
 function openGeneratePersoModal() {
-  GEN_PERSO_MONTH = today().slice(0,7);
-  var inp = document.getElementById('gcp-month-input');
-  if (inp) inp.value = GEN_PERSO_MONTH;
-  var errEl = document.getElementById('gcp-err');
-  if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
-  updateGenPersoPreview();
-  document.getElementById('gcp-ov').classList.remove('hidden');
+  try {
+    GEN_PERSO_MONTH = today().slice(0,7);
+    var inp = document.getElementById('gcp-month-input');
+    if (inp) inp.value = GEN_PERSO_MONTH;
+    var errEl = document.getElementById('gcp-err');
+    if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
+    updateGenPersoPreview();
+    var ov = document.getElementById('gcp-ov');
+    if (!ov) { showToast('❌ Debug: gcp-ov introuvable dans le DOM'); return; }
+    ov.classList.remove('hidden');
+  } catch(e) {
+    showToast('❌ Debug Générer: ' + (e.message||e));
+    console.error('[openGeneratePersoModal]', e);
+  }
 }
 
 function closeGeneratePersoModal() {
