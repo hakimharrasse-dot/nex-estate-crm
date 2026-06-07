@@ -4885,33 +4885,59 @@ function renderBiz() {
           '<div style="font-size:11px;margin-top:2px;color:'+ecartGCol+'">'+ecartGSub+'</div>'+
         '</div>'+
       '</div>'+
-      // Couche 2 — détail dépliable
+      // Couche 2 — détail dépliable (responsive mobile)
       '<div id="b-lisse-detail" style="display:'+(B_LISSE_DETAIL?'':'none')+'">'+
       '<div style="margin-top:12px;border-radius:8px;overflow:hidden;border:1px solid var(--br)">'+
-      '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:10px;font-weight:700;color:var(--td);padding:6px 10px;background:var(--s3);text-transform:uppercase;letter-spacing:.4px">'+
-        '<div>Charge</div><div>Portée</div><div>Fréq.</div><div style="text-align:right">Cash réel</div><div style="text-align:right">Lissé</div><div style="text-align:right">Écart</div>'+
-      '</div>'+
-      detailRows.map(function(d,i) {
-        var rc = d.rc;
-        var ec = d.ecartRC, ecC = ec>=0?'var(--gr)':'var(--or)', ecS = ec>=0?'+':'';
-        var portee = rc.scope==='global' ? '🌐 Global' : aptShort(rc.appart||'');
-        var bg = i%2===0?'var(--s2)':'var(--s1)';
-        return '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:'+bg+';border-top:1px solid var(--br);align-items:center">'+
-          '<div style="font-weight:600;color:var(--tx)">'+escHtml(rc.label||rc.cat)+'</div>'+
-          '<div style="color:var(--td);font-size:11px">'+escHtml(portee)+'</div>'+
-          '<div><span style="font-size:10px;padding:2px 5px;border-radius:4px;background:var(--s3);color:var(--td)">'+(freqLbl[rc.frequence||'mensuelle']||rc.frequence||'')+'</span></div>'+
-          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(d.cashRC)+'</div>'+
-          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(d.lisseRC)+'</div>'+
-          '<div style="text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:'+ecC+'">'+ecS+fmt(ec)+'</div>'+
-        '</div>';
-      }).join('')+
-      // Ligne total
-      '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:var(--s3);border-top:2px solid var(--br);align-items:center;font-weight:700">'+
-        '<div>Total</div><div></div><div></div>'+
-        '<div style="text-align:right;font-family:\'DM Mono\',monospace">'+fmt(cashReelGlobal)+'</div>'+
-        '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetGlobal)+'</div>'+
-        '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:'+ecartGCol+'">'+ecartGSign+fmt(ecartGlobal)+'</div>'+
-      '</div>'+
+      (isMobile() ?
+        // ── Mobile : 3 colonnes (Charge | Cash | Écart) ──
+        '<div style="display:grid;grid-template-columns:1fr auto auto;font-size:10px;font-weight:700;color:var(--td);padding:6px 10px;background:var(--s3);text-transform:uppercase;letter-spacing:.4px">'+
+          '<div>Charge</div><div style="text-align:right;padding-right:8px">Cash</div><div style="text-align:right">Écart</div>'+
+        '</div>'+
+        detailRows.map(function(d,i) {
+          var rc = d.rc;
+          var ec = d.ecartRC, ecC = ec>=0?'var(--gr)':'var(--or)', ecS = ec>=0?'+':'';
+          var portee = rc.scope==='global' ? '🌐' : aptShort(rc.appart||'');
+          var bg = i%2===0?'var(--s2)':'var(--s1)';
+          return '<div style="display:grid;grid-template-columns:1fr auto auto;font-size:12px;padding:7px 10px;background:'+bg+';border-top:1px solid var(--br);align-items:center">'+
+            '<div>'+
+              '<div style="font-weight:600;color:var(--tx)">'+escHtml(rc.label||rc.cat)+'</div>'+
+              '<div style="font-size:11px;color:var(--td)">'+escHtml(portee)+' · '+(freqLbl[rc.frequence||'mensuelle']||'')+'</div>'+
+            '</div>'+
+            '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--tx);padding-right:8px;white-space:nowrap">'+fmt(d.cashRC)+'</div>'+
+            '<div style="text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:'+ecC+';white-space:nowrap">'+ecS+fmt(ec)+'</div>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:grid;grid-template-columns:1fr auto auto;font-size:12px;padding:7px 10px;background:var(--s3);border-top:2px solid var(--br);align-items:center;font-weight:700">'+
+          '<div>Total</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;padding-right:8px;white-space:nowrap">'+fmt(cashReelGlobal)+'</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:'+ecartGCol+';white-space:nowrap">'+ecartGSign+fmt(ecartGlobal)+'</div>'+
+        '</div>'
+      :
+        // ── Desktop : 6 colonnes complètes ──
+        '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:10px;font-weight:700;color:var(--td);padding:6px 10px;background:var(--s3);text-transform:uppercase;letter-spacing:.4px">'+
+          '<div>Charge</div><div>Portée</div><div>Fréq.</div><div style="text-align:right">Cash réel</div><div style="text-align:right">Lissé</div><div style="text-align:right">Écart</div>'+
+        '</div>'+
+        detailRows.map(function(d,i) {
+          var rc = d.rc;
+          var ec = d.ecartRC, ecC = ec>=0?'var(--gr)':'var(--or)', ecS = ec>=0?'+':'';
+          var portee = rc.scope==='global' ? '🌐 Global' : aptShort(rc.appart||'');
+          var bg = i%2===0?'var(--s2)':'var(--s1)';
+          return '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:'+bg+';border-top:1px solid var(--br);align-items:center">'+
+            '<div style="font-weight:600;color:var(--tx)">'+escHtml(rc.label||rc.cat)+'</div>'+
+            '<div style="color:var(--td);font-size:11px">'+escHtml(portee)+'</div>'+
+            '<div><span style="font-size:10px;padding:2px 5px;border-radius:4px;background:var(--s3);color:var(--td)">'+(freqLbl[rc.frequence||'mensuelle']||rc.frequence||'')+'</span></div>'+
+            '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--tx)">'+fmt(d.cashRC)+'</div>'+
+            '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(d.lisseRC)+'</div>'+
+            '<div style="text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:'+ecC+'">'+ecS+fmt(ec)+'</div>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 1fr;font-size:12px;padding:7px 10px;background:var(--s3);border-top:2px solid var(--br);align-items:center;font-weight:700">'+
+          '<div>Total</div><div></div><div></div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace">'+fmt(cashReelGlobal)+'</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--bl)">'+fmt(budgetGlobal)+'</div>'+
+          '<div style="text-align:right;font-family:\'DM Mono\',monospace;color:'+ecartGCol+'">'+ecartGSign+fmt(ecartGlobal)+'</div>'+
+        '</div>'
+      )+
       '</div>'+
       (isCumul?'<div style="font-size:11px;color:var(--td);margin-top:6px;font-style:italic">Mode cumulé : lissage affiché sur 1 mois uniquement</div>':'')+
       '</div>'+
