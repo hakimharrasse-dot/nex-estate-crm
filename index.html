@@ -6852,7 +6852,7 @@ async function saveBiz() {
   var _existBiz = M_ID ? DB.business.find(function(x){return x.id===M_ID;}) : null;
   var _recurChargeEl = document.getElementById('fi-recur-charge');
   var _recurId = _recurChargeEl
-    ? (_recurChargeEl.value ? parseInt(_recurChargeEl.value) : null)
+    ? (_recurChargeEl.value || null)
     : (_existBiz ? (_existBiz.recurring_charge_id || null) : null);
   var _recurMo  = _existBiz ? (_existBiz.recurring_month    || null) : null;
   if(scope === 'global') {
