@@ -817,7 +817,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
-    <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>À payer</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-st-btn" onclick="msStToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-st-drop"></div></div>
     <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
     <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
   </div></div>
@@ -3220,7 +3220,7 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
-var BIZ_FILTERS = { cat: [] }; // multi-select state — cat: tableau de valeurs sélectionnées
+var BIZ_FILTERS = { cat: [], st: [] }; // multi-select state — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3441,6 +3441,64 @@ function msCatRenderBtn() {
   if (!btn) return;
   var n = BIZ_FILTERS.cat.length;
   btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Multi-select Statut ──────────────────────────────────────────────────────
+var MS_STS = ['Payé','En attente','À payer'];
+function msStBuild() {
+  var drop = document.getElementById('ms-st-drop');
+  if (!drop) return;
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-st-all" onchange="msStAll(this.checked)"><span style="color:var(--td);font-size:12px">Tous statuts</span></label>' +
+    '<div class="ms-sep"></div>' +
+    MS_STS.map(function(s){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(s)+'" onchange="msStCheck(this)">'+escHtml(s)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msStReset()">✕ Tout effacer</button>';
+}
+function msStToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-st-drop');
+  var ov   = document.getElementById('ms-ov');
+  if (!drop) return;
+  var open = drop.classList.contains('ms-open');
+  msCatClose(); msStClose();
+  if (!open) { msStBuild(); msStSyncChecks(); drop.classList.add('ms-open'); if(ov) ov.style.display='block'; }
+}
+function msStClose() {
+  var drop = document.getElementById('ms-st-drop');
+  var ov   = document.getElementById('ms-ov');
+  if (drop) drop.classList.remove('ms-open');
+  if (ov && !document.querySelector('.ms-drop.ms-open')) ov.style.display='none';
+}
+function msStSyncChecks() {
+  var drop = document.getElementById('ms-st-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = BIZ_FILTERS.st.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-st-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.st.length === 0;
+}
+function msStCheck(cb) {
+  if (cb.checked) { if (BIZ_FILTERS.st.indexOf(cb.value) === -1) BIZ_FILTERS.st.push(cb.value); }
+  else { BIZ_FILTERS.st = BIZ_FILTERS.st.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-st-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.st.length === 0;
+  msStRenderBtn(); bizFilter();
+}
+function msStAll(checked) {
+  if (checked) { BIZ_FILTERS.st = []; msStSyncChecks(); msStRenderBtn(); bizFilter(); }
+}
+function msStReset() {
+  BIZ_FILTERS.st = []; msStClose(); msStRenderBtn(); bizFilter();
+}
+function msStRenderBtn() {
+  var btn = document.getElementById('ms-st-btn');
+  if (!btn) return;
+  var n = BIZ_FILTERS.st.length;
+  btn.textContent = n === 0 ? 'Statut ▾' : 'Statut (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4837,13 +4895,13 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fa=val('b-fap'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
-  var fcArr=BIZ_FILTERS.cat;
+  var fa=val('b-fap'),fm=val('b-fmen'),fp=val('b-fpay');
+  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fa)rows=rows.filter(function(r){return r.appart===fa;});
   if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
-  if(fs)rows=rows.filter(function(r){return r.statut===fs;});
+  if(fsArr.length)rows=rows.filter(function(r){return fsArr.indexOf(r.statut)!==-1;});
   if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
   if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
