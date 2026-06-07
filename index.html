@@ -789,6 +789,22 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
   </div>
+  <div class="fb"><div class="fr">
+    <div class="tabs">
+      <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
+      <button class="tab" id="bts" onclick="setPer('b','semaine')">Semaine</button>
+      <button class="tab on" id="btm" onclick="setPer('b','mois')">Mois</button>
+      <button class="tab" id="btcu" onclick="setPer('b','custom')">Période</button>
+      <button class="tab" id="btcum" onclick="setPer('b','cumul')">Cumulé</button>
+    </div>
+    <div id="b-nav"></div>
+    <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <select class="fsel" id="b-fcat" onchange="bizFilter()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
+    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
+    <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>À payer</option></select>
+    <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
+    <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
+  </div></div>
   <div id="b-recap-paye" style="display:none"></div>
   <div id="b-lisse-block" style="display:none;margin-bottom:12px"></div>
   <div class="sl" id="b-recap-sl">Ménage par appartement — mois en cours</div>
@@ -811,22 +827,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div id="wk-cards"></div>
     </div>
   </div>
-  <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
-      <button class="tab" id="bts" onclick="setPer('b','semaine')">Semaine</button>
-      <button class="tab on" id="btm" onclick="setPer('b','mois')">Mois</button>
-      <button class="tab" id="btcu" onclick="setPer('b','custom')">Période</button>
-      <button class="tab" id="btcum" onclick="setPer('b','cumul')">Cumulé</button>
-    </div>
-    <div id="b-nav"></div>
-    <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
-    <select class="fsel" id="b-fcat" onchange="bizFilter()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
-    <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
-    <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>À payer</option></select>
-    <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
-    <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
-  </div></div>
   <!-- Barre sélection business -->
   <div class="sel-bar hidden" id="biz-sel-bar">
     <div class="sel-cnt" id="biz-sel-cnt">0 sélectionné(s)</div>
