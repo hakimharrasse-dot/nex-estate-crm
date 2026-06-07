@@ -72,6 +72,22 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 /* Filter bar */
 .fb{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:12px;margin-bottom:12px;}
 .fr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+/* ── Multi-select dropdown (Commit A — Catégorie) ── */
+.ms-wrap{position:relative;display:inline-block;}
+.ms-btn{background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;outline:none;transition:border-color .15s,color .15s;}
+.ms-btn.ms-on{border-color:var(--bl);color:var(--bl);background:rgba(90,159,212,.1);}
+.ms-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:210;background:var(--s);border:1px solid var(--br);border-radius:10px;padding:6px;min-width:210px;max-height:280px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.25);}
+.ms-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--tx);user-select:none;}
+.ms-item:hover{background:var(--s2);}
+.ms-item input[type=checkbox]{accent-color:var(--bl);width:14px;height:14px;cursor:pointer;flex-shrink:0;margin:0;}
+.ms-sep{height:1px;background:var(--br);margin:4px 0;}
+.ms-reset{width:100%;padding:5px 8px;border:none;background:none;color:var(--td);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;text-align:left;border-radius:6px;}
+.ms-reset:hover{background:var(--s2);color:var(--tx);}
+.ms-ov{display:none;position:fixed;inset:0;z-index:209;}
+@media(max-width:699px){
+  .ms-drop{position:fixed;bottom:0;left:0;right:0;top:auto;min-width:unset;max-height:55vh;border-radius:16px 16px 0 0;padding:14px;z-index:211;}
+  .ms-ov{background:rgba(0,0,0,.35);}
+}
 .tabs{display:flex;gap:3px;background:var(--s2);border-radius:8px;padding:3px;}
 .tab{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;color:var(--tm);border:none;background:none;font-family:'DM Sans',sans-serif;}
 .tab.on{background:var(--or);color:#fff;}
@@ -799,8 +815,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div id="b-nav"></div>
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
-    <select class="fsel" id="b-fcat" onchange="bizCatChange()"><option value="">Toutes catégories</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
-    <select class="fsel" id="b-fcat2" onchange="bizFilter()" style="display:none"><option value="">+ aussi…</option><option>Ménage</option><option>Loyer</option><option>Eau &amp; Électricité</option><option>Internet / Fibre</option><option>Frais de syndic</option><option>Consommables</option><option>Maintenance</option><option>Ameublement / Décoration</option><option>Travaux / Rénovation</option><option>Assurance</option><option>Frais bancaires</option><option>Transport / déplacements</option><option>Outils / logiciels</option><option>Autre</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
     <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>À payer</option></select>
     <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
@@ -843,6 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3204,6 +3220,7 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
+var BIZ_FILTERS = { cat: [] }; // multi-select state — cat: tableau de valeurs sélectionnées
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3344,14 +3361,89 @@ function resaPage(p)   { R_PAGE=p; renderResa(); }
 function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
 // ── Filter/page/per — Business ──
 function bizFilter()   { B_PAGE=1; renderBiz(); }
-function bizCatChange() {
-  var fc = val('b-fcat');
-  var el2 = document.getElementById('b-fcat2');
-  if (!el2) return;
-  if (!fc) { el2.value = ''; el2.style.display = 'none'; }
-  else { el2.style.display = ''; }
+
+// ── Composant multi-select Catégorie ─────────────────────────────────────────
+var MS_CATS_HIDDEN = ['Avance caisse','Règlement terrain'];
+
+function msCatBuild() {
+  var drop = document.getElementById('ms-cat-drop');
+  if (!drop) return;
+  var cats = CATS_B.filter(function(c){ return MS_CATS_HIDDEN.indexOf(c) === -1; });
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-cat-all" onchange="msCatAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes catégories</span></label>' +
+    '<div class="ms-sep"></div>' +
+    cats.map(function(c){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msCatCheck(this)">'+escHtml(c)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msCatReset()">✕ Tout effacer</button>';
+}
+
+function msCatToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-cat-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msCatClose(); return; }
+  msCatBuild();
+  msCatSyncChecks();
+  drop.style.display = 'block';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'block';
+}
+
+function msCatClose() {
+  var drop = document.getElementById('ms-cat-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+
+function msCatSyncChecks() {
+  var drop = document.getElementById('ms-cat-drop');
+  if (!drop) return;
+  var sel = BIZ_FILTERS.cat;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = sel.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-cat-all');
+  if (allCb) allCb.checked = sel.length === 0;
+}
+
+function msCatCheck(cb) {
+  var v = cb.value;
+  var idx = BIZ_FILTERS.cat.indexOf(v);
+  if (cb.checked && idx === -1) BIZ_FILTERS.cat.push(v);
+  else if (!cb.checked && idx !== -1) BIZ_FILTERS.cat.splice(idx, 1);
+  var allCb = document.getElementById('ms-cat-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.cat.length === 0;
+  msCatRenderBtn();
   bizFilter();
 }
+
+function msCatAll(checked) {
+  if (!checked) return;
+  BIZ_FILTERS.cat = [];
+  msCatSyncChecks();
+  msCatRenderBtn();
+  bizFilter();
+}
+
+function msCatReset() {
+  BIZ_FILTERS.cat = [];
+  msCatSyncChecks();
+  msCatRenderBtn();
+  msCatClose();
+  bizFilter();
+}
+
+function msCatRenderBtn() {
+  var btn = document.getElementById('ms-cat-btn');
+  if (!btn) return;
+  var n = BIZ_FILTERS.cat.length;
+  btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 function bizPage(p)    { B_PAGE=p; renderBiz(); }
 function bizPer(n)     { B_PER=parseInt(n)||20; B_PAGE=1; renderBiz(); }
 // ── Filter/page/per — Taxe ──
@@ -3441,15 +3533,6 @@ function populateTeamSelects() {
       .forEach(function(m){
         bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
       });
-  }
-  // b-fcat — filtre catégorie business (synchronisé avec CATS_B)
-  var bfcat = document.getElementById('b-fcat');
-  if (bfcat) {
-    var curCat = bfcat.value;
-    bfcat.innerHTML = '<option value="">Toutes catégories</option>';
-    CATS_B.forEach(function(c){
-      bfcat.innerHTML += '<option value="'+escHtml(c)+'"'+(c===curCat?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';
-    });
   }
   // t-fcol — filtre collecteur taxe (tous membres + Équipe pour historique)
   var tfcol = document.getElementById('t-fcol');
@@ -4754,11 +4837,11 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fa=val('b-fap'),fc=val('b-fcat'),fc2=val('b-fcat2'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
+  var fa=val('b-fap'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
+  var fcArr=BIZ_FILTERS.cat;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
-  if(fa)rows=rows.filter(function(r){return r.appart===fa;}); // scope global (appart null) exclu automatiquement
-  if(fc&&fc2)rows=rows.filter(function(r){return r.cat===fc||r.cat===fc2;});
-  else if(fc)rows=rows.filter(function(r){return r.cat===fc;});
+  if(fa)rows=rows.filter(function(r){return r.appart===fa;});
+  if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
