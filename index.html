@@ -2428,7 +2428,8 @@ function calcLissePerso() {
                        .reduce(function(s,r){ return s + (r.montant||0); }, 0);
   return {
     lisse:   totMens + totTrim / 3 + totAnn / 12,
-    annTheo: totMens * 12 + totTrim * 4 + totAnn
+    annTheo: totMens * 12 + totTrim * 4 + totAnn,
+    totMens: totMens
   };
 }
 // ─────────────────────────────────────────────────────────────────────
@@ -2771,20 +2772,13 @@ async function recurPersoToggleActive(id, active) {
 }
 
 function openGeneratePersoModal() {
-  try {
-    GEN_PERSO_MONTH = today().slice(0,7);
-    var inp = document.getElementById('gcp-month-input');
-    if (inp) inp.value = GEN_PERSO_MONTH;
-    var errEl = document.getElementById('gcp-err');
-    if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
-    updateGenPersoPreview();
-    var ov = document.getElementById('gcp-ov');
-    if (!ov) { showToast('❌ Debug: gcp-ov introuvable dans le DOM'); return; }
-    ov.classList.remove('hidden');
-  } catch(e) {
-    showToast('❌ Debug Générer: ' + (e.message||e));
-    console.error('[openGeneratePersoModal]', e);
-  }
+  GEN_PERSO_MONTH = today().slice(0,7);
+  var inp = document.getElementById('gcp-month-input');
+  if (inp) inp.value = GEN_PERSO_MONTH;
+  var errEl = document.getElementById('gcp-err');
+  if (errEl) { errEl.textContent=''; errEl.classList.add('hidden'); }
+  updateGenPersoPreview();
+  document.getElementById('gcp-ov').classList.remove('hidden');
 }
 
 function closeGeneratePersoModal() {
@@ -2864,6 +2858,7 @@ function updateGenPersoPreview() {
   var lisseCalc = calcLissePerso();
   var lisse     = lisseCalc.lisse;
   var annTheo   = lisseCalc.annTheo;
+  var totMens   = lisseCalc.totMens;
 
   html += '<div style="margin-top:12px;padding-top:10px;border-top:2px solid var(--br);display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px">';
   html += '<div style="color:var(--td)">À générer ce mois</div><div style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--pu)">'+fmt(totGen)+'</div>';
