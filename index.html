@@ -815,9 +815,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div id="b-nav"></div>
     <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
-    <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msToggle('cat',event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
-    <div class="ms-wrap"><button class="ms-btn" id="ms-st-btn" onclick="msToggle('st',event)">Statut ▾</button><div class="ms-drop" id="ms-st-drop"></div></div>
+    <select class="fsel" id="b-fst" onchange="bizFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>À payer</option></select>
     <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
     <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
   </div></div>
@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCloseAll()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3220,7 +3220,7 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
-var BIZ_FILTERS = { cat: [], st: [] }; // multi-select state — logique OR par filtre
+var BIZ_FILTERS = { cat: [] }; // multi-select state — cat: tableau de valeurs sélectionnées
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3362,108 +3362,85 @@ function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
 // ── Filter/page/per — Business ──
 function bizFilter()   { B_PAGE=1; renderBiz(); }
 
-// ── Composant multi-select générique (Catégorie + Statut + …) ────────────────
-var MS_OPEN_KEY = null;
+// ── Composant multi-select Catégorie ─────────────────────────────────────────
+var MS_CATS_HIDDEN = ['Avance caisse','Règlement terrain'];
 
-var MS_CFG = {
-  cat: {
-    label: 'Catégorie',
-    labelAll: 'Toutes catégories',
-    items: function(){ return CATS_B.filter(function(c){ return ['Avance caisse','Règlement terrain'].indexOf(c)===-1; }); }
-  },
-  st: {
-    label: 'Statut',
-    labelAll: 'Tous statuts',
-    items: function(){ return ['Payé','En attente','À payer']; }
-  }
-};
-
-function msToggle(key, e) {
-  e.stopPropagation();
-  if (MS_OPEN_KEY && MS_OPEN_KEY !== key) msClose(MS_OPEN_KEY);
-  var drop = document.getElementById('ms-'+key+'-drop');
+function msCatBuild() {
+  var drop = document.getElementById('ms-cat-drop');
   if (!drop) return;
-  if (drop.style.display === 'block') { msClose(key); return; }
-  msBuild(key);
-  msSyncChecks(key);
+  var cats = CATS_B.filter(function(c){ return MS_CATS_HIDDEN.indexOf(c) === -1; });
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-cat-all" onchange="msCatAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes catégories</span></label>' +
+    '<div class="ms-sep"></div>' +
+    cats.map(function(c){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msCatCheck(this)">'+escHtml(c)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msCatReset()">✕ Tout effacer</button>';
+}
+
+function msCatToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-cat-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msCatClose(); return; }
+  msCatBuild();
+  msCatSyncChecks();
   drop.style.display = 'block';
-  MS_OPEN_KEY = key;
   var ov = document.getElementById('ms-ov');
   if (ov) ov.style.display = 'block';
 }
 
-function msClose(key) {
-  var drop = document.getElementById('ms-'+key+'-drop');
+function msCatClose() {
+  var drop = document.getElementById('ms-cat-drop');
   if (drop) drop.style.display = 'none';
-  if (MS_OPEN_KEY === key) {
-    MS_OPEN_KEY = null;
-    var ov = document.getElementById('ms-ov');
-    if (ov) ov.style.display = 'none';
-  }
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
 }
 
-function msCloseAll() {
-  if (MS_OPEN_KEY) msClose(MS_OPEN_KEY);
-}
-
-function msBuild(key) {
-  var drop = document.getElementById('ms-'+key+'-drop');
+function msCatSyncChecks() {
+  var drop = document.getElementById('ms-cat-drop');
   if (!drop) return;
-  var cfg = MS_CFG[key]; if (!cfg) return;
-  var items = cfg.items();
-  drop.innerHTML =
-    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-'+key+'-all" onchange="msAll(\''+key+'\',this.checked)"><span style="color:var(--td);font-size:12px">'+escHtml(cfg.labelAll)+'</span></label>' +
-    '<div class="ms-sep"></div>' +
-    items.map(function(v){
-      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(v)+'" onchange="msCheck(\''+key+'\',this)">'+escHtml(v)+'</label>';
-    }).join('') +
-    '<div class="ms-sep"></div>' +
-    '<button class="ms-reset" onclick="msReset(\''+key+'\')">✕ Tout effacer</button>';
-}
-
-function msSyncChecks(key) {
-  var drop = document.getElementById('ms-'+key+'-drop');
-  if (!drop) return;
-  var sel = BIZ_FILTERS[key] || [];
+  var sel = BIZ_FILTERS.cat;
   drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
     cb.checked = sel.indexOf(cb.value) !== -1;
   });
-  var allCb = document.getElementById('ms-'+key+'-all');
+  var allCb = document.getElementById('ms-cat-all');
   if (allCb) allCb.checked = sel.length === 0;
 }
 
-function msCheck(key, cb) {
-  var arr = BIZ_FILTERS[key]; if (!arr) return;
-  var v = cb.value, idx = arr.indexOf(v);
-  if (cb.checked && idx === -1) arr.push(v);
-  else if (!cb.checked && idx !== -1) arr.splice(idx, 1);
-  var allCb = document.getElementById('ms-'+key+'-all');
-  if (allCb) allCb.checked = arr.length === 0;
-  msRenderBtn(key);
+function msCatCheck(cb) {
+  var v = cb.value;
+  var idx = BIZ_FILTERS.cat.indexOf(v);
+  if (cb.checked && idx === -1) BIZ_FILTERS.cat.push(v);
+  else if (!cb.checked && idx !== -1) BIZ_FILTERS.cat.splice(idx, 1);
+  var allCb = document.getElementById('ms-cat-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.cat.length === 0;
+  msCatRenderBtn();
   bizFilter();
 }
 
-function msAll(key, checked) {
+function msCatAll(checked) {
   if (!checked) return;
-  BIZ_FILTERS[key] = [];
-  msSyncChecks(key);
-  msRenderBtn(key);
+  BIZ_FILTERS.cat = [];
+  msCatSyncChecks();
+  msCatRenderBtn();
   bizFilter();
 }
 
-function msReset(key) {
-  BIZ_FILTERS[key] = [];
-  msSyncChecks(key);
-  msRenderBtn(key);
-  msClose(key);
+function msCatReset() {
+  BIZ_FILTERS.cat = [];
+  msCatSyncChecks();
+  msCatRenderBtn();
+  msCatClose();
   bizFilter();
 }
 
-function msRenderBtn(key) {
-  var btn = document.getElementById('ms-'+key+'-btn');
+function msCatRenderBtn() {
+  var btn = document.getElementById('ms-cat-btn');
   if (!btn) return;
-  var cfg = MS_CFG[key] || {}; var n = (BIZ_FILTERS[key]||[]).length;
-  btn.textContent = n === 0 ? (cfg.label||key)+' ▾' : (cfg.label||key)+' ('+n+') ▾';
+  var n = BIZ_FILTERS.cat.length;
+  btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4860,13 +4837,13 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fa=val('b-fap'),fm=val('b-fmen'),fp=val('b-fpay');
-  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st;
+  var fa=val('b-fap'),fm=val('b-fmen'),fs=val('b-fst'),fp=val('b-fpay');
+  var fcArr=BIZ_FILTERS.cat;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fa)rows=rows.filter(function(r){return r.appart===fa;});
   if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
-  if(fsArr.length)rows=rows.filter(function(r){return fsArr.indexOf(r.statut)!==-1;});
+  if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
   if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
