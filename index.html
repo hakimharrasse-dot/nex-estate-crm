@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3460,17 +3460,19 @@ function msStBuild() {
 function msStToggle(e) {
   e.stopPropagation();
   var drop = document.getElementById('ms-st-drop');
-  var ov   = document.getElementById('ms-ov');
   if (!drop) return;
-  var open = drop.classList.contains('ms-open');
-  msCatClose(); msStClose();
-  if (!open) { msStBuild(); msStSyncChecks(); drop.classList.add('ms-open'); if(ov) ov.style.display='block'; }
+  if (drop.style.display === 'block') { msStClose(); return; }
+  msCatClose();
+  msStBuild(); msStSyncChecks();
+  drop.style.display = 'block';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'block';
 }
 function msStClose() {
   var drop = document.getElementById('ms-st-drop');
-  var ov   = document.getElementById('ms-ov');
-  if (drop) drop.classList.remove('ms-open');
-  if (ov && !document.querySelector('.ms-drop.ms-open')) ov.style.display='none';
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
 }
 function msStSyncChecks() {
   var drop = document.getElementById('ms-st-drop');
@@ -4918,7 +4920,7 @@ function renderBiz() {
   // ── Récap mouvements payés (visible uniquement quand filtre statut = Payé) ──
   var recapPayeEl=document.getElementById('b-recap-paye');
   if(recapPayeEl) {
-    if(fs==='Payé') {
+    if(fsArr.indexOf('Payé')!==-1) {
       var allPeriodPaye=filterPer(DB.business,'b').filter(function(r){return r.statut==='Payé';});
       var rpDepReel=sum(allPeriodPaye.filter(function(r){return r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain';}), 'montant');
       var rpAvances=sum(allPeriodPaye.filter(function(r){return r.cat==='Avance caisse';}), 'montant');
