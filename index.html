@@ -793,25 +793,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div id="b-lisse-block" style="display:none;margin-bottom:12px"></div>
   <div class="sl" id="b-recap-sl">Ménage par appartement — mois en cours</div>
   <div class="rg" id="b-recap"></div>
-  <!-- Gains par femme de ménage -->
-  <div class="wb">
-    <div class="wbt">
-      <span id="gains-wbt">💰 Gains ménage — mois en cours</span>
-      <button class="wb-toggle" id="gains-toggle" onclick="toggleWb('gains')">▾ Réduire</button>
-    </div>
-    <div class="wb-summary" id="gains-summary" style="display:none"></div>
-    <div class="tabs" style="margin-bottom:6px">
-      <button class="tab" id="gnj" onclick="setPer('gn','jour')">Jour</button>
-      <button class="tab" id="gns" onclick="setPer('gn','semaine')">Semaine</button>
-      <button class="tab ong" id="gnm" onclick="setPer('gn','mois')">Mois</button>
-      <button class="tab" id="gna" onclick="setPer('gn','annee')">Année</button>
-      <button class="tab" id="gncu" onclick="setPer('gn','custom')">Période</button>
-      <button class="tab" id="gncum" onclick="setPer('gn','cumul')">Cumulé</button>
-    </div>
-    <div id="gn-nav"></div>
-    <div id="gains-body"></div>
-    <div style="font-size:11px;color:var(--td);font-style:italic;padding:6px 2px 2px">ℹ️ Montant brut des ménages effectués ce mois — avant déduction des taxes et services collectés. Le net réel à payer figure dans le récap ci-dessous.</div>
-  </div>
   <!-- Récap paiement femme de ménage -->
   <div class="wb">
     <div class="wbt">
@@ -4958,9 +4939,9 @@ function renderBiz() {
     var x=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.cat==='Ménage'&&r.appart===ap;});
     return '<div class="rc"><div><div class="rn">'+aptShort(ap)+'</div><div class="rsb">'+x.length+' passage'+(x.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(x,'montant'))+'</div></div>';
   }).join('')+function(){
-    var g=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.scope==='global';});
+    var g=DB.business.filter(function(r){return r.date.startsWith(mk)&&r.scope==='global'&&r.cat==='Ménage';});
     if(!g.length) return '';
-    return '<div class="rc" style="border-color:var(--or)"><div><div class="rn" style="color:var(--or)">🌐 Global</div><div class="rsb">'+g.length+' entrée'+(g.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(g,'montant'))+'</div></div>';
+    return '<div class="rc" style="border-color:var(--or)"><div><div class="rn" style="color:var(--or)">🌐 Global</div><div class="rsb">'+g.length+' passage'+(g.length>1?'s':'')+'</div></div><div class="rv" style="color:var(--or)">'+fmt(sum(g,'montant'))+'</div></div>';
   }());
   var tb=document.getElementById('b-tb'), em=document.getElementById('b-em');
   var cardsCont=document.getElementById('b-cards');
@@ -5138,6 +5119,10 @@ function renderWkCards() {
       adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
       nbMen= DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).length;
       paid = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
+      // Effectué ce mois — basé sur la période Dépenses Business (clé 'b'), indépendante du cumul
+      var menBizPeriod = filterPer(DB.business, 'b').filter(function(r){ return r.fmen===name&&r.cat==='Ménage'; });
+      var menEffectue  = sum(menBizPeriod, 'montant');
+      var nbEffectue   = menBizPeriod.length;
       // Payeurs tiers : ménages où paid_by est quelqu'un d'autre que la femme de ménage
       DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'&&r.paid_by&&r.paid_by!==name; })
         .forEach(function(r){ if(payers.indexOf(r.paid_by)===-1) payers.push(r.paid_by); });
@@ -5157,6 +5142,9 @@ function renderWkCards() {
 
     if (hasMenage) {
       html +=
+        (menEffectue > 0 || nbEffectue > 0
+          ? '<div class="ccr" style="background:var(--s2);border-radius:6px;padding:4px 6px;margin-bottom:4px"><div class="ccl" style="color:var(--td)">Effectué (période)</div><div class="ccv" style="color:var(--tx)">'+fmt(menEffectue)+'<span style="font-size:11px;color:var(--td);margin-left:4px">· '+nbEffectue+' passage'+(nbEffectue>1?'s':'')+'</span></div></div>'
+          : '')+
         '<div class="ccr"><div class="ccl">Ménage (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
         (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl)">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
         (adv>0 ? '<div class="ccr"><div class="ccl">Avancé</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
