@@ -773,7 +773,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </select>
     <div id="r-nav"></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-rap-btn" onclick="msRapToggle(event)">Appartement ▾</button><div class="ms-drop" id="ms-rap-drop"></div></div>
-    <select class="fsel" id="r-fsrc" onchange="resaFilter()"><option value="">Toutes sources</option><option>Airbnb</option><option>Booking.com</option><option>Direct</option><option>VRBO</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-rsrc-btn" onclick="msRsrcToggle(event)">Source ▾</button><div class="ms-drop" id="ms-rsrc-drop"></div></div>
     <select class="fsel" id="r-ftype" onchange="resaFilter()"><option value="">Tous types</option><option>RESERVATION</option><option>ANNULATION_PAYEE</option><option>ANNULATION_NON_PAYEE</option><option>RELOCATION</option><option>AIRCOVER</option><option>AJUSTEMENT</option><option>DIRECT</option></select>
     <select class="fsel" id="r-fst" onchange="resaFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option><option value="__infos_manquantes__">Infos manquantes</option></select>
   </div></div>
@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose();msRapClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose();msRapClose();msRsrcClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3224,7 +3224,7 @@ var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
 var BIZ_FILTERS   = { cat: [], st: [], ap: [], men: [], pay: [] }; // multi-select state — logique OR par filtre
 var PERSO_FILTERS = { cat: [], st: [] }; // multi-select state perso — logique OR par filtre
-var RESA_FILTERS  = { ap: [] }; // multi-select state réservations — logique OR par filtre
+var RESA_FILTERS  = { ap: [], src: [] }; // multi-select state réservations — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3748,6 +3748,65 @@ function msPcatRenderBtn() {
   if (!btn) return;
   var n = PERSO_FILTERS.cat.length;
   btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Composant multi-select Source — Réservations ─────────────────────────────
+var MS_RSRC = ['Airbnb','Booking.com','Direct','VRBO'];
+function msRsrcBuild() {
+  var drop = document.getElementById('ms-rsrc-drop');
+  if (!drop) return;
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-rsrc-all" onchange="msRsrcAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes sources</span></label>' +
+    '<div class="ms-sep"></div>' +
+    MS_RSRC.map(function(s){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(s)+'" onchange="msRsrcCheck(this)">'+escHtml(s)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msRsrcReset()">✕ Tout effacer</button>';
+}
+function msRsrcToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-rsrc-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msRsrcClose(); return; }
+  msRsrcBuild();
+  msRsrcSyncChecks();
+  drop.style.display = 'block';
+  document.getElementById('ms-ov').style.display = 'block';
+}
+function msRsrcClose() {
+  var drop = document.getElementById('ms-rsrc-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+function msRsrcSyncChecks() {
+  var drop = document.getElementById('ms-rsrc-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = RESA_FILTERS.src.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-rsrc-all');
+  if (allCb) allCb.checked = RESA_FILTERS.src.length === 0;
+}
+function msRsrcCheck(cb) {
+  if (cb.checked) { if (RESA_FILTERS.src.indexOf(cb.value) === -1) RESA_FILTERS.src.push(cb.value); }
+  else { RESA_FILTERS.src = RESA_FILTERS.src.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-rsrc-all');
+  if (allCb) allCb.checked = RESA_FILTERS.src.length === 0;
+  msRsrcRenderBtn(); resaFilter();
+}
+function msRsrcAll(checked) {
+  if (checked) { RESA_FILTERS.src = []; msRsrcSyncChecks(); msRsrcRenderBtn(); resaFilter(); }
+}
+function msRsrcReset() {
+  RESA_FILTERS.src = []; msRsrcClose(); msRsrcRenderBtn(); resaFilter();
+}
+function msRsrcRenderBtn() {
+  var btn = document.getElementById('ms-rsrc-btn');
+  if (!btn) return;
+  var n = RESA_FILTERS.src.length;
+  btn.textContent = n === 0 ? 'Source ▾' : 'Source (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ── Composant multi-select Appartement — Réservations ────────────────────────
@@ -4295,7 +4354,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); msRapClose(); // fermer dropdowns ms si ouverts lors de la navigation
+  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); msRapClose(); msRsrcClose(); // fermer dropdowns ms si ouverts lors de la navigation
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
@@ -4878,9 +4937,9 @@ function renderResa() {
   var rows = R_QUICK
     ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
     : filterResa(DB.resa,'r');
-  var faArr=RESA_FILTERS.ap,fsrc=val('r-fsrc'),ftype=val('r-ftype'),fst=val('r-fst');
-  if(faArr.length) rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
-  if(fsrc) rows=rows.filter(function(r){return r.source===fsrc;});
+  var faArr=RESA_FILTERS.ap,fsrcArr=RESA_FILTERS.src,ftype=val('r-ftype'),fst=val('r-fst');
+  if(faArr.length)    rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
+  if(fsrcArr.length)  rows=rows.filter(function(r){return fsrcArr.indexOf(r.source)!==-1;});
   if(ftype)rows=rows.filter(function(r){return r.type_norm===ftype;});
   if(fst==='__infos_manquantes__') rows=rows.filter(function(r){return isInfoManquante(r);});
   else if(fst) rows=rows.filter(function(r){return r.statut===fst;});
