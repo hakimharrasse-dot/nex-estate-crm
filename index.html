@@ -6155,7 +6155,7 @@ function renderServ() {
   var rows=filterPer(DB.serv,'s');
   var fa=val('s-fap'),fsv=val('s-fsv'),fc=val('s-fcol'),fs=val('s-fst');
   if(fa) rows=rows.filter(function(r){return r.appart===fa;});
-  if(fsv)rows=rows.filter(function(r){return r.svc===fsv;});
+  if(fsv)rows=rows.filter(function(r){return (r.svc||'').split(',').map(function(s){return s.trim();}).indexOf(fsv)!==-1;});
   if(fc) rows=rows.filter(function(r){return r.col===fc;});
   if(fs) rows=rows.filter(function(r){return r.statut===fs;});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
@@ -6163,12 +6163,12 @@ function renderServ() {
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
   set('s-tot',fmt(tot)); set('s-cnt',rows.length+' service'+(rows.length>1?'s':''));
   set('s-pay',fmt(pay)); set('s-att',fmt(att));
-  var cnt={};filterPer(DB.serv,'s').forEach(function(r){cnt[r.svc]=(cnt[r.svc]||0)+1;});
+  var cnt={};filterPer(DB.serv,'s').forEach(function(r){(r.svc||'').split(',').forEach(function(s){var sv=s.trim();if(sv)cnt[sv]=(cnt[sv]||0)+1;});});
   var topK=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];})[0]||'—';
   set('s-top',topK);
   var allS=filterPer(DB.serv,'s');
   set('s-recap',CATS_S.map(function(sv){
-    var x=allS.filter(function(r){return r.svc===sv;}); if(!x.length)return'';
+    var x=allS.filter(function(r){return (r.svc||'').split(',').map(function(s){return s.trim();}).indexOf(sv)!==-1;}); if(!x.length)return'';
     return'<div class="rc"><div><div class="rn">'+sv+'</div><div class="rsb">'+x.length+'×</div></div><div class="rv" style="color:var(--go)">'+fmt(sum(x,'montant'))+'</div></div>';
   }).join('')||'<div style="color:var(--td);font-size:13px">Aucun service</div>');
   var tb=document.getElementById('s-tb'),em=document.getElementById('s-em');
@@ -6198,8 +6198,9 @@ function renderServ() {
           '<label class="r-card-chk"><input type="checkbox" class="scb" data-id="'+r.id+'"'+checked+' onchange="toggleServSel(\''+r.id+'\',this.checked)"></label>'+
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
-          chip(r.svc,'serv')+
+          (r.svc||'').split(',').map(function(s){return chip(s.trim(),'serv');}).join(' ')+
         '</div>'+
+        (r.note?'<div style="font-size:11px;color:var(--td);padding:2px 0 4px;font-style:italic">'+escHtml(r.note)+'</div>':'')+
         '<div class="r-card-row2">'+
           chip(r.col,colClass(r.col))+
           chip(r.pay||(r.pay_source||'Cash'),'eau')+
@@ -6220,7 +6221,7 @@ function renderServ() {
         '<td><input type="checkbox" class="scb" data-id="'+r.id+'"'+checked+' onchange="toggleServSel(\''+r.id+'\',this.checked)"></td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
-        '<td>'+chip(r.svc,'serv')+'</td>'+
+        '<td><div>'+(r.svc||'').split(',').map(function(s){return chip(s.trim(),'serv');}).join(' ')+(r.note?'<div style="font-size:11px;color:var(--td);margin-top:2px;font-style:italic">'+escHtml(r.note)+'</div>':'')+'</div></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
         '<td>'+chip(r.col,colClass(r.col))+'</td>'+
         '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
@@ -7229,7 +7230,14 @@ function buildForm(type, editId) {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
-      '<div class="ff"><label class="fl">Type de service</label><select class="fse" id="fi-svc">'+CATS_S.map(function(c){return '<option'+(v('svc')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Type de service <span style="font-size:11px;color:var(--re);font-weight:400">* au moins 1</span></label>'+
+        '<div id="fi-svc-wrap" style="display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--bg2);border:1px solid var(--br);border-radius:8px">'+
+        CATS_S.map(function(c){
+          var svcs=(v('svc','')||'').split(',').map(function(s){return s.trim();});
+          return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;user-select:none"><input type="checkbox" class="fi-svc-cb" value="'+escHtml(c)+'"'+(svcs.indexOf(c)!==-1?' checked':'')+' style="accent-color:var(--go);width:14px;height:14px;flex-shrink:0">'+escHtml(c)+'</label>';
+        }).join('')+
+        '</div></div>'+
+      fieldFull('Note / détail (optionnel)','fi-note','text',v('note',''),'Ex: arrivée 8h, clim chambre principale...')+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       '<div class="ff"><label class="fl">Réservation liée (optionnel)</label>'+
         '<input type="text" class="fi" id="fi-resa-ref" list="fi-resa-ref-list" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Code Airbnb ou tapez le voyageur">'+
@@ -7550,7 +7558,11 @@ async function saveServ() {
   var _paySrc  = gv('fi-pay-source') || null;
   var _col     = _paySrc ? null : (gv('fi-col') || null);
   var _pay     = (_paySrc==='Airbnb'||_paySrc==='Booking') ? null : (gv('fi-pay') || null);
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:gv('fi-svc'),voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc});
+  var _svcCbs=document.querySelectorAll('#fi-svc-wrap .fi-svc-cb:checked');
+  var _svcs=Array.prototype.map.call(_svcCbs,function(cb){return cb.value;}).join(', ');
+  if(!_svcs){alert('Sélectionne au moins un type de service');return;}
+  var _note=(gv('fi-note')||'').trim()||null;
+  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
   closeModal(); renderServ();
 }
 
