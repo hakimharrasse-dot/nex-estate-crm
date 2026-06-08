@@ -7741,8 +7741,11 @@ function normAmount(raw) {
 function detectSrc(raw) {
   var lw = (raw || '').toLowerCase();
   if (lw.indexOf('airbnb') >= 0) return 'Airbnb';
-  if (lw.indexOf('booking') >= 0) return 'Booking.com';
   if (lw.indexOf('vrbo') >= 0 || lw.indexOf('homeaway') >= 0) return 'VRBO';
+  // "Direct" checké AVANT "Booking" — portail Smoobu envoie "Direct Booking" qui doit être Direct
+  if (lw.indexOf('direct') >= 0 || lw.indexOf('portail') >= 0 ||
+      lw.indexOf('portal') >= 0 || lw.indexOf('api') >= 0) return 'Direct';
+  if (lw.indexOf('booking') >= 0) return 'Booking.com';
   return 'Direct';
 }
 
