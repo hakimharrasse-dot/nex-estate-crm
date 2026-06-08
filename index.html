@@ -6024,14 +6024,24 @@ function renderPerso() {
   var _donsOnly=fcArr.length===1&&_hasDons;
   var tot;
   if(_donsOnly){
-    // Seule "Dons / Aides" : montant des entrées Dons + don des autres catégories
+    // Seule "Dons / Aides" : montant des entrées Dons + don de toutes les autres
     tot=rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0);
-  } else {
-    // Cas général : lignes incluses par leur cat → montant+don ; incluses seulement via don→ don seul
-    tot=rows.reduce(function(acc,r){
-      var catSel=!fcArr.length||fcArr.indexOf(r.cat)!==-1;
-      return acc+(catSel?(r.montant||0):0)+(r.cat!=='Dons / Aides'?(r.don||0):0);
+  } else if(_hasDons){
+    // "Dons / Aides" + autres catégories : somme des totaux standalone par catégorie
+    // (Dons/Aides = montant Dons + TOUS les dons ; autres cats = montant + don de leurs lignes)
+    // Ce calcul correspond au total que l'utilisateur voit pour chaque catégorie séparément
+    tot=fcArr.reduce(function(acc,cat){
+      if(cat==='Dons / Aides'){
+        return acc+rows.reduce(function(a,r){
+          return a+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));
+        },0);
+      }
+      var catRows=rows.filter(function(r){return r.cat===cat;});
+      return acc+sum(catRows,'montant')+catRows.reduce(function(a,r){return a+(r.don||0);},0);
     },0);
+  } else {
+    // Pas de Dons / Aides dans la sélection : formule standard
+    tot=sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
   }
   var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
   var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
