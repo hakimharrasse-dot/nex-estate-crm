@@ -775,7 +775,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ms-wrap"><button class="ms-btn" id="ms-rap-btn" onclick="msRapToggle(event)">Appartement ▾</button><div class="ms-drop" id="ms-rap-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-rsrc-btn" onclick="msRsrcToggle(event)">Source ▾</button><div class="ms-drop" id="ms-rsrc-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-rtype-btn" onclick="msRtypeToggle(event)">Type ▾</button><div class="ms-drop" id="ms-rtype-drop"></div></div>
-    <select class="fsel" id="r-fst" onchange="resaFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option><option>Annulé</option><option value="__infos_manquantes__">Infos manquantes</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-rst-btn" onclick="msRstToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-rst-drop"></div></div>
   </div></div>
   <div id="r-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose();msRapClose();msRsrcClose();msRtypeClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose();msRapClose();msRsrcClose();msRtypeClose();msRstClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3224,7 +3224,7 @@ var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
 var BIZ_FILTERS   = { cat: [], st: [], ap: [], men: [], pay: [] }; // multi-select state — logique OR par filtre
 var PERSO_FILTERS = { cat: [], st: [] }; // multi-select state perso — logique OR par filtre
-var RESA_FILTERS  = { ap: [], src: [], type: [] }; // multi-select state réservations — logique OR par filtre
+var RESA_FILTERS  = { ap: [], src: [], type: [], st: [] }; // multi-select state réservations — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3748,6 +3748,72 @@ function msPcatRenderBtn() {
   if (!btn) return;
   var n = PERSO_FILTERS.cat.length;
   btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Composant multi-select Statut — Réservations ─────────────────────────────
+// Note : 'Infos manquantes' utilise la valeur interne '__infos_manquantes__'
+//        (même logique que l'ancien <select> — isInfoManquante() préservée)
+var MS_RST = [
+  { label: 'Payé',             value: 'Payé' },
+  { label: 'En attente',       value: 'En attente' },
+  { label: 'Annulé',           value: 'Annulé' },
+  { label: 'Infos manquantes', value: '__infos_manquantes__' }
+];
+function msRstBuild() {
+  var drop = document.getElementById('ms-rst-drop');
+  if (!drop) return;
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-rst-all" onchange="msRstAll(this.checked)"><span style="color:var(--td);font-size:12px">Tous statuts</span></label>' +
+    '<div class="ms-sep"></div>' +
+    MS_RST.map(function(s){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(s.value)+'" onchange="msRstCheck(this)">'+escHtml(s.label)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msRstReset()">✕ Tout effacer</button>';
+}
+function msRstToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-rst-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msRstClose(); return; }
+  msRstBuild();
+  msRstSyncChecks();
+  drop.style.display = 'block';
+  document.getElementById('ms-ov').style.display = 'block';
+}
+function msRstClose() {
+  var drop = document.getElementById('ms-rst-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+function msRstSyncChecks() {
+  var drop = document.getElementById('ms-rst-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = RESA_FILTERS.st.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-rst-all');
+  if (allCb) allCb.checked = RESA_FILTERS.st.length === 0;
+}
+function msRstCheck(cb) {
+  if (cb.checked) { if (RESA_FILTERS.st.indexOf(cb.value) === -1) RESA_FILTERS.st.push(cb.value); }
+  else { RESA_FILTERS.st = RESA_FILTERS.st.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-rst-all');
+  if (allCb) allCb.checked = RESA_FILTERS.st.length === 0;
+  msRstRenderBtn(); resaFilter();
+}
+function msRstAll(checked) {
+  if (checked) { RESA_FILTERS.st = []; msRstSyncChecks(); msRstRenderBtn(); resaFilter(); }
+}
+function msRstReset() {
+  RESA_FILTERS.st = []; msRstClose(); msRstRenderBtn(); resaFilter();
+}
+function msRstRenderBtn() {
+  var btn = document.getElementById('ms-rst-btn');
+  if (!btn) return;
+  var n = RESA_FILTERS.st.length;
+  btn.textContent = n === 0 ? 'Statut ▾' : 'Statut (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ── Composant multi-select Type — Réservations ───────────────────────────────
@@ -4413,7 +4479,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); msRapClose(); msRsrcClose(); msRtypeClose(); // fermer dropdowns ms si ouverts lors de la navigation
+  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); msRapClose(); msRsrcClose(); msRtypeClose(); msRstClose(); // fermer dropdowns ms si ouverts lors de la navigation
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
@@ -4996,12 +5062,14 @@ function renderResa() {
   var rows = R_QUICK
     ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
     : filterResa(DB.resa,'r');
-  var faArr=RESA_FILTERS.ap,fsrcArr=RESA_FILTERS.src,ftypeArr=RESA_FILTERS.type,fst=val('r-fst');
+  var faArr=RESA_FILTERS.ap,fsrcArr=RESA_FILTERS.src,ftypeArr=RESA_FILTERS.type,fstArr=RESA_FILTERS.st;
   if(faArr.length)     rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
   if(fsrcArr.length)   rows=rows.filter(function(r){return fsrcArr.indexOf(r.source)!==-1;});
   if(ftypeArr.length)  rows=rows.filter(function(r){return ftypeArr.indexOf(r.type_norm)!==-1;});
-  if(fst==='__infos_manquantes__') rows=rows.filter(function(r){return isInfoManquante(r);});
-  else if(fst) rows=rows.filter(function(r){return r.statut===fst;});
+  if(fstArr.length)    rows=rows.filter(function(r){
+    if(fstArr.indexOf('__infos_manquantes__')!==-1&&isInfoManquante(r)) return true;
+    return fstArr.filter(function(v){return v!=='__infos_manquantes__';}).indexOf(r.statut)!==-1;
+  });
   var srch=R_SEARCH.trim().toLowerCase();
   if(srch) rows=rows.filter(function(r){
     return [(r.ref||''),(r.voyageur||''),(r.appart||''),(r.source||''),(r.checkin||''),(r.checkout||''),(r.statut||''),(r.type_norm||'')].join(' ').toLowerCase().indexOf(srch)>=0;
