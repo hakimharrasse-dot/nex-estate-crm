@@ -818,7 +818,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-men-btn" onclick="msMenToggle(event)">Équipe ▾</button><div class="ms-drop" id="ms-men-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-st-btn" onclick="msStToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-st-drop"></div></div>
-    <select class="fsel" id="b-fpay" onchange="bizFilter()"><option value="">Tous payeurs</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-pay-btn" onclick="msPayToggle(event)">Payeur ▾</button><div class="ms-drop" id="ms-pay-drop"></div></div>
     <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
   </div></div>
   <div id="b-recap-paye" style="display:none"></div>
@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3222,7 +3222,7 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
-var BIZ_FILTERS = { cat: [], st: [], ap: [], men: [] }; // multi-select state — logique OR par filtre
+var BIZ_FILTERS = { cat: [], st: [], ap: [], men: [], pay: [] }; // multi-select state — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3624,6 +3624,70 @@ function msMenRenderBtn() {
   if (!btn) return;
   var n = BIZ_FILTERS.men.length;
   btn.textContent = n === 0 ? 'Équipe ▾' : 'Équipe (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Composant multi-select Payeur ────────────────────────────────────────────
+function msPayBuild() {
+  var drop = document.getElementById('ms-pay-drop');
+  if (!drop) return;
+  var payNames = DB.team.filter(function(m){ return m.active; }).map(function(m){ return m.name; });
+  DB.business.forEach(function(r){
+    if (r.paid_by && payNames.indexOf(r.paid_by) === -1) payNames.push(r.paid_by);
+  });
+  payNames.sort(function(a,b){ return a.localeCompare(b); });
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-pay-all" onchange="msPayAll(this.checked)"><span style="color:var(--td);font-size:12px">Tous payeurs</span></label>' +
+    '<div class="ms-sep"></div>' +
+    payNames.map(function(n){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(n)+'" onchange="msPayCheck(this)">'+escHtml(n)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msPayReset()">✕ Tout effacer</button>';
+}
+function msPayToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-pay-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msPayClose(); return; }
+  msCatClose(); msStClose(); msApClose(); msMenClose();
+  msPayBuild(); msPaySyncChecks();
+  drop.style.display = 'block';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'block';
+}
+function msPayClose() {
+  var drop = document.getElementById('ms-pay-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+function msPaySyncChecks() {
+  var drop = document.getElementById('ms-pay-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = BIZ_FILTERS.pay.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-pay-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.pay.length === 0;
+}
+function msPayCheck(cb) {
+  if (cb.checked) { if (BIZ_FILTERS.pay.indexOf(cb.value) === -1) BIZ_FILTERS.pay.push(cb.value); }
+  else { BIZ_FILTERS.pay = BIZ_FILTERS.pay.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-pay-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.pay.length === 0;
+  msPayRenderBtn(); bizFilter();
+}
+function msPayAll(checked) {
+  if (checked) { BIZ_FILTERS.pay = []; msPaySyncChecks(); msPayRenderBtn(); bizFilter(); }
+}
+function msPayReset() {
+  BIZ_FILTERS.pay = []; msPayClose(); msPayRenderBtn(); bizFilter();
+}
+function msPayRenderBtn() {
+  var btn = document.getElementById('ms-pay-btn');
+  if (!btn) return;
+  var n = BIZ_FILTERS.pay.length;
+  btn.textContent = n === 0 ? 'Payeur ▾' : 'Payeur (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4106,7 +4170,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  msCatClose(); msStClose(); msApClose(); msMenClose(); // fermer dropdowns ms si ouverts lors de la navigation
+  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); // fermer dropdowns ms si ouverts lors de la navigation
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
@@ -5021,14 +5085,13 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fp=val('b-fpay');
-  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st, faArr=BIZ_FILTERS.ap, fmenArr=BIZ_FILTERS.men;
+  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st, faArr=BIZ_FILTERS.ap, fmenArr=BIZ_FILTERS.men, fpArr=BIZ_FILTERS.pay;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(faArr.length)rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
   if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fmenArr.length)rows=rows.filter(function(r){return fmenArr.indexOf(r.fmen)!==-1;});
   if(fsArr.length)rows=rows.filter(function(r){return fsArr.indexOf(r.statut)!==-1;});
-  if(fp)rows=rows.filter(function(r){return r.paid_by===fp;});
+  if(fpArr.length)rows=rows.filter(function(r){return fpArr.indexOf(r.paid_by)!==-1;});
   if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
