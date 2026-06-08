@@ -814,7 +814,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="btcum" onclick="setPer('b','cumul')">Cumulé</button>
     </div>
     <div id="b-nav"></div>
-    <select class="fsel" id="b-fap" onchange="bizFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-ap-btn" onclick="msApToggle(event)">Appartement ▾</button><div class="ms-drop" id="ms-ap-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
     <select class="fsel" id="b-fmen" onchange="bizFilter()"><option value="">Toute l'équipe</option></select>
     <div class="ms-wrap"><button class="ms-btn" id="ms-st-btn" onclick="msStToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-st-drop"></div></div>
@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -3222,7 +3222,7 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
-var BIZ_FILTERS = { cat: [], st: [] }; // multi-select state — logique OR par filtre
+var BIZ_FILTERS = { cat: [], st: [], ap: [] }; // multi-select state — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3503,6 +3503,66 @@ function msStRenderBtn() {
   if (!btn) return;
   var n = BIZ_FILTERS.st.length;
   btn.textContent = n === 0 ? 'Statut ▾' : 'Statut (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Composant multi-select Appartement ───────────────────────────────────────
+var MS_APS = ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+function msApBuild() {
+  var drop = document.getElementById('ms-ap-drop');
+  if (!drop) return;
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-ap-all" onchange="msApAll(this.checked)"><span style="color:var(--td);font-size:12px">Tous apparts</span></label>' +
+    '<div class="ms-sep"></div>' +
+    MS_APS.map(function(a){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(a)+'" onchange="msApCheck(this)">'+escHtml(a)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msApReset()">✕ Tout effacer</button>';
+}
+function msApToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-ap-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msApClose(); return; }
+  msCatClose(); msStClose();
+  msApBuild(); msApSyncChecks();
+  drop.style.display = 'block';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'block';
+}
+function msApClose() {
+  var drop = document.getElementById('ms-ap-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+function msApSyncChecks() {
+  var drop = document.getElementById('ms-ap-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = BIZ_FILTERS.ap.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-ap-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.ap.length === 0;
+}
+function msApCheck(cb) {
+  if (cb.checked) { if (BIZ_FILTERS.ap.indexOf(cb.value) === -1) BIZ_FILTERS.ap.push(cb.value); }
+  else { BIZ_FILTERS.ap = BIZ_FILTERS.ap.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-ap-all');
+  if (allCb) allCb.checked = BIZ_FILTERS.ap.length === 0;
+  msApRenderBtn(); bizFilter();
+}
+function msApAll(checked) {
+  if (checked) { BIZ_FILTERS.ap = []; msApSyncChecks(); msApRenderBtn(); bizFilter(); }
+}
+function msApReset() {
+  BIZ_FILTERS.ap = []; msApClose(); msApRenderBtn(); bizFilter();
+}
+function msApRenderBtn() {
+  var btn = document.getElementById('ms-ap-btn');
+  if (!btn) return;
+  var n = BIZ_FILTERS.ap.length;
+  btn.textContent = n === 0 ? 'Appartement ▾' : 'Appart (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3985,7 +4045,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  msCatClose(); msStClose(); // fermer dropdowns ms si ouverts lors de la navigation
+  msCatClose(); msStClose(); msApClose(); // fermer dropdowns ms si ouverts lors de la navigation
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
@@ -4900,10 +4960,10 @@ function renderBiz() {
   renderWkCards();
   initWbState();
   var rows=filterPer(DB.business,'b');
-  var fa=val('b-fap'),fm=val('b-fmen'),fp=val('b-fpay');
-  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st;
+  var fm=val('b-fmen'),fp=val('b-fpay');
+  var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st, faArr=BIZ_FILTERS.ap;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
-  if(fa)rows=rows.filter(function(r){return r.appart===fa;});
+  if(faArr.length)rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
   if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fm)rows=rows.filter(function(r){return r.fmen===fm;});
   if(fsArr.length)rows=rows.filter(function(r){return fsArr.indexOf(r.statut)!==-1;});
