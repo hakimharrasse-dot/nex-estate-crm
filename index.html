@@ -6020,10 +6020,19 @@ function renderPerso() {
   });
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var _donsOnly=fcArr.length===1&&fcArr[0]==='Dons / Aides';
-  var tot=_donsOnly
-    ?rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0)
-    :sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
+  var _hasDons=fcArr.indexOf('Dons / Aides')!==-1;
+  var _donsOnly=fcArr.length===1&&_hasDons;
+  var tot;
+  if(_donsOnly){
+    // Seule "Dons / Aides" : montant des entrées Dons + don des autres catégories
+    tot=rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0);
+  } else {
+    // Cas général : lignes incluses par leur cat → montant+don ; incluses seulement via don→ don seul
+    tot=rows.reduce(function(acc,r){
+      var catSel=!fcArr.length||fcArr.indexOf(r.cat)!==-1;
+      return acc+(catSel?(r.montant||0):0)+(r.cat!=='Dons / Aides'?(r.don||0):0);
+    },0);
+  }
   var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
   var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
