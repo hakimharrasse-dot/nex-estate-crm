@@ -858,7 +858,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
-<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose()"></div>
+<div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose()"></div>
 
 <!-- ═══ VIEW: TAXE DE SÉJOUR ═══ -->
 <div class="vw" id="vw-taxe">
@@ -1248,7 +1248,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button class="tab" id="pta" onclick="setPer('p','annee')">Année</button>
     </div>
     <div id="p-nav"></div>
-    <select class="fsel" id="p-fcat" onchange="persoFilter()"><option value="">Toutes catégories</option></select>
+    <div class="ms-wrap"><button class="ms-btn" id="ms-pcat-btn" onclick="msPcatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-pcat-drop"></div></div>
     <select class="fsel" id="p-fst" onchange="persoFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
   </div></div>
   <div id="p-pgbar" class="r-pgbar"></div>
@@ -3222,7 +3222,8 @@ var DUP_PAGE=1; var DUP_PER=20; var DUP_IGNORED_GROUPS={};
 var RESA_SEL = {};     // {id: true} — sélection multiple réservations
 var DUP_SEL  = {};     // {id: true} — sélection multiple doublons
 var BIZ_SEL  = {};     // {id: true} — sélection multiple business
-var BIZ_FILTERS = { cat: [], st: [], ap: [], men: [], pay: [] }; // multi-select state — logique OR par filtre
+var BIZ_FILTERS   = { cat: [], st: [], ap: [], men: [], pay: [] }; // multi-select state — logique OR par filtre
+var PERSO_FILTERS = { cat: [], st: [] }; // multi-select state perso — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
 
@@ -3688,6 +3689,64 @@ function msPayRenderBtn() {
   if (!btn) return;
   var n = BIZ_FILTERS.pay.length;
   btn.textContent = n === 0 ? 'Payeur ▾' : 'Payeur (' + n + ') ▾';
+  btn.classList.toggle('ms-on', n > 0);
+}
+// ── Composant multi-select Catégorie Perso ───────────────────────────────────
+function msPcatBuild() {
+  var drop = document.getElementById('ms-pcat-drop');
+  if (!drop) return;
+  drop.innerHTML =
+    '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-pcat-all" onchange="msPcatAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes catégories</span></label>' +
+    '<div class="ms-sep"></div>' +
+    CATS_P.map(function(c){
+      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msPcatCheck(this)">'+escHtml(c)+'</label>';
+    }).join('') +
+    '<div class="ms-sep"></div>' +
+    '<button class="ms-reset" onclick="msPcatReset()">✕ Tout effacer</button>';
+}
+function msPcatToggle(e) {
+  e.stopPropagation();
+  var drop = document.getElementById('ms-pcat-drop');
+  if (!drop) return;
+  if (drop.style.display === 'block') { msPcatClose(); return; }
+  msPcatBuild(); msPcatSyncChecks();
+  drop.style.display = 'block';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'block';
+}
+function msPcatClose() {
+  var drop = document.getElementById('ms-pcat-drop');
+  if (drop) drop.style.display = 'none';
+  var ov = document.getElementById('ms-ov');
+  if (ov) ov.style.display = 'none';
+}
+function msPcatSyncChecks() {
+  var drop = document.getElementById('ms-pcat-drop');
+  if (!drop) return;
+  drop.querySelectorAll('input[type=checkbox][value]').forEach(function(cb){
+    cb.checked = PERSO_FILTERS.cat.indexOf(cb.value) !== -1;
+  });
+  var allCb = document.getElementById('ms-pcat-all');
+  if (allCb) allCb.checked = PERSO_FILTERS.cat.length === 0;
+}
+function msPcatCheck(cb) {
+  if (cb.checked) { if (PERSO_FILTERS.cat.indexOf(cb.value) === -1) PERSO_FILTERS.cat.push(cb.value); }
+  else { PERSO_FILTERS.cat = PERSO_FILTERS.cat.filter(function(v){ return v !== cb.value; }); }
+  var allCb = document.getElementById('ms-pcat-all');
+  if (allCb) allCb.checked = PERSO_FILTERS.cat.length === 0;
+  msPcatRenderBtn(); persoFilter();
+}
+function msPcatAll(checked) {
+  if (checked) { PERSO_FILTERS.cat = []; msPcatSyncChecks(); msPcatRenderBtn(); persoFilter(); }
+}
+function msPcatReset() {
+  PERSO_FILTERS.cat = []; msPcatClose(); msPcatRenderBtn(); persoFilter();
+}
+function msPcatRenderBtn() {
+  var btn = document.getElementById('ms-pcat-btn');
+  if (!btn) return;
+  var n = PERSO_FILTERS.cat.length;
+  btn.textContent = n === 0 ? 'Catégorie ▾' : 'Catégorie (' + n + ') ▾';
   btn.classList.toggle('ms-on', n > 0);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4170,7 +4229,7 @@ function goTo(name) {
     el.classList.remove('on','on-b','on-t','on-s','on-p','on-r','on-d','on-admin');
   });
   closeMobMore();
-  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); // fermer dropdowns ms si ouverts lors de la navigation
+  msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); // fermer dropdowns ms si ouverts lors de la navigation
   var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
@@ -5954,14 +6013,15 @@ function renderPerso() {
     CATS_P.forEach(function(c){var o=document.createElement('option');o.value=c;o.text=c;fcSel.appendChild(o);});
   }
   var rows=filterPer(DB.perso,'p');
-  var fc=val('p-fcat'),fs=val('p-fst');
-  if(fc)rows=rows.filter(function(r){
-    if(fc==='Dons / Aides') return r.cat===fc||(r.don||0)>0;
-    return r.cat===fc;
+  var fcArr=PERSO_FILTERS.cat, fs=val('p-fst');
+  if(fcArr.length)rows=rows.filter(function(r){
+    if(fcArr.indexOf('Dons / Aides')!==-1&&(r.don||0)>0) return true;
+    return fcArr.indexOf(r.cat)!==-1;
   });
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var tot=fc==='Dons / Aides'
+  var _donsOnly=fcArr.length===1&&fcArr[0]==='Dons / Aides';
+  var tot=_donsOnly
     ?rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0)
     :sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
   var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
