@@ -6114,8 +6114,8 @@ function renderTaxe() {
           chip(r.rev,r.rev==='Reversé'?'rev':'att')+
         '</div>'+
         '<div class="r-card-row2">'+
-          chip(r.col||'Cash',colClass(r.col||'Cash'))+
-          chip(r.pay||(r.pay_source||'Cash'),'eau')+
+          chip(r.col||r.pay||'Cash',colClass(r.col||r.pay||'Cash'))+
+          chip(r.pay||'Cash','eau')+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
         '<div class="r-card-row3">'+
@@ -6133,7 +6133,7 @@ function renderTaxe() {
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
-        '<td>'+chip(r.col||'Cash',colClass(r.col||'Cash'))+'</td>'+
+        '<td>'+chip(r.col||r.pay||'Cash',colClass(r.col||r.pay||'Cash'))+'</td>'+
         '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.rev,r.rev==='Reversé'?'rev':'att')+'</td>'+
@@ -7214,13 +7214,14 @@ function buildForm(type, editId) {
   }
 
   if(type==='taxe') {
+    var _txPay=v('pay','Cash');
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
-      '<div class="ff" id="ff-taxe-col" style="display:'+(v('pay','Cash')==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
-      '<div class="ff"><label class="fl">Mode de paiement</label><select class="fse" id="fi-pay" onchange="document.getElementById(\'ff-taxe-col\').style.display=this.value===\'Cash\'?\'block\':\'none\'">'+['Cash','Virement MAD','Virement EUR'].map(function(o){return '<option'+(v('pay','Cash')===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Mode de paiement</label><select class="fse" id="fi-pay" onchange="document.getElementById(\'ff-taxe-col\').style.display=this.value===\'Cash\'?\'block\':\'none\'">'+['Cash','Virement MAD','Virement EUR','Airbnb','Booking'].map(function(o){return '<option'+(_txPay===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff" id="ff-taxe-col" style="display:'+(_txPay==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
       '</div>';
@@ -7246,26 +7247,14 @@ function buildForm(type, editId) {
       '</div>'+
       (function(){
         var _ps=v('pay_source','')||'';
-        var _isPlatNoMode=(_ps==='Airbnb'||_ps==='Booking');
-        var _isPlat=_ps!=='';
-        return '<div class="ff" id="ff-serv-pay" style="display:'+(_isPlatNoMode?'none':'block')+'">'+
-            '<label class="fl">Mode de paiement</label>'+
-            '<select class="fse" id="fi-pay">'+['Cash','Virement MAD','Virement EUR'].map(function(o){return '<option'+(v('pay','Cash')===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select>'+
-          '</div>'+
-          '<div><label class="fl">Plateforme d\'encaissement</label>'+
-          '<select class="fse" id="fi-pay-source" onchange="(function(ps){'+
-            'var fp=document.getElementById(\'ff-serv-pay\');'+
-            'var fc=document.getElementById(\'ff-serv-col\');'+
-            'var hide=ps===\'Airbnb\'||ps===\'Booking\';'+
-            'if(fp)fp.style.display=hide?\'none\':\'block\';'+
-            'if(fc)fc.style.display=ps?\'none\':\'block\';'+
-          '})(this.value)">'+
-          '<option value=""'+(_ps===''?' selected':'')+'>Terrain / Direct</option>'+
-          '<option value="Airbnb"'+(_ps==='Airbnb'?' selected':'')+'>Airbnb</option>'+
-          '<option value="Booking"'+(_ps==='Booking'?' selected':'')+'>Booking</option>'+
-          '<option value="Autre"'+(_ps==='Autre'?' selected':'')+'>Autre</option>'+
+        var _pm=v('pay','Cash')||'Cash';
+        var _modeVal=(_ps==='Airbnb'||_ps==='Booking')?_ps:_pm;
+        var _showCol=(_modeVal==='Cash'||_modeVal==='Virement MAD'||_modeVal==='Virement EUR');
+        return '<div class="ff"><label class="fl">Mode de paiement</label>'+
+          '<select class="fse" id="fi-mode-plat" onchange="(function(val){var fc=document.getElementById(\'ff-serv-col\');if(fc)fc.style.display=(val===\'Cash\'||val===\'Virement MAD\'||val===\'Virement EUR\')?\'block\':\'none\';})(this.value)">'+
+          ['Cash','Virement MAD','Virement EUR','Airbnb','Booking'].map(function(o){return '<option'+(o===_modeVal?' selected':'')+'>'+o+'</option>';}).join('')+
           '</select></div>'+
-          '<div class="ff" id="ff-serv-col" style="display:'+(_isPlat?'none':'block')+'">'+
+          '<div class="ff" id="ff-serv-col" style="display:'+(_showCol?'block':'none')+'">'+
             '<label class="fl">Collecté par</label>'+
             '<select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select>'+
           '</div>';
@@ -7556,9 +7545,10 @@ async function saveServ() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
   var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
-  var _paySrc  = gv('fi-pay-source') || null;
+  var _modeVal = gv('fi-mode-plat') || 'Cash';
+  var _paySrc  = (_modeVal==='Airbnb'||_modeVal==='Booking') ? _modeVal : null;
+  var _pay     = _paySrc ? null : _modeVal;
   var _col     = _paySrc ? null : (gv('fi-col') || null);
-  var _pay     = (_paySrc==='Airbnb'||_paySrc==='Booking') ? null : (gv('fi-pay') || null);
   var _svcCbs=document.querySelectorAll('#fi-svc-wrap .fi-svc-cb:checked');
   var _svcs=Array.prototype.map.call(_svcCbs,function(cb){return cb.value;}).join(', ');
   if(!_svcs){alert('Sélectionne au moins un type de service');return;}
