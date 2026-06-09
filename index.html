@@ -9797,22 +9797,29 @@ function renderLogementStats() {
   }).reduce(function(acc,r){return acc+(r.montant||0);},0);
   var globalShare = nbActifs>0 ? globalDep/nbActifs : 0;
 
+  var eExcl = addDays(e, 1); // fin exclusive pour occupNightsBiz/nightsInPeriod (identique au Dashboard)
+
   var stats = apparts.map(function(ap) {
-    // CA réservations
+    // CA réservations (filtre mois_kpi = mois de paiement)
     var caResa = (DB.resa||[]).filter(function(r){
       return r.appart===ap && isRevRow(r) && r.statut==='Payé'
         && mks.indexOf((r.mois_kpi||r.date_paiement||r.checkin||'').slice(0,7))>=0;
     }).reduce(function(acc,r){return acc+rNetMAD(r);},0);
 
-    // CA services
+    // CA services additionnels
     var caServ = (DB.serv||[]).filter(function(r){
       return r.appart===ap && r.statut==='Payé' && r.date && r.date>=s && r.date<=e;
     }).reduce(function(acc,r){return acc+(r.montant||0);},0);
 
-    var ca = caResa + caServ;
+    // CA taxe de séjour (reversée à l'État mais encaissée — incluse dans le CA brut)
+    var caTaxe = (DB.taxe||[]).filter(function(r){
+      return r.appart===ap && r.date && r.date>=s && r.date<=e;
+    }).reduce(function(acc,r){return acc+(r.montant||0);},0);
 
-    // Nuits occupées — basé sur dates réelles checkin/checkout (comme le Dashboard)
-    var nuits = occupNightsBiz(ap, s, e);
+    var ca = caResa + caServ + caTaxe;
+
+    // Nuits occupées — fin exclusive (identique au Dashboard : pEnd = premier jour du mois suivant)
+    var nuits = occupNightsBiz(ap, s, eExcl);
 
     // Nombre de réservations facturées
     var nbResa = (DB.resa||[]).filter(function(r){
@@ -9830,7 +9837,7 @@ function renderLogementStats() {
     var txOcc    = totalDays>0 ? (nuits/totalDays*100) : 0;
     var panier   = nuits>0 ? ca/nuits : 0;
 
-    return {ap:ap, ca:ca, caResa:caResa, caServ:caServ, nuits:nuits, nbResa:nbResa,
+    return {ap:ap, ca:ca, caResa:caResa, caServ:caServ, caTaxe:caTaxe, nuits:nuits, nbResa:nbResa,
             dep:dep, depDirect:depDirect, globalShare:globalShare,
             resultat:resultat, txOcc:txOcc, panier:panier};
   });
