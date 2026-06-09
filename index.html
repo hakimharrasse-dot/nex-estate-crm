@@ -9811,12 +9811,8 @@ function renderLogementStats() {
 
     var ca = caResa + caServ;
 
-    // Nuits occupées (RESERVATION + ANNULATION_PAYEE + RELOCATION)
-    var nuits = (DB.resa||[]).filter(function(r){
-      return r.appart===ap
-        && ['RESERVATION','ANNULATION_PAYEE','RELOCATION'].indexOf(r.type_norm)>=0
-        && mks.indexOf((r.mois_kpi||r.date_paiement||r.checkin||'').slice(0,7))>=0;
-    }).reduce(function(acc,r){return acc+(r.nuits_fact||0);},0);
+    // Nuits occupées — basé sur dates réelles checkin/checkout (comme le Dashboard)
+    var nuits = occupNightsBiz(ap, s, e);
 
     // Nombre de réservations facturées
     var nbResa = (DB.resa||[]).filter(function(r){
