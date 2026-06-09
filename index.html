@@ -3364,6 +3364,7 @@ function fetchEurMad() {
           console.log('[EUR/MAD] OK via API '+(i+1)+' — '+EUR_MAD.toFixed(4)+' · '+EUR_MAD_DATE);
           var k = {resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',dash:'d'}[CUR];
           if (k) renderView(k);
+          autoLockTaux();
         } else {
           tryApi(i + 1);
         }
@@ -3388,6 +3389,43 @@ function updateRateDisplay() {
     txt += ' · ' + EUR_MAD_DATE;
   }
   el.textContent = txt;
+}
+
+// Verrouille automatiquement le taux EUR/MAD pour toutes les resas Payées sans taux_reel.
+// Appelé après chaque fetch réussi depuis une API réelle (pas cache, pas fallback).
+// Silent + ciblé : seuls les records non encore verrouillés sont patchés.
+async function autoLockTaux() {
+  if (!SUPA) return;
+  var toUpdate = (DB.resa || []).filter(function(r) {
+    return r.taux_reel == null
+      && MAD_REEL_ELIGIBLE.indexOf(r.type_norm || '') >= 0
+      && r.statut === 'Payé';
+  });
+  if (!toUpdate.length) return;
+  console.log('[autoLockTaux] verrouillage', toUpdate.length, 'resas → taux_reel =', EUR_MAD.toFixed(4));
+  var now = new Date().toISOString();
+  var locked = 0;
+  for (var i = 0; i < toUpdate.length; i++) {
+    var r = toUpdate[i];
+    var madReel = Math.round((r.net || 0) * EUR_MAD * 100) / 100;
+    try {
+      var res = await SUPA.from(TABLE['resa'])
+        .update({ taux_reel: EUR_MAD, mad_reel: madReel, mad_reel_source: 'auto', mad_reel_updated_at: now })
+        .eq('id', r.id);
+      if (!res.error) {
+        r.taux_reel = EUR_MAD;
+        r.mad_reel  = madReel;
+        r.mad_reel_source = 'auto';
+        r.mad_reel_updated_at = now;
+        locked++;
+      }
+    } catch(e) { console.warn('[autoLockTaux] erreur sur', r.id, e); }
+  }
+  if (locked > 0) {
+    console.log('[autoLockTaux] ' + locked + ' resas verrouillées.');
+    // Re-render la vue resa si active pour afficher les nouveaux badges
+    if (CUR === 'resa') renderView('r');
+  }
 }
 
 function diffNuits(ci,co) {
