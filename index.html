@@ -3296,6 +3296,7 @@ function _resaRateTag(r) {
   var elig = MAD_REEL_ELIGIBLE.indexOf(r.type_norm||'') >= 0;
   if (elig && r.mad_reel != null) {
     var src = r.mad_reel_source === 'manuel' ? 'manuel'
+            : r.mad_reel_source === 'auto'   ? 'auto'
             : r.source === 'Booking.com'     ? 'Booking' : 'Airbnb';
     return '<span style="font-size:10px;color:var(--bl);display:block;line-height:1.4">✓ réconcilié · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+' ('+src+')</span>';
   }
@@ -8155,8 +8156,17 @@ async function saveResa() {
   var _exRec = M_ID ? DB.resa.find(function(x){return x.id===M_ID;}) : null;
   var _hasTauxReel = _exRec && _exRec.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
   var _hasMadReel  = _exRec && _exRec.mad_reel  != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
-  // brutEur : taux manuel en priorité, puis taux_reel existant, puis EUR_MAD
-  var brutEur = _tauxChanged ? (brutMad / _tauxManuel)
+  // Auto-lock : si resa Payée sans taux_reel existant → snapshot EUR_MAD au moment du save
+  var _preStatut = typeNorm === 'ANNULATION_NON_PAYEE' ? 'Annulé'
+    : (typeNorm !== 'AJUSTEMENT' && dp ? (today() >= dp ? 'Payé' : 'En attente') : (gv('fi-st')||'Payé'));
+  var _autoLock = !_tauxChanged && !_hasTauxReel
+    && _preStatut === 'Payé'
+    && MAD_REEL_ELIGIBLE.indexOf(typeNorm||'RESERVATION') >= 0;
+  var _lockNow  = _tauxChanged || _autoLock;
+  var _lockRate = _tauxChanged ? _tauxManuel : EUR_MAD;
+  var _lockSrc  = _tauxChanged ? 'manuel' : 'auto';
+  // brutEur : taux lock en priorité, puis taux_reel existant, puis EUR_MAD
+  var brutEur = _lockNow    ? (brutMad / _lockRate)
               : _hasTauxReel ? (brutMad / _exRec.taux_reel)
               : (brutMad / EUR_MAD);
   var comEur = brutEur * comPct;
@@ -8196,17 +8206,17 @@ async function saveResa() {
       if (M_ID) { var ex = DB.resa.find(function(x){return x.id===M_ID;}); if(ex) return !!ex.override_manual; }
       return true; // nouvelle entrée manuelle = protégée par défaut
     })(),
-    // MAD réel : taux manuel (fi-taux modifié) ou valeur réconciliation préservée
-    mad_reel: _tauxChanged
+    // MAD réel : lock maintenant (manuel ou auto-Payé) ou valeur existante préservée
+    mad_reel: _lockNow
       ? (parseFloat(gv('fi-net'))||null)
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel??null:null; })(),
-    taux_reel: _tauxChanged
-      ? _tauxManuel
+    taux_reel: _lockNow
+      ? _lockRate
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.taux_reel??null:null; })(),
-    mad_reel_source: _tauxChanged
-      ? 'manuel'
+    mad_reel_source: _lockNow
+      ? _lockSrc
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
-    mad_reel_updated_at: _tauxChanged
+    mad_reel_updated_at: _lockNow
       ? new Date().toISOString()
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
