@@ -5364,6 +5364,22 @@ function renderDashAsuivreSummary() {
 // ============================================================
 // EXPORT CSV
 // ============================================================
+function _csvPeriodLabel(k) {
+  var p = P[k];
+  if (p === 'jour') return 'Jour du ' + (DAY[k] || today());
+  if (p === 'semaine') { var w = wkRange(WK[k]); return 'Semaine du ' + w.s + ' au ' + w.e; }
+  if (p === 'annee') return 'Année ' + YR[k];
+  if (p === 'bimestre' || p === 'trimestre' || p === 'semestre') {
+    var n = p==='bimestre'?2:p==='trimestre'?3:6;
+    var y = MO[k].getFullYear(), m = MO[k].getMonth();
+    var em = new Date(y, m+n-1, 1);
+    return MONTHS_FR[m]+(y!==em.getFullYear()?' '+y:'')+' – '+MONTHS_FR[em.getMonth()]+' '+em.getFullYear();
+  }
+  if (p === 'custom') return 'Du '+(CUSTOM_FROM[k]||'?')+' au '+(CUSTOM_TO[k]||'?');
+  if (p === 'cumul') return 'Tout l\'historique';
+  return MO[k].toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+}
+
 function _csvEsc(v) {
   if (v === null || v === undefined) return '';
   var s = String(v);
@@ -5388,6 +5404,8 @@ function _csvDownload(rows, headers, keys, filename) {
 
 function exportResaCSV() {
   var rows = filterPer(DB.resa || [], 'r');
+  var lbl = _csvPeriodLabel('r');
+  if (!confirm('Exporter les Réservations en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
   _csvDownload(rows,
     ['Référence','Source','Appartement','Voyageur','Check-in','Check-out','Nuits séjour','Nuits facturées','Brut EUR','Commission %','Net EUR','Net MAD','Taxe séjour EUR','Type','Mode paiement','Statut','Date paiement','Mois KPI','Notes'],
     ['ref','source','appart','voyageur','checkin','checkout','nuits_sejour','nuits_fact','brut','com_pct','net',
@@ -5399,6 +5417,8 @@ function exportResaCSV() {
 
 function exportBizCSV() {
   var rows = filterPer(DB.business || [], 'b');
+  var lbl = _csvPeriodLabel('b');
+  if (!confirm('Exporter les Dépenses Business en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
   _csvDownload(rows,
     ['Date','Appartement','Catégorie','Ménagère','Description','Montant MAD','Statut','Payé par','Date règlement'],
     ['date','appart','cat','fmen','desc','montant','statut','paid_by','date_reglement'],
@@ -5408,6 +5428,8 @@ function exportBizCSV() {
 
 function exportServCSV() {
   var rows = filterPer(DB.serv || [], 's');
+  var lbl = _csvPeriodLabel('s');
+  if (!confirm('Exporter les Services Additionnels en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
   _csvDownload(rows,
     ['Date','Appartement','Service(s)','Voyageur','Montant MAD','Statut','Mode paiement','Plateforme','Collecté par','Note'],
     ['date','appart','svc','voy','montant','statut','pay','pay_source','col','note'],
@@ -5417,6 +5439,8 @@ function exportServCSV() {
 
 function exportPersoCSV() {
   var rows = filterPer(DB.perso || [], 'p');
+  var lbl = _csvPeriodLabel('p');
+  if (!confirm('Exporter les Dépenses Perso en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
   _csvDownload(rows,
     ['Date','Catégorie','Description','Montant MAD','Récurrence','Statut','Prestataire','Don'],
     ['date','cat','desc','montant','rec','statut','prest','don'],
