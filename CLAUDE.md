@@ -10,7 +10,7 @@
 
 **Nex-Estate CRM** est un outil de gestion de réservations locatives courte durée (Airbnb, Booking.com, VRBO, Direct) pour 4 appartements au Maroc.
 
-- **Frontend** : `index.html` unique (~11 650 lignes), vanilla JS, zéro framework, zéro build
+- **Frontend** : `index.html` unique (~14 474 lignes), vanilla JS, zéro framework, zéro build
 - **Backend** : Vercel Serverless Functions (Node.js)
 - **Base de données** : Supabase (PostgreSQL 17, projet `zjultuaqkzjupiiewxhy`, région `eu-west-1`)
 - **Source de réservations** : Smoobu (PMS) via webhook temps réel + cron horaire
@@ -532,7 +532,13 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-06 | fix(perso): exclure réellement les doublons manuels à la génération — section "Ignorées" dans la prévisualisation |
 | 2026-06-06 | feat(perso): contrôle doublons — bouton 🔍, détection affinée (récurrent+catFixe+libellé similaire), suppression manuelle avec cases |
 | 2026-06-06 | feat(perso): budget lissé — calcLissePerso() partagée, rangée KPI contextuelle vue Mois (charges fixes réelles / budget lissé / écart) |
-| 2026-06-06 | **STABLE** : Module Dépenses Perso complet — ← **HEAD `1c249fd`** |
+| 2026-06-06 | **STABLE** : Module Dépenses Perso complet — `1c249fd` |
+| 2026-06-08 | feat(resa): filtres multi-select Appartement/Source/Type/Statut (Commits H→K) ; feat(serv): multi-services + champ `note` (Commit L, migration `add_note_to_serv`) |
+| 2026-06-08 | Audit complet 73/100 → `ROADMAP.md` créé (P1/P2/P3 + bugs connus + décisions actées) |
+| 2026-06-09 | feat(logements): stats par appartement — CA, occupation (dates séjour réelles), résultat net ; feat(taux): auto-lock EUR_MAD (`autoLockTaux()` au chargement + au save) + badge taux dans liste + champ taux manuel modale ; multi-source fallback chain EUR/MAD + cache localStorage |
+| 2026-06-09 | feat(dashboard): barchart CA mensuel 12 mois ; export CSV 4 vues avec sélecteur de période ; vue "À suivre" (badge nav + mini-résumé + 3 blocs + actions groupées) ; recherche texte Taxe/Services/Perso + recherche globale Business ; auto-sync taxes Booking au chargement |
+| 2026-06-09 | feat(dashboard): **CA unifié** = réservations + services payés + taxe de séjour — KPI principal, sparkline, perf cards par appartement, meilleur appart (`681dd40`) |
+| 2026-06-10 | feat(dashboard): CA unifié par source — carte "Répartition par source" : Airbnb = resa + extras `pay_source='Airbnb'` (anti-doublon AIRCOVER/AJUSTEMENT conservé), Booking.com = resa + extras `pay_source='Booking'` + taxe de séjour, ligne dédiée "Terrain / Direct" pour les extras hors plateforme — ← **HEAD `c5d7137`** |
 
 ---
 
