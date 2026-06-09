@@ -820,6 +820,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ms-wrap"><button class="ms-btn" id="ms-st-btn" onclick="msStToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-st-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-pay-btn" onclick="msPayToggle(event)">Payeur ▾</button><div class="ms-drop" id="ms-pay-drop"></div></div>
     <input class="fsel" type="text" id="b-fsearch" placeholder="🔍 Lié à…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
+    <input class="fsel" type="text" id="b-fq" placeholder="🔍 Recherche…" oninput="bizFilter()" style="min-width:120px;max-width:180px">
   </div></div>
   <div id="b-recap-paye" style="display:none"></div>
   <div id="b-lisse-block" style="display:none;margin-bottom:12px"></div>
@@ -5386,12 +5387,14 @@ function renderBiz() {
   var rows=filterPer(DB.business,'b');
   var fcArr=BIZ_FILTERS.cat, fsArr=BIZ_FILTERS.st, faArr=BIZ_FILTERS.ap, fmenArr=BIZ_FILTERS.men, fpArr=BIZ_FILTERS.pay;
   var fq=(document.getElementById('b-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
+  var fq2=(document.getElementById('b-fq')||{}).value||''; fq2=fq2.toLowerCase().trim();
   if(faArr.length)rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
   if(fcArr.length)rows=rows.filter(function(r){return fcArr.indexOf(r.cat)!==-1;});
   if(fmenArr.length)rows=rows.filter(function(r){return fmenArr.indexOf(r.fmen)!==-1;});
   if(fsArr.length)rows=rows.filter(function(r){return fsArr.indexOf(r.statut)!==-1;});
   if(fpArr.length)rows=rows.filter(function(r){return fpArr.indexOf(r.paid_by)!==-1;});
   if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
+  if(fq2)rows=rows.filter(function(r){return (r.appart||'').toLowerCase().includes(fq2)||(r.cat||'').toLowerCase().includes(fq2)||(r.desc||'').toLowerCase().includes(fq2);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
   var chg=sum(rows.filter(function(r){return r.cat!=='Ménage';}), 'montant');
