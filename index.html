@@ -6114,7 +6114,7 @@ function renderTaxe() {
           chip(r.rev,r.rev==='Reversé'?'rev':'att')+
         '</div>'+
         '<div class="r-card-row2">'+
-          chip(r.col,colClass(r.col))+
+          chip(r.col||'Cash',colClass(r.col||'Cash'))+
           chip(r.pay||(r.pay_source||'Cash'),'eau')+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
@@ -6133,7 +6133,7 @@ function renderTaxe() {
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
-        '<td>'+chip(r.col,colClass(r.col))+'</td>'+
+        '<td>'+chip(r.col||'Cash',colClass(r.col||'Cash'))+'</td>'+
         '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.rev,r.rev==='Reversé'?'rev':'att')+'</td>'+
@@ -6202,7 +6202,7 @@ function renderServ() {
         '</div>'+
         (r.note?'<div style="font-size:11px;color:var(--td);padding:2px 0 4px;font-style:italic">'+escHtml(r.note)+'</div>':'')+
         '<div class="r-card-row2">'+
-          chip(r.col,colClass(r.col))+
+          chip(r.col||r.pay_source||'Cash',colClass(r.col||r.pay_source||'Cash'))+
           chip(r.pay||(r.pay_source||'Cash'),'eau')+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
@@ -6223,7 +6223,7 @@ function renderServ() {
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
         '<td><div>'+(r.svc||'').split(',').map(function(s){return chip(s.trim(),'serv');}).join(' ')+(r.note?'<div style="font-size:11px;color:var(--td);margin-top:2px;font-style:italic">'+escHtml(r.note)+'</div>':'')+'</div></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
-        '<td>'+chip(r.col,colClass(r.col))+'</td>'+
+        '<td>'+chip(r.col||r.pay_source||'Cash',colClass(r.col||r.pay_source||'Cash'))+'</td>'+
         '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--go)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
