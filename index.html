@@ -886,6 +886,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="t-fap" onchange="taxeFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="t-fcol" onchange="taxeFilter()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
     <select class="fsel" id="t-fst" onchange="taxeFilter()"><option value="">Tous statuts</option><option>Reversé</option><option>Non reversé</option></select>
+    <input class="fsel" type="text" id="t-fsearch" placeholder="🔍 Voyageur, réf., note…" oninput="taxeFilter()" style="min-width:140px;max-width:200px">
   </div></div>
   <!-- Barre sélection taxe -->
   <div class="sel-bar hidden" id="taxe-sel-bar">
@@ -934,6 +935,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="s-fsv" onchange="servFilter()"><option value="">Tous services</option><option>Navette aéroport</option><option>Navette ville</option><option>Ménage supplémentaire</option><option>Changement serviettes/linge</option><option>Arrivée anticipée</option><option>Départ tardif</option><option>Climatisation</option><option>Voyageur supplémentaire</option><option>Petit-déjeuner</option><option>Parking</option><option>Autre service</option></select>
     <select class="fsel" id="s-fcol" onchange="servFilter()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
     <select class="fsel" id="s-fst" onchange="servFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+    <input class="fsel" type="text" id="s-fsearch" placeholder="🔍 Voyageur, service, note…" oninput="servFilter()" style="min-width:140px;max-width:200px">
   </div></div>
   <!-- Barre sélection services -->
   <div class="sel-bar hidden" id="serv-sel-bar">
@@ -1250,6 +1252,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div id="p-nav"></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-pcat-btn" onclick="msPcatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-pcat-drop"></div></div>
     <select class="fsel" id="p-fst" onchange="persoFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
+    <input class="fsel" type="text" id="p-fsearch" placeholder="🔍 Description, prestataire…" oninput="persoFilter()" style="min-width:140px;max-width:200px">
   </div></div>
   <div id="p-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
@@ -6077,9 +6080,11 @@ function renderTaxe() {
   renderNav('t');
   var rows=filterPer(DB.taxe,'t');
   var fa=val('t-fap'),fc=val('t-fcol'),fs=val('t-fst');
+  var fq=(document.getElementById('t-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fa)rows=rows.filter(function(r){return r.appart===fa;});
   if(fc)rows=rows.filter(function(r){return r.col===fc;});
   if(fs)rows=rows.filter(function(r){return r.rev===fs;});
+  if(fq)rows=rows.filter(function(r){return (r.voy||'').toLowerCase().includes(fq)||(r.reservation_ref||'').toLowerCase().includes(fq)||(r.note||'').toLowerCase().includes(fq)||(r.appart||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant');
   var hak=sum(rows.filter(function(r){return r.col==='Hakim';}),'montant');
@@ -6157,10 +6162,12 @@ function renderServ() {
   renderNav('s');
   var rows=filterPer(DB.serv,'s');
   var fa=val('s-fap'),fsv=val('s-fsv'),fc=val('s-fcol'),fs=val('s-fst');
+  var fq=(document.getElementById('s-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fa) rows=rows.filter(function(r){return r.appart===fa;});
   if(fsv)rows=rows.filter(function(r){return (r.svc||'').split(',').map(function(s){return s.trim();}).indexOf(fsv)!==-1;});
   if(fc) rows=rows.filter(function(r){return r.col===fc;});
   if(fs) rows=rows.filter(function(r){return r.statut===fs;});
+  if(fq)rows=rows.filter(function(r){return (r.voy||'').toLowerCase().includes(fq)||(r.svc||'').toLowerCase().includes(fq)||(r.note||'').toLowerCase().includes(fq)||(r.appart||'').toLowerCase().includes(fq)||(r.resa_ref||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var tot=sum(rows,'montant'), pay=sum(rows.filter(function(r){return r.statut==='Payé';}),'montant');
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
@@ -6252,11 +6259,13 @@ function renderPerso() {
   }
   var rows=filterPer(DB.perso,'p');
   var fcArr=PERSO_FILTERS.cat, fs=val('p-fst');
+  var fq=(document.getElementById('p-fsearch')||{}).value||''; fq=fq.toLowerCase().trim();
   if(fcArr.length)rows=rows.filter(function(r){
     if(fcArr.indexOf('Dons / Aides')!==-1&&(r.don||0)>0) return true;
     return fcArr.indexOf(r.cat)!==-1;
   });
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
+  if(fq)rows=rows.filter(function(r){return (r.desc||'').toLowerCase().includes(fq)||(r.prest||'').toLowerCase().includes(fq)||(r.cat||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
   var _hasDons=fcArr.indexOf('Dons / Aides')!==-1;
   var _donsOnly=fcArr.length===1&&_hasDons;
