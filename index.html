@@ -7219,8 +7219,8 @@ function buildForm(type, editId) {
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
-      '<div class="ff"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
-      field2('Mode de paiement','fi-pay','select',v('pay','Cash'),['Cash','Virement MAD','Virement EUR'])+
+      '<div class="ff" id="ff-taxe-col" style="display:'+(v('pay','Cash')==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
+      '<div class="ff"><label class="fl">Mode de paiement</label><select class="fse" id="fi-pay" onchange="document.getElementById(\'ff-taxe-col\').style.display=this.value===\'Cash\'?\'block\':\'none\'">'+['Cash','Virement MAD','Virement EUR'].map(function(o){return '<option'+(v('pay','Cash')===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
       '</div>';
@@ -7547,7 +7547,8 @@ async function saveBiz() {
 async function saveTaxe() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
-  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:gv('fi-col'),pay:gv('fi-pay'),montant:m,rev:gv('fi-rev')});
+  var _tPay=gv('fi-pay')||'Cash';
+  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev')});
   closeModal(); renderTaxe();
 }
 
