@@ -4872,6 +4872,13 @@ function renderDash() {
   var cashTotal=cur.netMad+servPaye+taxeReversee;
   var resultatReel=cashTotal-depPaye;
 
+  // ── CA unifié (règle générale) : réservations + services additionnels + taxe de séjour ──
+  var caTot       = cur.netMad + servPaye + taxeCollectee;
+  var adrTot      = cur.nuitsFact > 0 ? caTot / cur.nuitsFact : 0;
+  var revpanTot   = joursDispo > 0 ? caTot / joursDispo : 0;
+  var resultatTot = caTot - cur.dep;
+  var margeTot    = caTot > 0 ? (resultatTot / caTot * 100) : 0;
+
   // ── Cash à payer ──
   set('d-menage-att',fmt(menageAtt));
   set('d-autres-att',fmt(autresAtt));
@@ -4887,25 +4894,25 @@ function renderDash() {
   var el_rres=document.getElementById('d-res-reel');
   if(el_rres) el_rres.style.color=resultatReel>=0?'var(--gr)':'var(--re)';
 
-  // ── Affichage KPI ──
-  set('d-net',fmt(cur.netMad));
-  set('d-brut','Brut : '+fmt(brutMad));
+  // ── Affichage KPI (CA unifié = réservations + services + taxe) ──
+  set('d-net',fmt(caTot));
+  set('d-brut','Resa : '+fmt(cur.netMad)+' · Serv+Taxe : '+fmt(servPaye+taxeCollectee));
   set('d-net-att',cur.netMadAtt>0?'En attente : '+fmt(cur.netMadAtt):'');
-  set('d-res',fmt(cur.resultat));
+  set('d-res',fmt(resultatTot));
   set('d-com',fmt(comMad));
   set('d-dep',fmt(cur.dep));
   set('d-tax',fmt(taxeCollectee));
   set('d-ext',fmt(extras));
   set('d-occ',Math.round(cur.occ)+' %');
   set('d-occ-det',cur.nuitsSej+' / '+joursDispo+' nuits');
-  set('d-adr',fmt(cur.adr));
-  set('d-revpan',fmt(cur.revpan));
-  set('d-marge',Math.round(cur.marge)+' %');
+  set('d-adr',fmt(adrTot));
+  set('d-revpan',fmt(revpanTot));
+  set('d-marge',Math.round(margeTot)+' %');
   drawCircle('d-svg-occ', cur.occ, 'var(--te)');
   set('d-circ-occ', Math.round(cur.occ)+' %');
   set('d-circ-occ-det', cur.nuitsSej+' / '+joursDispo+' nuits');
-  drawCircle('d-svg-marge', Math.max(0,cur.marge), 'var(--or)');
-  set('d-circ-marge', Math.round(cur.marge)+' %');
+  drawCircle('d-svg-marge', Math.max(0,margeTot), 'var(--or)');
+  set('d-circ-marge', Math.round(margeTot)+' %');
 
   // ── CA consommé par nuits — calcul partagé (utilisé par Mode 2) ──
   var cc = sumCaConsomme(pb.start, pb.end, fa||null);
@@ -4946,15 +4953,28 @@ function renderDash() {
   if(fa){prevRes=prevRes.filter(function(r){return r.appart===fa;});prevBiz=prevBiz.filter(function(r){return r.appart===fa&&r.scope!=='global';});}
   var prev=computePeriodKPIs(prevRes,prevBiz,prevJours,prevBounds,fa||null);
 
+  // CA unifié période précédente
+  var prevServPaye = prevBounds ? sum(DB.serv.filter(function(r){
+    return r.statut==='Payé' && r.date && r.date>=prevBounds.start && r.date<prevBounds.end && (!fa||r.appart===fa);
+  }),'montant') : 0;
+  var prevTaxeCollectee = prevBounds ? sum(DB.taxe.filter(function(r){
+    return r.date && r.date>=prevBounds.start && r.date<prevBounds.end && (!fa||r.appart===fa);
+  }),'montant') : 0;
+  var prevCaTot     = prev.netMad + prevServPaye + prevTaxeCollectee;
+  var prevAdrTot    = prev.nuitsFact > 0 ? prevCaTot / prev.nuitsFact : 0;
+  var prevRevpanTot = prevJours > 0 ? prevCaTot / prevJours : 0;
+  var prevResTot    = prevCaTot - prev.dep;
+  var prevMargeTot  = prevCaTot > 0 ? (prevResTot / prevCaTot * 100) : 0;
+
   // ── Affichage deltas ──
-  set('d-delta-net', deltaArrow(cur.netMad,prev.netMad,'mad',prevLbl));
-  set('d-delta-res', deltaArrow(cur.resultat,prev.resultat,'mad',prevLbl));
+  set('d-delta-net', deltaArrow(caTot,prevCaTot,'mad',prevLbl));
+  set('d-delta-res', deltaArrow(resultatTot,prevResTot,'mad',prevLbl));
   set('d-delta-occ2', deltaArrow(cur.occ,prev.occ,'%',prevLbl));
-  set('d-delta-adr', deltaArrow(cur.adr,prev.adr,'mad',prevLbl));
-  set('d-delta-revpan', deltaArrow(cur.revpan,prev.revpan,'mad',prevLbl));
-  set('d-delta-marge2', deltaArrow(cur.marge,prev.marge,'%',prevLbl));
+  set('d-delta-adr', deltaArrow(adrTot,prevAdrTot,'mad',prevLbl));
+  set('d-delta-revpan', deltaArrow(revpanTot,prevRevpanTot,'mad',prevLbl));
+  set('d-delta-marge2', deltaArrow(margeTot,prevMargeTot,'%',prevLbl));
   set('d-delta-occ', deltaArrow(cur.occ,prev.occ,'%',prevLbl));
-  set('d-delta-marge', deltaArrow(cur.marge,prev.marge,'%',prevLbl));
+  set('d-delta-marge', deltaArrow(margeTot,prevMargeTot,'%',prevLbl));
 
   // ── Sparklines 6 derniers mois ──
   var sparkMonths=[], sparkNet=[], sparkOcc=[], sparkLabels=[];
@@ -4970,7 +4990,10 @@ function renderDash() {
     var smEnd=new Date(Date.UTC(smY,smM+1,1)).toISOString().slice(0,10);
     var smNSej=occupNightsBiz(fa||null, smStart, smEnd);
     var smDays=new Date(smDate.getFullYear(),smDate.getMonth()+1,0).getDate()*nAp;
-    sparkNet.push(smNet);
+    // CA unifié sparkline : resa + services payés + taxe
+    var smServNet=sum(DB.serv.filter(function(r){return r.statut==='Payé'&&r.date&&r.date.startsWith(smMk)&&(!fa||r.appart===fa);}),'montant');
+    var smTaxeNet=sum(DB.taxe.filter(function(r){return r.date&&r.date.startsWith(smMk)&&(!fa||r.appart===fa);}),'montant');
+    sparkNet.push(smNet+smServNet+smTaxeNet);
     sparkOcc.push(smDays>0?(smNSej/smDays*100):0);
     sparkLabels.push(smDate.toLocaleDateString('fr-FR',{month:'short'}));
   }
@@ -4982,11 +5005,11 @@ function renderDash() {
   // ── Alertes intelligentes ──
   var alertItems=[];
   // Alerte dépenses en attente élevées
-  if(cur.netMad>0 && depAtt/cur.netMad>0.30)
-    alertItems.push({cls:'alert-crit',txt:'⚠️ Dépenses en attente élevées ('+(Math.round(depAtt/cur.netMad*100))+'% des revenus nets)'});
+  if(caTot>0 && depAtt/caTot>0.30)
+    alertItems.push({cls:'alert-crit',txt:'⚠️ Dépenses en attente élevées ('+(Math.round(depAtt/caTot*100))+'% du CA)'});
   // Alerte marge faible
-  if(cur.netMad>0 && cur.marge<30)
-    alertItems.push({cls:'alert-warn',txt:'⚠️ Rentabilité faible — marge '+Math.round(cur.marge)+'%'});
+  if(caTot>0 && margeTot<30)
+    alertItems.push({cls:'alert-warn',txt:'⚠️ Rentabilité faible — marge '+Math.round(margeTot)+'%'});
   // Alerte occupation par appart (mode mois uniquement, si pas de filtre appart)
   if(!fa && P['d']==='mois') {
     var daysM=periodDays('d');
