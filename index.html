@@ -5112,6 +5112,17 @@ function renderDash() {
   var sources=['Airbnb','Booking.com','Direct','VRBO'];
   // ── Répartition par source (CA unifié : resa + extras plateforme + taxe) ──
   var _srcServPaye=filterPer(DB.serv,'d').filter(function(r){return r.statut==='Payé'&&(!fa||r.appart===fa);});
+  // Extras cash terrain rattachés à un client plateforme via resa_ref — note informative
+  // uniquement, jamais inclus dans le montant de la plateforme (= versements réels)
+  var _srcCashTerrain=_srcServPaye.filter(function(r){
+    return r.pay_source!=='Airbnb'&&r.pay_source!=='Booking'&&r.resa_ref;
+  });
+  function _servClientSrc(s){
+    var m=DB.resa.find(function(x){
+      return x.ref&&(x.ref===s.resa_ref||airbnbBaseRef(x.ref)===airbnbBaseRef(s.resa_ref));
+    });
+    return m?m.source:null;
+  }
   var _srcHtml=sources.map(function(src){
     var x=revRes.filter(function(r){return r.source===src;});
     var nResa=sumNetMAD(x);
@@ -5120,19 +5131,26 @@ function renderDash() {
     else if(src==='Booking.com') nServ=sum(_srcServPaye.filter(function(r){return r.pay_source==='Booking';}),'montant');
     var nTaxe=src==='Booking.com'?taxeCollectee:0;
     var nTot=nResa+nServ+nTaxe;
-    if(!x.length&&nTot===0) return '';
+    var nCash=sum(_srcCashTerrain.filter(function(r){return _servClientSrc(r)===src;}),'montant');
+    if(!x.length&&nTot===0&&nCash===0) return '';
     var det=['Resa '+fmt(nResa)];
     if(nServ>0) det.push('Extras '+fmt(nServ));
     if(nTaxe>0) det.push('Taxe '+fmt(nTaxe));
     return '<div class="rc"><div>'+
       '<div class="rn">'+src+'</div>'+
       '<div class="rsb">'+x.length+' rés.'+(nServ>0||nTaxe>0?' · '+det.join(' · '):'')+'</div>'+
+      (nCash>0?'<div style="font-size:10px;color:var(--td);margin-top:2px">💵 + '+fmt(nCash)+' extras cash (compté Terrain)</div>':'')+
       '</div><div class="rv" style="color:var(--or)">'+fmt(nTot)+'</div></div>';
   }).join('');
   // Extras terrain (pay_source null/Autre) — ligne dédiée pour cohérence avec le CA unifié
-  var _srcServTerrain=sum(_srcServPaye.filter(function(r){return r.pay_source!=='Airbnb'&&r.pay_source!=='Booking';}),'montant');
-  if(_srcServTerrain>0)
-    _srcHtml+='<div class="rc"><div><div class="rn">Terrain / Direct</div><div class="rsb">Extras collectés</div></div><div class="rv" style="color:var(--or)">'+fmt(_srcServTerrain)+'</div></div>';
+  var _srcServTerrainRows=_srcServPaye.filter(function(r){return r.pay_source!=='Airbnb'&&r.pay_source!=='Booking';});
+  var _srcServTerrain=sum(_srcServTerrainRows,'montant');
+  if(_srcServTerrain>0){
+    var _srcCashLie=sum(_srcCashTerrain.filter(function(r){return _servClientSrc(r)!==null;}),'montant');
+    _srcHtml+='<div class="rc"><div><div class="rn">Terrain / Direct</div><div class="rsb">Extras collectés</div>'+
+      (_srcCashLie>0?'<div style="font-size:10px;color:var(--td);margin-top:2px">dont '+fmt(_srcCashLie)+' clients plateforme</div>':'')+
+      '</div><div class="rv" style="color:var(--or)">'+fmt(_srcServTerrain)+'</div></div>';
+  }
   set('d-recap-src',_srcHtml||'<div style="color:var(--td);font-size:13px">Aucune réservation</div>');
 
   // ── Mode 2 : CA consommé par nuits — vue analytique alternative ──
