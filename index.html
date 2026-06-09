@@ -5386,10 +5386,10 @@ function renderMonthlyBarchart() {
     });
   }
 
-  // CA net MAD par mois (réservations encaissées)
+  // CA net MAD par mois (même logique que le Dashboard principal)
   months.forEach(function(m) {
     var rows = (DB.resa || []).filter(function(r) {
-      return isRevRow(r) && r.statut === 'Payée' && r.mois_kpi && r.mois_kpi.startsWith(m.mk);
+      return isRevRow(r) && r.mois_kpi && r.mois_kpi.startsWith(m.mk);
     });
     m.ca = rows.reduce(function(s, r) { return s + rNetMAD(r); }, 0);
     // Dépenses business du même mois
@@ -5443,7 +5443,7 @@ function renderMonthlyBarchart() {
   // Total CA année en cours
   var yrNow = String(now.getFullYear());
   var totalYr = (DB.resa || []).filter(function(r) {
-    return isRevRow(r) && r.statut === 'Payée' && r.mois_kpi && r.mois_kpi.startsWith(yrNow);
+    return isRevRow(r) && r.mois_kpi && r.mois_kpi.startsWith(yrNow);
   }).reduce(function(s, r) { return s + rNetMAD(r); }, 0);
   var totEl = document.getElementById('d-barchart-total');
   if (totEl && totalYr > 0) totEl.textContent = 'Total '+yrNow+' : '+Math.round(totalYr).toLocaleString('fr-MA')+' MAD';
