@@ -5070,14 +5070,17 @@ function getAsuivreData() {
   var resaRows = (DB.resa || []).filter(function(r) {
     return r.statut === 'En attente' && r.date_paiement && r.date_paiement < td;
   });
+  var j7ago = new Date(); j7ago.setDate(j7ago.getDate() - 7);
+  var td7ago = j7ago.toISOString().slice(0, 10);
+
   var servRows = (DB.serv || []).filter(function(r) {
     return r.statut === 'En attente'
       && r.pay_source !== 'Airbnb' && r.pay_source !== 'Booking'
       && !r.asuivre_ignore
-      && r.date && r.date <= j7;
+      && r.date && r.date <= td;
   });
   var taxeRows = (DB.taxe || []).filter(function(r) {
-    return r.rev === 'Non reversé' && !r.asuivre_ignore;
+    return r.rev === 'Non reversé' && !r.asuivre_ignore && r.date && r.date <= td;
   });
 
   return {
@@ -5086,12 +5089,12 @@ function getAsuivreData() {
       orange: []
     },
     serv: {
-      red:    servRows.filter(function(r) { return r.date < td; }),
-      orange: servRows.filter(function(r) { return r.date >= td && r.date <= j7; })
+      red:    servRows.filter(function(r) { return r.date < td7ago; }),
+      orange: servRows.filter(function(r) { return r.date >= td7ago && r.date <= td; })
     },
     taxe: {
-      red:    taxeRows.filter(function(r) { return r.date && r.date < fom; }),
-      orange: taxeRows.filter(function(r) { return !r.date || r.date >= fom; })
+      red:    taxeRows.filter(function(r) { return r.date < fom; }),
+      orange: taxeRows.filter(function(r) { return r.date >= fom && r.date <= td; })
     }
   };
 }
