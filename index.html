@@ -1010,9 +1010,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ═══ VIEW: LOGEMENTS ═══ -->
 <div class="vw" id="vw-logements">
   <div class="vh">
-    <div><div class="vt" style="color:var(--bl)">Logements</div><div class="vsub">Gestion du parc locatif · actifs &amp; archivés</div></div>
+    <div><div class="vt" style="color:var(--bl)">Logements</div><div class="vsub">Stats par appartement · comparaison &amp; rentabilité</div></div>
     <button class="ba ba-ghost admin-only" onclick="openLogementModal(null)">+ Ajouter</button>
   </div>
+  <div id="logements-stats"></div>
+  <div style="font-size:12px;font-weight:600;color:var(--tm);margin:18px 0 10px;padding-top:14px;border-top:1.5px solid var(--br)">Parc locatif</div>
   <div id="logements-list"></div>
 </div>
 
@@ -4585,6 +4587,7 @@ function renderView(k) {
 // NAVIGATION
 // ============================================================
 var CUR = 'resa';
+var LOG_STATS_PER = 'mois-courant';
 // ── Mobile drawer "Plus" ─────────────────────────────────────
 function toggleMobMore() {
   var drawer   = document.getElementById('mob-drawer');
@@ -9748,7 +9751,155 @@ async function loadLogementsPM() {
 // MODULE LOGEMENTS
 // ============================================================
 
+function _lsPeriod(per) {
+  var now = new Date(), yr = now.getFullYear(), mo = now.getMonth();
+  var p2 = function(n){ return String(n).padStart(2,'0'); };
+  var mks = [], s, e, days;
+  if (per === 'mois-courant') {
+    mks = [yr+'-'+p2(mo+1)];
+    days = new Date(yr, mo+1, 0).getDate();
+    s = yr+'-'+p2(mo+1)+'-01'; e = yr+'-'+p2(mo+1)+'-'+p2(days);
+  } else if (per === 'mois-precedent') {
+    var pm=mo===0?11:mo-1, py=mo===0?yr-1:yr;
+    mks = [py+'-'+p2(pm+1)];
+    days = new Date(py, pm+1, 0).getDate();
+    s = py+'-'+p2(pm+1)+'-01'; e = py+'-'+p2(pm+1)+'-'+p2(days);
+  } else if (per === 'trimestre') {
+    var q=Math.floor(mo/3)*3;
+    for (var i=0;i<3;i++) mks.push(yr+'-'+p2(q+i+1));
+    s = yr+'-'+p2(q+1)+'-01';
+    var qe=q+2, qd=new Date(yr,qe+1,0).getDate();
+    e = yr+'-'+p2(qe+1)+'-'+p2(qd);
+    days = Math.round((new Date(e)-new Date(s))/86400000)+1;
+  } else {
+    for (var j=0;j<12;j++) mks.push(yr+'-'+p2(j+1));
+    s = yr+'-01-01'; e = yr+'-12-31';
+    days = (yr%4===0&&(yr%100!==0||yr%400===0))?366:365;
+  }
+  return { mks:mks, s:s, e:e, days:days };
+}
+
+function renderLogementStats() {
+  var el = document.getElementById('logements-stats');
+  if (!el) return;
+
+  var per = LOG_STATS_PER;
+  var pd  = _lsPeriod(per);
+  var mks = pd.mks, s = pd.s, e = pd.e, totalDays = pd.days;
+
+  var apparts = (DB.logements||[]).filter(function(l){return l.actif;}).map(function(l){return l.nom;});
+  if (!apparts.length) apparts = APPARTS.slice();
+  var nbActifs = apparts.length;
+
+  // Quote-part dépenses globales
+  var globalDep = (DB.business||[]).filter(function(r){
+    return r.scope==='global' && r.date && r.date>=s && r.date<=e;
+  }).reduce(function(acc,r){return acc+(r.montant||0);},0);
+  var globalShare = nbActifs>0 ? globalDep/nbActifs : 0;
+
+  var stats = apparts.map(function(ap) {
+    // CA réservations
+    var caResa = (DB.resa||[]).filter(function(r){
+      return r.appart===ap && isRevRow(r) && r.statut==='Payé'
+        && mks.indexOf((r.mois_kpi||r.date_paiement||r.checkin||'').slice(0,7))>=0;
+    }).reduce(function(acc,r){return acc+rNetMAD(r);},0);
+
+    // CA services
+    var caServ = (DB.serv||[]).filter(function(r){
+      return r.appart===ap && r.statut==='Payé' && r.date && r.date>=s && r.date<=e;
+    }).reduce(function(acc,r){return acc+(r.montant||0);},0);
+
+    var ca = caResa + caServ;
+
+    // Nuits occupées (RESERVATION + ANNULATION_PAYEE + RELOCATION)
+    var nuits = (DB.resa||[]).filter(function(r){
+      return r.appart===ap
+        && ['RESERVATION','ANNULATION_PAYEE','RELOCATION'].indexOf(r.type_norm)>=0
+        && mks.indexOf((r.mois_kpi||r.date_paiement||r.checkin||'').slice(0,7))>=0;
+    }).reduce(function(acc,r){return acc+(r.nuits_fact||0);},0);
+
+    // Nombre de réservations facturées
+    var nbResa = (DB.resa||[]).filter(function(r){
+      return r.appart===ap && isRevRow(r) && r.statut==='Payé'
+        && mks.indexOf((r.mois_kpi||r.date_paiement||r.checkin||'').slice(0,7))>=0;
+    }).length;
+
+    // Dépenses directes (liées à cet appart)
+    var depDirect = (DB.business||[]).filter(function(r){
+      return r.appart===ap && r.scope!=='global' && r.date && r.date>=s && r.date<=e;
+    }).reduce(function(acc,r){return acc+(r.montant||0);},0);
+
+    var dep      = depDirect + globalShare;
+    var resultat = ca - dep;
+    var txOcc    = totalDays>0 ? (nuits/totalDays*100) : 0;
+    var panier   = nuits>0 ? ca/nuits : 0;
+
+    return {ap:ap, ca:ca, caResa:caResa, caServ:caServ, nuits:nuits, nbResa:nbResa,
+            dep:dep, depDirect:depDirect, globalShare:globalShare,
+            resultat:resultat, txOcc:txOcc, panier:panier};
+  });
+
+  // Tri par CA décroissant
+  stats.sort(function(a,b){return b.ca-a.ca;});
+
+  // Libellés période
+  var now = new Date();
+  var perLbl = {'mois-courant':'Mois courant','mois-precedent':'Mois précédent',
+                'trimestre':'Trimestre en cours','annee':'Année '+now.getFullYear()};
+
+  var html = '';
+
+  // Sélecteur de période
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">';
+  ['mois-courant','mois-precedent','trimestre','annee'].forEach(function(p){
+    var active = per===p;
+    html += '<button onclick="LOG_STATS_PER=\''+p+'\';renderLogementStats()" style="padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;font-family:\'DM Sans\',sans-serif;cursor:pointer;border:none;background:'+(active?'var(--bl)':'var(--s2)')+';color:'+(active?'#fff':'var(--tm)')+'">'+perLbl[p]+'</button>';
+  });
+  html += '</div>';
+
+  // Grille de cartes
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">';
+  stats.forEach(function(st){
+    var pos = st.resultat >= 0;
+    var txColor = st.txOcc>80?'var(--gr)':st.txOcc>50?'var(--or)':'var(--re)';
+    html += '<div style="background:var(--s1);border:1.5px solid var(--br);border-radius:12px;padding:16px">';
+    // Titre
+    html += '<div style="font-size:14px;font-weight:700;color:var(--tx);margin-bottom:12px">'+escHtml(aptShort(st.ap))+'</div>';
+    // CA
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:7px"><span style="font-size:12px;color:var(--td)">CA net</span><span style="font-size:14px;font-weight:700;color:var(--gr);font-family:\'DM Mono\',monospace">'+Math.round(st.ca).toLocaleString('fr-MA')+' MAD</span></div>';
+    // Taux occupation
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:7px"><span style="font-size:12px;color:var(--td)">Occupation</span><span style="font-size:13px;font-weight:600;color:'+txColor+'">'+st.txOcc.toFixed(1)+'% · '+st.nuits+' nuits / '+totalDays+'j</span></div>';
+    // Resas + panier
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:7px"><span style="font-size:12px;color:var(--td)">'+st.nbResa+' résa'+(st.nbResa>1?'s':'')+'</span><span style="font-size:12px;color:var(--tm)">'+(st.nuits>0?Math.round(st.panier).toLocaleString('fr-MA')+' MAD/nuit':'—')+'</span></div>';
+    // Séparateur
+    html += '<div style="border-top:1px solid var(--br);margin:10px 0"></div>';
+    // Dépenses
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:7px"><span style="font-size:11px;color:var(--td)">Dépenses <span style="opacity:.65">direct+global</span></span><span style="font-size:12px;color:var(--re);font-family:\'DM Mono\',monospace">−'+Math.round(st.dep).toLocaleString('fr-MA')+'</span></div>';
+    // Résultat
+    html += '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;color:var(--tx)">Résultat net</span><span style="font-size:15px;font-weight:700;color:'+(pos?'var(--gr)':'var(--re)')+';font-family:\'DM Mono\',monospace">'+(pos?'+':'')+Math.round(st.resultat).toLocaleString('fr-MA')+' MAD</span></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Barre totaux portfolio
+  var totCA  = stats.reduce(function(a,s){return a+s.ca;},0);
+  var totDep = stats.reduce(function(a,s){return a+s.dep;},0);
+  var totRes = totCA - totDep;
+  var totNuits = stats.reduce(function(a,s){return a+s.nuits;},0);
+  var totPos = totRes >= 0;
+  html += '<div style="margin-top:14px;background:var(--s2);border-radius:10px;padding:12px 16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">';
+  html += '<span style="font-size:11px;font-weight:700;color:var(--tm);text-transform:uppercase;letter-spacing:.5px">Portfolio</span>';
+  html += '<span style="font-size:13px;color:var(--gr)">CA <strong>'+Math.round(totCA).toLocaleString('fr-MA')+' MAD</strong></span>';
+  html += '<span style="font-size:13px;color:var(--re)">Dép <strong>−'+Math.round(totDep).toLocaleString('fr-MA')+' MAD</strong></span>';
+  html += '<span style="font-size:13px;color:'+(totPos?'var(--gr)':'var(--re)')+'">Net <strong>'+(totPos?'+':'')+Math.round(totRes).toLocaleString('fr-MA')+' MAD</strong></span>';
+  html += '<span style="font-size:12px;color:var(--tm)">'+totNuits+' nuits totales</span>';
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
 function renderLogements() {
+  renderLogementStats();
   var el = document.getElementById('logements-list');
   if (!el) return;
   var rows = DB.logements.slice().sort(function(a, b) {
