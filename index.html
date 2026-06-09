@@ -5386,12 +5386,25 @@ function renderMonthlyBarchart() {
     });
   }
 
-  // CA net MAD par mois (même logique que le Dashboard principal)
+  // CA par mois = Réservations net MAD + Services payés + Taxe reversée
   months.forEach(function(m) {
-    var rows = (DB.resa || []).filter(function(r) {
+    var caResa = (DB.resa || []).filter(function(r) {
       return isRevRow(r) && r.mois_kpi && r.mois_kpi.startsWith(m.mk);
-    });
-    m.ca = rows.reduce(function(s, r) { return s + rNetMAD(r); }, 0);
+    }).reduce(function(s, r) { return s + rNetMAD(r); }, 0);
+
+    var caServ = (DB.serv || []).filter(function(r) {
+      return r.statut === 'Payé' && r.date && r.date.startsWith(m.mk);
+    }).reduce(function(s, r) { return s + (r.montant || 0); }, 0);
+
+    var caTaxe = (DB.taxe || []).filter(function(r) {
+      return r.rev === 'Reversé' && r.date && r.date.startsWith(m.mk);
+    }).reduce(function(s, r) { return s + (r.montant || 0); }, 0);
+
+    m.ca  = caResa + caServ + caTaxe;
+    m.caResa = caResa;
+    m.caServ = caServ;
+    m.caTaxe = caTaxe;
+
     // Dépenses business du même mois
     m.dep = (DB.business || []).filter(function(r) {
       return r.date && r.date.startsWith(m.mk);
@@ -5409,7 +5422,11 @@ function renderMonthlyBarchart() {
     var borderStyle = m.isCur ? 'border:1.5px solid var(--gr);border-bottom:none;box-sizing:border-box;' : '';
     bars +=
       '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:1px" title="'+
-        m.mk+'\nCA : '+Math.round(m.ca).toLocaleString('fr-MA')+' MAD'+
+        m.mk+
+        '\nCA total : '+Math.round(m.ca).toLocaleString('fr-MA')+' MAD'+
+        (m.caResa>0?'\n  Rés. : '+Math.round(m.caResa).toLocaleString('fr-MA')+' MAD':'')+
+        (m.caServ>0?'\n  Serv. : '+Math.round(m.caServ).toLocaleString('fr-MA')+' MAD':'')+
+        (m.caTaxe>0?'\n  Taxe : '+Math.round(m.caTaxe).toLocaleString('fr-MA')+' MAD':'')+
         (m.dep>0?'\nDép. : '+Math.round(m.dep).toLocaleString('fr-MA')+' MAD':'')+'">'+
         '<div style="font-size:8px;color:'+(m.isCur?'var(--gr)':'var(--td)')+';margin-bottom:1px;font-weight:'+(m.isCur?'700':'400')+'">'+caK+'</div>'+
         '<div style="width:100%;position:relative;height:'+pctCa+'%;min-height:'+(m.ca>0?'3':'0')+'px">'+
@@ -5442,9 +5459,10 @@ function renderMonthlyBarchart() {
 
   // Total CA année en cours
   var yrNow = String(now.getFullYear());
-  var totalYr = (DB.resa || []).filter(function(r) {
-    return isRevRow(r) && r.mois_kpi && r.mois_kpi.startsWith(yrNow);
-  }).reduce(function(s, r) { return s + rNetMAD(r); }, 0);
+  var totalYr =
+    (DB.resa||[]).filter(function(r){ return isRevRow(r)&&r.mois_kpi&&r.mois_kpi.startsWith(yrNow); }).reduce(function(s,r){ return s+rNetMAD(r); },0)+
+    (DB.serv||[]).filter(function(r){ return r.statut==='Payé'&&r.date&&r.date.startsWith(yrNow); }).reduce(function(s,r){ return s+(r.montant||0); },0)+
+    (DB.taxe||[]).filter(function(r){ return r.rev==='Reversé'&&r.date&&r.date.startsWith(yrNow); }).reduce(function(s,r){ return s+(r.montant||0); },0);
   var totEl = document.getElementById('d-barchart-total');
   if (totEl && totalYr > 0) totEl.textContent = 'Total '+yrNow+' : '+Math.round(totalYr).toLocaleString('fr-MA')+' MAD';
 }
