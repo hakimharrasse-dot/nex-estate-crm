@@ -3284,30 +3284,84 @@ function rComMAD(r) {
 function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s + rNetMAD(r); }, 0); }
 
 function fetchEurMad() {
-  var url = 'https://api.frankfurter.app/latest?from=EUR&to=MAD';
-  fetch(url).then(function(r){return r.json();}).then(function(d){
-    if (d && d.rates && d.rates.MAD) {
-      EUR_MAD = d.rates.MAD;
-      EUR_MAD_DATE = d.date || '';
+  // ── 1. Charger le cache local en priorité (meilleur que le hardcoded 10.5) ──
+  try {
+    var cached = JSON.parse(localStorage.getItem('nex_eur_mad') || 'null');
+    if (cached && cached.rate > 1) {
+      EUR_MAD = cached.rate;
+      EUR_MAD_DATE = cached.date + ' (cache)';
       updateRateDisplay();
-      var k = {resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',dash:'d'}[CUR];
-      if (k) renderView(k);
     }
-  }).catch(function(err){
-    // API indisponible — fallback 10.5 déjà appliqué, afficher "(fallback)"
-    EUR_MAD_DATE = 'fallback';
-    console.warn('Taux EUR/MAD non rafraichi, fallback:', EUR_MAD, err);
-    updateRateDisplay();
-  });
+  } catch(e) {}
+
+  // ── 2. APIs en cascade — première réponse valide gagne ──────────────────────
+  var APIS = [
+    {
+      url: 'https://api.frankfurter.app/latest?from=EUR&to=MAD',
+      parse: function(d) { return d&&d.rates&&d.rates.MAD>1 ? {rate:d.rates.MAD, date:d.date||''} : null; }
+    },
+    {
+      url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json',
+      parse: function(d) { return d&&d.eur&&d.eur.mad>1 ? {rate:d.eur.mad, date:d.date||''} : null; }
+    },
+    {
+      url: 'https://open.er-api.com/v6/latest/EUR',
+      parse: function(d) { return d&&d.rates&&d.rates.MAD>1 ? {rate:d.rates.MAD, date:(d.time_last_update_utc||'').slice(0,10)} : null; }
+    }
+  ];
+
+  function fetchWithTimeout(url) {
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var tid = ctrl ? setTimeout(function(){ ctrl.abort(); }, 5000) : null;
+    var p = fetch(url, ctrl ? {signal:ctrl.signal} : {}).then(function(r){ return r.json(); });
+    p.then(function(){ if(tid) clearTimeout(tid); }).catch(function(){ if(tid) clearTimeout(tid); });
+    return p;
+  }
+
+  function tryApi(i) {
+    if (i >= APIS.length) {
+      // Toutes les APIs ont échoué — le cache (s'il existe) est déjà appliqué
+      if (!EUR_MAD_DATE || EUR_MAD_DATE.indexOf('cache') === -1) {
+        EUR_MAD_DATE = 'fallback';
+      }
+      console.warn('[EUR/MAD] Toutes APIs indisponibles — taux actif:', EUR_MAD, EUR_MAD_DATE);
+      updateRateDisplay();
+      return;
+    }
+    fetchWithTimeout(APIS[i].url)
+      .then(function(d) {
+        var res = APIS[i].parse(d);
+        if (res) {
+          EUR_MAD = res.rate;
+          EUR_MAD_DATE = res.date;
+          updateRateDisplay();
+          try { localStorage.setItem('nex_eur_mad', JSON.stringify({rate:EUR_MAD, date:EUR_MAD_DATE})); } catch(e) {}
+          console.log('[EUR/MAD] OK via API '+(i+1)+' — '+EUR_MAD.toFixed(4)+' · '+EUR_MAD_DATE);
+          var k = {resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',dash:'d'}[CUR];
+          if (k) renderView(k);
+        } else {
+          tryApi(i + 1);
+        }
+      })
+      .catch(function() { tryApi(i + 1); });
+  }
+
+  tryApi(0);
 }
 
 function updateRateDisplay() {
   var el = document.getElementById('rate-disp');
   if (!el) return;
-  // Ne jamais laisser "— MAD" — toujours afficher le taux réel ou le fallback
   var txt = '1 EUR = ' + EUR_MAD.toFixed(2) + ' MAD';
-  if (EUR_MAD_DATE && EUR_MAD_DATE !== 'fallback') txt += ' · ' + EUR_MAD_DATE;
-  else if (EUR_MAD_DATE === 'fallback') txt += ' (fallback)';
+  if (!EUR_MAD_DATE || EUR_MAD_DATE === '') {
+    // pas encore de date
+  } else if (EUR_MAD_DATE === 'fallback') {
+    txt += ' (fallback)';
+  } else if (EUR_MAD_DATE.indexOf('(cache)') !== -1) {
+    txt += ' · ' + EUR_MAD_DATE.replace(' (cache)', '') + ' ⟳';
+  } else {
+    txt += ' · ' + EUR_MAD_DATE;
+  }
   el.textContent = txt;
 }
 
