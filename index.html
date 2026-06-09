@@ -5048,10 +5048,12 @@ function renderDash() {
 
   // ── Décisions rapides ──
   var revRes=allRes.filter(function(r){return isRevRow(r)&&r.date_paiement&&r.date_paiement<=td;});
-  // Meilleur appart
+  // Meilleur appart (CA unifié : resa + serv + taxe par appart)
   var apNet=getAppartsForPeriod('d').map(function(ap){
-    var n=sumNetMAD(revRes.filter(function(r){return r.appart===ap;}));
-    return {ap:ap,n:n};
+    var nResa=sumNetMAD(revRes.filter(function(r){return r.appart===ap;}));
+    var nServ=sum(filterPer(DB.serv,'d').filter(function(r){return r.appart===ap&&r.statut==='Payé';}),'montant');
+    var nTaxe=sum(filterPer(DB.taxe,'d').filter(function(r){return r.appart===ap;}),'montant');
+    return {ap:ap,n:nResa+nServ+nTaxe};
   }).sort(function(a,b){return b.n-a.n;});
   var bestAp=apNet[0];
   // Meilleure source
@@ -5062,12 +5064,15 @@ function renderDash() {
   var bestSrc=srcNet[0];
   // set('d-decisions') déplacé après caAirbnbReel pour enrichir Meilleure source si Airbnb+extras
 
-  // ── Performance par appartement (enhanced) ──
+  // ── Performance par appartement (CA unifié : resa + serv + taxe) ──
   var perf_mk=P['d']==='mois'?MO['d'].toISOString().slice(0,7):null;
   var perf_days=periodDays('d');
   set('d-recap-ap',getAppartsForPeriod('d').map(function(ap){
     var apR=revRes.filter(function(r){return r.appart===ap;});
-    var apNet2=sumNetMAD(apR);
+    var apResaNet=sumNetMAD(apR);
+    var apServNet=sum(filterPer(DB.serv,'d').filter(function(r){return r.appart===ap&&r.statut==='Payé';}),'montant');
+    var apTaxeNet=sum(filterPer(DB.taxe,'d').filter(function(r){return r.appart===ap;}),'montant');
+    var apNet2=apResaNet+apServNet+apTaxeNet;
     // occupation physique nuit par nuit sur la période
     var apNuits2=pb.start?occupNightsBiz(ap,pb.start,pb.end):0;
     var apOcc2=perf_days>0?apNuits2/perf_days*100:0;
