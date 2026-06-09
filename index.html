@@ -3167,6 +3167,9 @@ async function launchApp() {
   }
 
   if (normDone) showApp();
+
+  // Auto-sync taxes Booking en arrière-plan (après fetchEurMad pour avoir le bon taux)
+  setTimeout(function() { autoSyncTaxesBooking(); }, 1500);
 }
 
 // Enter key sur les formulaires auth
@@ -7558,6 +7561,57 @@ async function saveServ() {
   closeModal(); renderServ();
 }
 
+// ── Auto-sync taxes Booking ────────────────────────────────────────────────
+// Crée automatiquement les entrées taxe manquantes pour les réservations
+// Booking.com ayant une taxe_sejour > 0. Idempotent (dédupliqué par reservation_ref).
+async function autoSyncTaxesBooking() {
+  if (!SUPA || !DB.resa || !DB.taxe) return;
+  try {
+    var eligible = DB.resa.filter(function(r) {
+      return r.source === 'Booking.com'
+        && (r.taxe_sejour || 0) > 0
+        && r.type_norm !== 'ANNULATION_NON_PAYEE'
+        && r.ref;
+    });
+    if (!eligible.length) return;
+
+    var existingRefs = {};
+    DB.taxe.forEach(function(t) { if (t.reservation_ref) existingRefs[t.reservation_ref] = true; });
+
+    var toCreate = eligible.filter(function(r) { return !existingRefs[r.ref]; });
+    if (!toCreate.length) return;
+
+    var taux = EUR_MAD || 10.50;
+    var rows = toCreate.map(function(r) {
+      return {
+        id: uid(),
+        date: r.checkin || today(),
+        appart: r.appart || '',
+        voy: r.voyageur || null,
+        reservation_ref: r.ref,
+        col: null,
+        pay: 'Booking',
+        montant: Math.round((r.taxe_sejour || 0) * taux * 100) / 100,
+        rev: 'Non reversé',
+        note: null
+      };
+    });
+
+    for (var _i = 0; _i < rows.length; _i += 50) {
+      var _chunk = rows.slice(_i, _i + 50);
+      var _res = await SUPA.from('taxe').insert(_chunk);
+      if (_res.error) throw _res.error;
+    }
+
+    var fresh = await SUPA.from('taxe').select('*');
+    if (!fresh.error && fresh.data) DB.taxe = fresh.data;
+
+    showToast('🧾 ' + rows.length + ' taxe' + (rows.length > 1 ? 's' : '') + ' Booking créée' + (rows.length > 1 ? 's' : '') + ' automatiquement');
+    var tv = document.getElementById('vw-taxe');
+    if (tv && tv.style.display !== 'none') renderTaxe();
+  } catch(e) { console.warn('[autoSyncTaxes]', e); }
+}
+
 function openPlatFixModal() {
   var ov   = document.getElementById('plat-fix-ov');
   var body = document.getElementById('plat-fix-body');
@@ -8207,7 +8261,7 @@ async function syncSmoobuAPI() {
     if ((s.upserted || 0) > 0) {
       html += '<div style="background:rgba(76,175,80,.07);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--gr);font-weight:600;margin-bottom:10px">' +
         '🆕 ' + s.upserted + ' réservation(s) insérée(s) ou mise(s) à jour. ' +
-        '<a href="#" onclick="document.getElementById(\'api-sync-ov\').style.display=\'none\';loadAllDB().then(function(){renderResa();renderDash();});return false;" ' +
+        '<a href="#" onclick="document.getElementById(\'api-sync-ov\').style.display=\'none\';loadAllDB().then(function(){renderResa();renderDash();autoSyncTaxesBooking();});return false;" ' +
         'style="color:var(--ac);text-decoration:underline">Recharger l\'affichage</a>' +
         '</div>';
     } else {
