@@ -3291,6 +3291,22 @@ function rComMAD(r) {
 }
 function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s + rNetMAD(r); }, 0); }
 
+// Badge de taux affiché dans la liste resa sous le montant MAD
+function _resaRateTag(r) {
+  var elig = MAD_REEL_ELIGIBLE.indexOf(r.type_norm||'') >= 0;
+  if (elig && r.mad_reel != null) {
+    var src = r.mad_reel_source === 'manuel' ? 'manuel'
+            : r.source === 'Booking.com'     ? 'Booking' : 'Airbnb';
+    return '<span style="font-size:10px;color:var(--bl);display:block;line-height:1.4">✓ réconcilié · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+' ('+src+')</span>';
+  }
+  var curMk = (new Date()).toISOString().slice(0, 7);
+  var mk = (r.mois_kpi||r.date_paiement||r.checkin||'').slice(0, 7);
+  if (mk >= curMk) {
+    return '<span style="font-size:10px;color:var(--td);display:block;line-height:1.4">× '+EUR_MAD.toFixed(2)+' <span style="opacity:.7">live</span></span>';
+  }
+  return '<span style="font-size:10px;color:var(--td);display:block;line-height:1.4">× '+EUR_MAD_REF.toFixed(2)+' <span style="opacity:.7">réf</span></span>';
+}
+
 function fetchEurMad() {
   // ── 1. Charger le cache local en priorité (meilleur que le hardcoded 10.5) ──
   try {
@@ -5811,7 +5827,7 @@ function renderResa() {
         '<div class="r-card-row3">'+
           '<span>📅 '+(r.checkin||'—')+'</span>'+
           '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
-          '<span class="r-card-net">'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?Math.round(r.mad_reel).toLocaleString('fr-MA'):e2m(r.net||0).toLocaleString('fr-MA'))+' MAD'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?' <span style="font-size:10px;color:var(--bl);font-weight:600;vertical-align:middle" title="'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · taux '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'">●</span>':'')+'</span>'+
+          '<span class="r-card-net">'+Math.round(rNetMAD(r)).toLocaleString('fr-MA')+' MAD'+_resaRateTag(r)+'</span>'+
         '</div>'+
         '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
       '</div>';
@@ -5831,7 +5847,7 @@ function renderResa() {
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkin||'—')+'</td>'+
         '<td class="hm" style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--tm)">'+(r.checkout||'—')+'</td>'+
         '<td style="text-align:center;color:var(--tm)">'+(r.nuits_fact||0)+'</td>'+
-        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+(r.mad_reel!=null&&MAD_REEL_ELIGIBLE.indexOf(r.type_norm)>=0?Math.round(r.mad_reel).toLocaleString('fr-MA')+' MAD<br><span style="font-size:10px;color:var(--bl);font-weight:400">'+(r.source==='Booking.com'?'MAD réel Booking':'MAD réel Airbnb')+' · '+(r.taux_reel?r.taux_reel.toFixed(4):'?')+'</span>':e2m(r.net||0).toLocaleString('fr-MA')+' MAD')+'</td>'+
+        '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--gr)">'+Math.round(rNetMAD(r)).toLocaleString('fr-MA')+' MAD'+_resaRateTag(r)+'</td>'+
         (function(){
           var realMAD=realTaxeMap[r.ref]||realTaxeMap[r.smoobu_id];
           if(realMAD!=null)return'<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--te)">'+Math.round(realMAD).toLocaleString('fr-MA')+' MAD <span title="Valeur réelle (table Taxe)" style="font-size:10px;opacity:.7">✓</span></td>';
@@ -7781,6 +7797,10 @@ function buildForm(type, editId) {
       : (_madElig && rec.taux_reel != null
           ? '<div style="font-size:11px;color:var(--bl);margin-top:4px">● MAD calculé · taux réel '+rec.taux_reel.toFixed(4)+'</div>'
           : '<div style="font-size:11px;color:var(--td);margin-top:4px">MAD fallback · taux '+EUR_MAD.toFixed(2)+'</div>');
+    // Pré-remplissage du champ taux : taux_reel si réconcilié, sinon taux effectif
+    var tauxPreFill = (_madElig && rec && rec.taux_reel != null)
+      ? rec.taux_reel.toFixed(4)
+      : (!rec ? EUR_MAD.toFixed(4) : _resaRate(rec).toFixed(4));
     // Fix: utiliser com_pct existant du record (0 pour AIRCOVER/AJUSTEMENT)
     // Jamais écraser par COM[src] lors de l'édition — COM[src] sert uniquement à la création
     var comPct = rec ? (rec.com_pct||0) : (COM[src]||0.155);
@@ -7830,6 +7850,12 @@ function buildForm(type, editId) {
       '</div>'+
       field2('Nb personnes','fi-np','number',np)+
       '<div class="ff"><label class="fl">Montant brut (MAD)</label><input type="number" class="fi" id="fi-brut" value="'+brutMad+'" oninput="autoCalcResa()">'+_madBadge+'</div>'+
+      '<div class="ff" style="background:rgba(76,120,175,.07);border:1.5px solid rgba(76,120,175,.25);border-radius:8px;padding:10px 13px">'+
+        '<label class="fl" style="color:var(--bl);margin-bottom:6px">💱 Taux EUR/MAD'+
+          '<span style="font-weight:400;font-size:10px;color:var(--td);margin-left:6px">modifiable pour corriger l\'historique</span></label>'+
+        '<input type="number" class="fi" id="fi-taux" value="'+tauxPreFill+'" data-orig="'+tauxPreFill+'" step="0.0001" min="1" max="25" placeholder="ex: 10.6800" style="font-family:\'DM Mono\',monospace">'+
+        '<div style="font-size:11px;color:var(--tm);margin-top:5px;line-height:1.5">Taux actuellement appliqué à cette réservation. Modifiez pour corriger — le taux sera sauvegardé comme taux réel et recalculera le montant MAD.</div>'+
+      '</div>'+
       '<div><label class="fl">Commission (%) <span style="font-size:10px;color:var(--td);font-weight:400">auto · modifiable</span></label><input type="number" class="fi" id="fi-com" value="'+Math.round(comPct*1000)/10+'" step="0.1" min="0" max="100"></div>'+
       '<div><label class="fl">Montant net (MAD)</label><input type="number" class="fi" id="fi-net" value="'+netMad+'" readonly></div>'+
       '<div><label class="fl">Taxe séjour MAD <span style="font-size:10px;color:var(--te);font-weight:400">estimation · source de vérité = table Taxe</span></label><input type="number" class="fi" id="fi-taxe" value="'+taxeMad+'"></div>'+
@@ -8120,13 +8146,19 @@ async function saveResa() {
     ? (gv('fi-dp') || null)
     : calcDatePaiement(src, typeNorm, ci, co, dc);
   var nf=parseInt(gv('fi-nf'))||diffNuits(ci,co);
+  // Taux manuel saisi dans fi-taux (champ 💱 de la modale)
+  var _tauxEl = document.getElementById('fi-taux');
+  var _tauxManuel = _tauxEl ? parseFloat(_tauxEl.value) : null;
+  var _tauxOrig   = _tauxEl ? parseFloat(_tauxEl.dataset.orig) : null;
+  var _tauxChanged = !!(_tauxManuel > 1 && _tauxOrig > 0 && Math.abs(_tauxManuel - _tauxOrig) > 0.00001);
   // Récupérer l'enregistrement existant pour préserver brut/net EUR quand taux_reel/mad_reel existent
   var _exRec = M_ID ? DB.resa.find(function(x){return x.id===M_ID;}) : null;
   var _hasTauxReel = _exRec && _exRec.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
   var _hasMadReel  = _exRec && _exRec.mad_reel  != null && MAD_REEL_ELIGIBLE.indexOf(_exRec.type_norm||'')>=0;
-  // brutEur : si taux_reel connu → diviser par taux_reel (pas EUR_MAD) pour rester cohérent
-  // sinon fallback division EUR_MAD (comportement historique)
-  var brutEur = _hasTauxReel ? (brutMad / _exRec.taux_reel) : (brutMad / EUR_MAD);
+  // brutEur : taux manuel en priorité, puis taux_reel existant, puis EUR_MAD
+  var brutEur = _tauxChanged ? (brutMad / _tauxManuel)
+              : _hasTauxReel ? (brutMad / _exRec.taux_reel)
+              : (brutMad / EUR_MAD);
   var comEur = brutEur * comPct;
   // netEur : si mad_reel connu → conserver rec.net en base (mad_reel est le NET réel, pas recalculer)
   var netEur = _hasMadReel ? (_exRec.net||0) : (brutEur - comEur);
@@ -8164,11 +8196,19 @@ async function saveResa() {
       if (M_ID) { var ex = DB.resa.find(function(x){return x.id===M_ID;}); if(ex) return !!ex.override_manual; }
       return true; // nouvelle entrée manuelle = protégée par défaut
     })(),
-    // Préserver les champs MAD réel validés par Réconciliation — jamais écrasés par l'édition manuelle
-    mad_reel: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel??null:null; })(),
-    taux_reel: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.taux_reel??null:null; })(),
-    mad_reel_source: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
-    mad_reel_updated_at: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
+    // MAD réel : taux manuel (fi-taux modifié) ou valeur réconciliation préservée
+    mad_reel: _tauxChanged
+      ? (parseFloat(gv('fi-net'))||null)
+      : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel??null:null; })(),
+    taux_reel: _tauxChanged
+      ? _tauxManuel
+      : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.taux_reel??null:null; })(),
+    mad_reel_source: _tauxChanged
+      ? 'manuel'
+      : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
+    mad_reel_updated_at: _tauxChanged
+      ? new Date().toISOString()
+      : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
   await upsert('resa',entry); closeModal(); renderResa(); updateAsuivreBadge();
   if (QUALITE_ANOMALIES.length) runQualiteCheck();
