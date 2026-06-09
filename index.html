@@ -6132,7 +6132,7 @@ function renderTaxe() {
         '<td><input type="checkbox" class="tcb" data-id="'+r.id+'"'+checked+' onchange="toggleTaxeSel(\''+r.id+'\',this.checked)"></td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
-        '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
+        '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+(r.note?'<div style="font-size:11px;font-style:italic;color:var(--td)">'+escHtml(r.note)+'</div>':'')+'</td>'+
         '<td>'+chip(r.col||r.pay||'Cash',colClass(r.col||r.pay||'Cash'))+'</td>'+
         '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
@@ -7224,6 +7224,7 @@ function buildForm(type, editId) {
       '<div class="ff" id="ff-taxe-col" style="display:'+(_txPay==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
+      fieldFull('Note (optionnel)','fi-note','text',v('note',''),'Commentaire libre...')+
       '</div>';
   }
 
@@ -7537,7 +7538,7 @@ async function saveTaxe() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
   var _tPay=gv('fi-pay')||'Cash';
-  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev')});
+  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev'),note:(gv('fi-note')||'').trim()||null});
   closeModal(); renderTaxe();
 }
 
