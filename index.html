@@ -5068,7 +5068,7 @@ function getAsuivreData() {
   var fom = td.slice(0, 7) + '-01';
 
   var resaRows = (DB.resa || []).filter(function(r) {
-    return r.statut === 'En attente' && r.date_paiement && r.date_paiement <= j7;
+    return r.statut === 'En attente' && r.date_paiement && r.date_paiement < td;
   });
   var servRows = (DB.serv || []).filter(function(r) {
     return r.statut === 'En attente'
@@ -5082,8 +5082,8 @@ function getAsuivreData() {
 
   return {
     resa: {
-      red:    resaRows.filter(function(r) { return r.date_paiement < td; }),
-      orange: resaRows.filter(function(r) { return r.date_paiement >= td && r.date_paiement <= j7; })
+      red:    resaRows,
+      orange: []
     },
     serv: {
       red:    servRows.filter(function(r) { return r.date < td; }),
@@ -5205,7 +5205,7 @@ function renderAsuivre() {
       '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.source||'')+'</span>'+
       '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date_paiement||'')+'</span>'+
       '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--gr);white-space:nowrap">'+montant.toLocaleString('fr-MA')+' MAD</span>'+
-      '<button onclick="buildForm(\'resa\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
+      '<button onclick="openModal(\'resa\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
     '</div>';
   }
 
@@ -5219,7 +5219,7 @@ function renderAsuivre() {
       (extra1 ? '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+extra1+'</span>' : '')+
       (extra2 ? '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+extra2+'</span>' : '')+
       '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;white-space:nowrap">'+amtHtml+'</span>'+
-      '<button onclick="buildForm(\''+type+'\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
+      '<button onclick="openModal(\''+type+'\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
     '</div>';
   }
 
