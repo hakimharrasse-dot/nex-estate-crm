@@ -5364,22 +5364,6 @@ function renderDashAsuivreSummary() {
 // ============================================================
 // EXPORT CSV
 // ============================================================
-function _csvPeriodLabel(k) {
-  var p = P[k];
-  if (p === 'jour') return 'Jour du ' + (DAY[k] || today());
-  if (p === 'semaine') { var w = wkRange(WK[k]); return 'Semaine du ' + w.s + ' au ' + w.e; }
-  if (p === 'annee') return 'Année ' + YR[k];
-  if (p === 'bimestre' || p === 'trimestre' || p === 'semestre') {
-    var n = p==='bimestre'?2:p==='trimestre'?3:6;
-    var y = MO[k].getFullYear(), m = MO[k].getMonth();
-    var em = new Date(y, m+n-1, 1);
-    return MONTHS_FR[m]+(y!==em.getFullYear()?' '+y:'')+' – '+MONTHS_FR[em.getMonth()]+' '+em.getFullYear();
-  }
-  if (p === 'custom') return 'Du '+(CUSTOM_FROM[k]||'?')+' au '+(CUSTOM_TO[k]||'?');
-  if (p === 'cumul') return 'Tout l\'historique';
-  return MO[k].toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
-}
-
 function _csvEsc(v) {
   if (v === null || v === undefined) return '';
   var s = String(v);
@@ -5397,55 +5381,156 @@ function _csvDownload(rows, headers, keys, filename) {
   });
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
+  var a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
+function _csvGetRows(type, periodOption) {
+  var db = DB[type] || [];
+  var now = new Date();
+  function mk(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function dk(r) {
+    if (type === 'resa') return r.mois_kpi || r.date_paiement || r.checkin || '';
+    return r.date || '';
+  }
+  if (periodOption === 'mois-courant') {
+    var m0 = mk(now);
+    return db.filter(function(r){ return dk(r).startsWith(m0); });
+  }
+  if (periodOption === 'mois-precedent') {
+    var mp = mk(new Date(now.getFullYear(), now.getMonth()-1, 1));
+    return db.filter(function(r){ return dk(r).startsWith(mp); });
+  }
+  if (periodOption === 'trimestre') {
+    var qm = Math.floor(now.getMonth()/3)*3;
+    var mks = [0,1,2].map(function(i){ return mk(new Date(now.getFullYear(),qm+i,1)); });
+    return db.filter(function(r){ return mks.indexOf(dk(r).slice(0,7)) !== -1; });
+  }
+  if (periodOption === 'annee') {
+    return db.filter(function(r){ return dk(r).startsWith(String(now.getFullYear())); });
+  }
+  if (periodOption === 'annee-prec') {
+    return db.filter(function(r){ return dk(r).startsWith(String(now.getFullYear()-1)); });
+  }
+  return db; // cumul
+}
+
+function _csvPeriodOptions() {
+  var now = new Date();
+  function mLabel(d) { return d.toLocaleDateString('fr-FR',{month:'long',year:'numeric'}); }
+  var qm = Math.floor(now.getMonth()/3)*3;
+  var qLabel = 'T'+(Math.floor(now.getMonth()/3)+1)+' '+now.getFullYear()+
+    ' ('+mLabel(new Date(now.getFullYear(),qm,1)).slice(0,3)+'.–'+mLabel(new Date(now.getFullYear(),qm+2,1)).slice(0,3)+'.)';
+  return [
+    { value:'mois-courant',   label:'Mois en cours — '+mLabel(now) },
+    { value:'mois-precedent', label:'Mois précédent — '+mLabel(new Date(now.getFullYear(),now.getMonth()-1,1)) },
+    { value:'trimestre',      label:'Trimestre en cours — '+qLabel },
+    { value:'annee',          label:'Année en cours — '+now.getFullYear() },
+    { value:'annee-prec',     label:'Année précédente — '+(now.getFullYear()-1) },
+    { value:'cumul',          label:'Tout l\'historique' },
+  ];
+}
+
+var _csvExportFn = null;
+
+function _updateExportCount() {
+  var sel = document.getElementById('exp-period-sel');
+  var info = document.getElementById('exp-count-info');
+  var btn = document.getElementById('exp-confirm-btn');
+  if (!sel || !info || !_csvExportFn) return;
+  var rows = _csvExportFn.getRows(sel.value);
+  var n = rows.length;
+  info.textContent = n + ' ligne'+(n!==1?'s':'')+' à exporter';
+  info.style.color = n > 0 ? 'var(--go)' : 'var(--re)';
+  if (btn) btn.disabled = (n === 0);
+}
+
+function openExportModal(title, type, doDownload) {
+  var ex = document.getElementById('exp-csv-ov');
+  if (ex) ex.remove();
+
+  var opts = _csvPeriodOptions();
+  var optHtml = opts.map(function(o) {
+    return '<option value="'+o.value+'">'+o.value+'</option>';
+  }).join('');
+  // Build option HTML with labels
+  optHtml = opts.map(function(o) {
+    return '<option value="'+o.value+'">'+o.label+'</option>';
+  }).join('');
+
+  var ov = document.createElement('div');
+  ov.id = 'exp-csv-ov';
+  ov.className = 'ov';
+  ov.onclick = function(e){ if(e.target===ov){ ov.remove(); _csvExportFn=null; } };
+  ov.innerHTML =
+    '<div class="mbox" style="max-width:420px">'+
+      '<div class="mt">⬇ Exporter '+_csvEsc(title)+' en CSV</div>'+
+      '<div style="padding:16px 20px 20px">'+
+        '<label style="display:block;font-size:12px;color:var(--td);margin-bottom:6px">Période à exporter</label>'+
+        '<select id="exp-period-sel" onchange="_updateExportCount()" style="width:100%;padding:9px 10px;border:1px solid var(--br);border-radius:8px;background:var(--s2);color:var(--t);font-size:13px;margin-bottom:14px">'+optHtml+'</select>'+
+        '<div id="exp-count-info" style="font-size:14px;font-weight:600;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:8px;margin-bottom:20px;text-align:center">—</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+          '<button class="bcan" onclick="document.getElementById(\'exp-csv-ov\').remove();_csvExportFn=null">Annuler</button>'+
+          '<button class="bsave bab" id="exp-confirm-btn">⬇ Télécharger</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  document.body.appendChild(ov);
+
+  _csvExportFn = {
+    getRows: function(periodOption) { return _csvGetRows(type, periodOption); },
+    doDownload: doDownload
+  };
+
+  _updateExportCount();
+
+  document.getElementById('exp-confirm-btn').onclick = function() {
+    var sel = document.getElementById('exp-period-sel');
+    var rows = _csvGetRows(type, sel ? sel.value : 'mois-courant');
+    if (!rows.length) { showToast('Aucune ligne à exporter pour cette période'); return; }
+    doDownload(rows);
+    ov.remove(); _csvExportFn = null;
+    showToast('Export CSV — ' + rows.length + ' ligne'+(rows.length!==1?'s':''));
+  };
+}
+
 function exportResaCSV() {
-  var rows = filterPer(DB.resa || [], 'r');
-  var lbl = _csvPeriodLabel('r');
-  if (!confirm('Exporter les Réservations en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
-  _csvDownload(rows,
-    ['Référence','Source','Appartement','Voyageur','Check-in','Check-out','Nuits séjour','Nuits facturées','Brut EUR','Commission %','Net EUR','Net MAD','Taxe séjour EUR','Type','Mode paiement','Statut','Date paiement','Mois KPI','Notes'],
-    ['ref','source','appart','voyageur','checkin','checkout','nuits_sejour','nuits_fact','brut','com_pct','net',
-     function(r){ return Math.round(rNetMAD(r)); },
-     'taxe_sejour','type_norm','mode_paiement','statut','date_paiement','mois_kpi','notes'],
-    'nex-estate-reservations-' + today() + '.csv');
-  showToast('Export CSV — ' + rows.length + ' réservations');
+  openExportModal('Réservations', 'resa', function(rows) {
+    _csvDownload(rows,
+      ['Référence','Source','Appartement','Voyageur','Check-in','Check-out','Nuits séjour','Nuits facturées','Brut EUR','Commission %','Net EUR','Net MAD','Taxe séjour EUR','Type','Mode paiement','Statut','Date paiement','Mois KPI','Notes'],
+      ['ref','source','appart','voyageur','checkin','checkout','nuits_sejour','nuits_fact','brut','com_pct','net',
+       function(r){ return Math.round(rNetMAD(r)); },
+       'taxe_sejour','type_norm','mode_paiement','statut','date_paiement','mois_kpi','notes'],
+      'nex-estate-reservations-' + today() + '.csv');
+  });
 }
 
 function exportBizCSV() {
-  var rows = filterPer(DB.business || [], 'b');
-  var lbl = _csvPeriodLabel('b');
-  if (!confirm('Exporter les Dépenses Business en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
-  _csvDownload(rows,
-    ['Date','Appartement','Catégorie','Ménagère','Description','Montant MAD','Statut','Payé par','Date règlement'],
-    ['date','appart','cat','fmen','desc','montant','statut','paid_by','date_reglement'],
-    'nex-estate-business-' + today() + '.csv');
-  showToast('Export CSV — ' + rows.length + ' dépenses business');
+  openExportModal('Dépenses Business', 'business', function(rows) {
+    _csvDownload(rows,
+      ['Date','Appartement','Catégorie','Ménagère','Description','Montant MAD','Statut','Payé par','Date règlement'],
+      ['date','appart','cat','fmen','desc','montant','statut','paid_by','date_reglement'],
+      'nex-estate-business-' + today() + '.csv');
+  });
 }
 
 function exportServCSV() {
-  var rows = filterPer(DB.serv || [], 's');
-  var lbl = _csvPeriodLabel('s');
-  if (!confirm('Exporter les Services Additionnels en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
-  _csvDownload(rows,
-    ['Date','Appartement','Service(s)','Voyageur','Montant MAD','Statut','Mode paiement','Plateforme','Collecté par','Note'],
-    ['date','appart','svc','voy','montant','statut','pay','pay_source','col','note'],
-    'nex-estate-services-' + today() + '.csv');
-  showToast('Export CSV — ' + rows.length + ' services');
+  openExportModal('Services Additionnels', 'serv', function(rows) {
+    _csvDownload(rows,
+      ['Date','Appartement','Service(s)','Voyageur','Montant MAD','Statut','Mode paiement','Plateforme','Collecté par','Note'],
+      ['date','appart','svc','voy','montant','statut','pay','pay_source','col','note'],
+      'nex-estate-services-' + today() + '.csv');
+  });
 }
 
 function exportPersoCSV() {
-  var rows = filterPer(DB.perso || [], 'p');
-  var lbl = _csvPeriodLabel('p');
-  if (!confirm('Exporter les Dépenses Perso en CSV ?\n\nPériode : ' + lbl + '\nNombre de lignes : ' + rows.length)) return;
-  _csvDownload(rows,
-    ['Date','Catégorie','Description','Montant MAD','Récurrence','Statut','Prestataire','Don'],
-    ['date','cat','desc','montant','rec','statut','prest','don'],
-    'nex-estate-perso-' + today() + '.csv');
-  showToast('Export CSV — ' + rows.length + ' dépenses perso');
+  openExportModal('Dépenses Perso', 'perso', function(rows) {
+    _csvDownload(rows,
+      ['Date','Catégorie','Description','Montant MAD','Récurrence','Statut','Prestataire','Don'],
+      ['date','cat','desc','montant','rec','statut','prest','don'],
+      'nex-estate-perso-' + today() + '.csv');
+  });
 }
 
 function periodDays(k) {
