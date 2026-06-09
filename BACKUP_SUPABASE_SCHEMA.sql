@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS public.taxe (
   rev             text,
   created_at      timestamptz DEFAULT now(),
   reservation_ref text,
-  note            text        DEFAULT NULL
+  note            text        DEFAULT NULL,
+  asuivre_ignore  boolean     DEFAULT false
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.taxe TO authenticated;
 
@@ -100,8 +101,9 @@ CREATE TABLE IF NOT EXISTS public.serv (
   statut      text,
   created_at  timestamptz DEFAULT now(),
   resa_ref    text,
-  pay_source  text,
-  note        text
+  pay_source      text,
+  note            text,
+  asuivre_ignore  boolean     DEFAULT false
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.serv TO authenticated;
 
@@ -234,4 +236,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.messages TO authenticated;
 -- 2026-06-06 : ALTER TABLE perso  ADD COLUMN IF NOT EXISTS recurring_month text;
 -- 2026-06-06 : ALTER TABLE taxe   ADD COLUMN IF NOT EXISTS reservation_ref text;
 -- 2026-06-08 : ALTER TABLE serv   ADD COLUMN IF NOT EXISTS note text DEFAULT NULL;
---              (migration : add_note_to_serv) ← DERNIÈRE MIGRATION
+--              (migration : add_note_to_serv)
+-- 2026-06-09 : ALTER TABLE taxe   ADD COLUMN IF NOT EXISTS asuivre_ignore boolean DEFAULT false;
+--              (migration : add_asuivre_ignore_to_taxe)
+-- 2026-06-09 : ALTER TABLE serv   ADD COLUMN IF NOT EXISTS asuivre_ignore boolean DEFAULT false;
+--              (migration : add_asuivre_ignore_to_serv) ← DERNIÈRE MIGRATION

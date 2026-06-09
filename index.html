@@ -5073,9 +5073,12 @@ function getAsuivreData() {
   var servRows = (DB.serv || []).filter(function(r) {
     return r.statut === 'En attente'
       && r.pay_source !== 'Airbnb' && r.pay_source !== 'Booking'
+      && !r.asuivre_ignore
       && r.date && r.date <= j7;
   });
-  var taxeRows = (DB.taxe || []).filter(function(r) { return r.rev === 'Non reversé'; });
+  var taxeRows = (DB.taxe || []).filter(function(r) {
+    return r.rev === 'Non reversé' && !r.asuivre_ignore;
+  });
 
   return {
     resa: {
@@ -5112,49 +5115,136 @@ function updateAsuivreBadge() {
   });
 }
 
+function _asGetChecked(prefix) {
+  var checked = [];
+  document.querySelectorAll('input[id^="as-cb-'+prefix+'-"]:checked').forEach(function(cb) {
+    var id = cb.id.replace('as-cb-'+prefix+'-', '');
+    if (id !== 'all') checked.push(id);
+  });
+  return checked;
+}
+
+function _asToggleAll(prefix) {
+  var allCb = document.getElementById('as-cb-'+prefix+'-all');
+  if (!allCb) return;
+  var state = allCb.checked;
+  document.querySelectorAll('input[id^="as-cb-'+prefix+'-"]').forEach(function(cb) {
+    if (cb.id !== 'as-cb-'+prefix+'-all') cb.checked = state;
+  });
+}
+
+async function asuivreMarkTaxeReverse() {
+  var ids = _asGetChecked('taxe');
+  if (!ids.length) { showToast('Sélectionnez au moins une ligne'); return; }
+  if (!confirm('Marquer ' + ids.length + ' taxe'+(ids.length>1?'s':'')+' comme reversée'+(ids.length>1?'s':'')+' ?')) return;
+  await Promise.all(ids.map(function(id) {
+    var r = (DB.taxe||[]).find(function(x){ return x.id===id; });
+    if (!r) return Promise.resolve();
+    r.rev = 'Reversé';
+    return upsert('taxe', Object.assign({}, r));
+  }));
+  renderAsuivre(); updateAsuivreBadge(); renderDashAsuivreSummary();
+  showToast(ids.length + ' taxe'+(ids.length>1?'s reversées':' reversée'));
+}
+
+async function asuivreIgnoreTaxe() {
+  var ids = _asGetChecked('taxe');
+  if (!ids.length) { showToast('Sélectionnez au moins une ligne'); return; }
+  if (!confirm('Retirer ' + ids.length + ' élément'+(ids.length>1?'s':'')+' de la vue "À suivre" ?')) return;
+  await Promise.all(ids.map(function(id) {
+    var r = (DB.taxe||[]).find(function(x){ return x.id===id; });
+    if (!r) return Promise.resolve();
+    r.asuivre_ignore = true;
+    return upsert('taxe', Object.assign({}, r));
+  }));
+  renderAsuivre(); updateAsuivreBadge(); renderDashAsuivreSummary();
+  showToast(ids.length + ' élément'+(ids.length>1?'s retirés':' retiré')+' de la vue');
+}
+
+async function asuivreMarkServPaid() {
+  var ids = _asGetChecked('serv');
+  if (!ids.length) { showToast('Sélectionnez au moins une ligne'); return; }
+  if (!confirm('Marquer ' + ids.length + ' service'+(ids.length>1?'s':'')+' comme payé'+(ids.length>1?'s':'')+' ?')) return;
+  await Promise.all(ids.map(function(id) {
+    var r = (DB.serv||[]).find(function(x){ return x.id===id; });
+    if (!r) return Promise.resolve();
+    r.statut = 'Payé';
+    return upsert('serv', Object.assign({}, r));
+  }));
+  renderAsuivre(); updateAsuivreBadge(); renderDashAsuivreSummary();
+  showToast(ids.length + ' service'+(ids.length>1?'s marqués payés':' marqué payé'));
+}
+
+async function asuivreIgnoreServ() {
+  var ids = _asGetChecked('serv');
+  if (!ids.length) { showToast('Sélectionnez au moins une ligne'); return; }
+  if (!confirm('Retirer ' + ids.length + ' élément'+(ids.length>1?'s':'')+' de la vue "À suivre" ?')) return;
+  await Promise.all(ids.map(function(id) {
+    var r = (DB.serv||[]).find(function(x){ return x.id===id; });
+    if (!r) return Promise.resolve();
+    r.asuivre_ignore = true;
+    return upsert('serv', Object.assign({}, r));
+  }));
+  renderAsuivre(); updateAsuivreBadge(); renderDashAsuivreSummary();
+  showToast(ids.length + ' élément'+(ids.length>1?'s retirés':' retiré')+' de la vue');
+}
+
 function renderAsuivre() {
   var el = document.getElementById('asuivre-content');
   if (!el) return;
-  var d   = getAsuivreData();
-  var td  = today();
+  var d    = getAsuivreData();
   var html = '';
 
+  // ── Ligne réservation (action individuelle uniquement) ───────
   function rowResa(r, color) {
     var montant = Math.round(rNetMAD(r));
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'resa\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br)" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
       '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
       '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voyageur||'—')+'</span>'+
       '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
       '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.source||'')+'</span>'+
       '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date_paiement||'')+'</span>'+
       '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--gr);white-space:nowrap">'+montant.toLocaleString('fr-MA')+' MAD</span>'+
+      '<button onclick="buildForm(\'resa\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
     '</div>';
   }
 
-  function rowServ(r, color) {
-    var svc = (r.svc||'').split(',')[0].trim();
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'serv\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+  // ── Ligne sélectionnable (taxe / serv) ───────────────────────
+  function rowSel(type, r, color, amtHtml, extra1, extra2) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br)" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+      '<input type="checkbox" id="as-cb-'+type+'-'+r.id+'" style="flex-shrink:0;cursor:pointer;width:15px;height:15px">'+
       '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
       '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voy||'—')+'</span>'+
       '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(svc)+'</span>'+
-      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date||'')+'</span>'+
-      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--go);white-space:nowrap">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>'+
+      (extra1 ? '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+extra1+'</span>' : '')+
+      (extra2 ? '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+extra2+'</span>' : '')+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;white-space:nowrap">'+amtHtml+'</span>'+
+      '<button onclick="buildForm(\''+type+'\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
     '</div>';
   }
 
-  function rowTaxe(r, color) {
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'taxe\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
-      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
-      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voy||'—')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.reservation_ref||'—')+'</span>'+
-      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date||'')+'</span>'+
-      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--te);white-space:nowrap">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>'+
-    '</div>';
+  // ── Bloc réservations (sans sélection) ───────────────────────
+  function blockResa(allRows, redRows, orangeRows, emptyMsg, totalStr) {
+    var h = '<div style="margin-bottom:24px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<div class="sl" style="margin:0">🏠 Réservations à encaisser</div>'+
+        '<div style="font-size:12px;color:var(--td)">'+allRows.length+' élément'+(allRows.length!==1?'s':'')+
+          (totalStr?' · <span style="font-family:\'DM Mono\',monospace;font-weight:600">'+totalStr+'</span>':'')+
+        '</div>'+
+      '</div>';
+    if (!allRows.length) {
+      h += '<div style="padding:18px;text-align:center;color:var(--td);font-size:13px;background:var(--s);border:1px solid var(--br);border-radius:10px">'+emptyMsg+'</div>';
+    } else {
+      h += '<div style="background:var(--s);border:1px solid var(--br);border-radius:10px;overflow:hidden">';
+      redRows.forEach(function(r) { h += rowResa(r, 'var(--re)'); });
+      orangeRows.forEach(function(r) { h += rowResa(r, 'var(--or)'); });
+      h += '</div>';
+    }
+    return h + '</div>';
   }
 
-  function block(title, allRows, redRows, orangeRows, emptyMsg, totalStr, rowFn) {
+  // ── Bloc sélectionnable (serv / taxe) ────────────────────────
+  function blockSel(type, title, allRows, redRows, orangeRows, emptyMsg, totalStr, btnLabel1, btnFn1, btnLabel2, btnFn2, rowBuilder) {
     var h = '<div style="margin-bottom:24px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
         '<div class="sl" style="margin:0">'+title+'</div>'+
@@ -5165,43 +5255,61 @@ function renderAsuivre() {
     if (!allRows.length) {
       h += '<div style="padding:18px;text-align:center;color:var(--td);font-size:13px;background:var(--s);border:1px solid var(--br);border-radius:10px">'+emptyMsg+'</div>';
     } else {
+      h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--td);cursor:pointer">'+
+          '<input type="checkbox" id="as-cb-'+type+'-all" onchange="_asToggleAll(\''+type+'\')" style="width:14px;height:14px;cursor:pointer">'+
+          'Tout sélectionner'+
+        '</label>'+
+        '<div style="display:flex;gap:6px;margin-left:auto">'+
+          '<button onclick="'+btnFn1+'()" style="font-size:12px;padding:5px 12px;background:var(--go);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">'+btnLabel1+'</button>'+
+          '<button onclick="'+btnFn2+'()" style="font-size:12px;padding:5px 12px;background:var(--s2);color:var(--td);border:1px solid var(--br);border-radius:6px;cursor:pointer">'+btnLabel2+'</button>'+
+        '</div>'+
+      '</div>';
       h += '<div style="background:var(--s);border:1px solid var(--br);border-radius:10px;overflow:hidden">';
-      redRows.forEach(function(r) { h += rowFn(r, 'var(--re)'); });
-      orangeRows.forEach(function(r) { h += rowFn(r, 'var(--or)'); });
+      redRows.forEach(function(r) { h += rowBuilder(r, 'var(--re)'); });
+      orangeRows.forEach(function(r) { h += rowBuilder(r, 'var(--or)'); });
       h += '</div>';
     }
     return h + '</div>';
   }
 
-  // Légende couleurs
+  // ── Légende ──────────────────────────────────────────────────
   html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;font-size:12px;color:var(--td)">'+
     '<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--re);display:inline-block"></span>En retard</span>'+
     '<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--or);display:inline-block"></span>Dans les 7 jours</span>'+
   '</div>';
 
-  // Block 1 — Réservations
+  // Block 1 — Réservations (action individuelle uniquement)
   var resaAll = d.resa.red.concat(d.resa.orange);
   var resaTot = resaAll.reduce(function(s, r) { return s + rNetMAD(r); }, 0);
-  html += block('🏠 Réservations à encaisser', resaAll, d.resa.red, d.resa.orange,
+  html += blockResa(resaAll, d.resa.red, d.resa.orange,
     '✅ Aucune réservation en attente cette semaine',
-    resaAll.length ? Math.round(resaTot).toLocaleString('fr-MA') + ' MAD' : '',
-    rowResa);
+    resaAll.length ? Math.round(resaTot).toLocaleString('fr-MA') + ' MAD' : '');
 
-  // Block 2 — Services
+  // Block 2 — Services (sélection multiple)
   var servAll = d.serv.red.concat(d.serv.orange);
   var servTot = servAll.reduce(function(s, r) { return s + (r.montant || 0); }, 0);
-  html += block('⭐ Services additionnels en attente', servAll, d.serv.red, d.serv.orange,
+  html += blockSel('serv', '⭐ Services additionnels en attente',
+    servAll, d.serv.red, d.serv.orange,
     '✅ Aucun service en attente cette semaine',
     servAll.length ? Math.round(servTot).toLocaleString('fr-MA') + ' MAD' : '',
-    rowServ);
+    'Marquer payé', 'asuivreMarkServPaid', 'Ignorer', 'asuivreIgnoreServ',
+    function(r, color) {
+      var svc = (r.svc||'').split(',')[0].trim();
+      return rowSel('serv', r, color, '<span style="color:var(--go)">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>', escHtml(svc), escHtml(r.date||''));
+    });
 
-  // Block 3 — Taxe de séjour
+  // Block 3 — Taxe de séjour (sélection multiple)
   var taxeAll = d.taxe.red.concat(d.taxe.orange);
   var taxeTot = taxeAll.reduce(function(s, r) { return s + (r.montant || 0); }, 0);
-  html += block('🧾 Taxe de séjour non reversée', taxeAll, d.taxe.red, d.taxe.orange,
+  html += blockSel('taxe', '🧾 Taxe de séjour non reversée',
+    taxeAll, d.taxe.red, d.taxe.orange,
     '✅ Toutes les taxes ont été reversées',
     taxeAll.length ? Math.round(taxeTot).toLocaleString('fr-MA') + ' MAD' : '',
-    rowTaxe);
+    'Marquer reversé', 'asuivreMarkTaxeReverse', 'Ignorer', 'asuivreIgnoreTaxe',
+    function(r, color) {
+      return rowSel('taxe', r, color, '<span style="color:var(--te)">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>', escHtml(r.reservation_ref||'—'), escHtml(r.date||''));
+    });
 
   el.innerHTML = html;
   updateAsuivreBadge();
