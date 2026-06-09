@@ -542,6 +542,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ni admin-only" id="ni-reconcil" onclick="goTo('reconcil')" style="position:relative"><span class="dot" style="background:var(--te)"></span>Réconciliation <span id="reconcil-badge" class="hidden" style="background:var(--or);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni admin-only" id="ni-messages" onclick="goTo('messages')" style="position:relative"><span class="dot" style="background:var(--bl)"></span>Messages IA <span id="msg-badge" class="hidden" style="background:var(--bl);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-qualite" onclick="goTo('qualite')" style="position:relative"><span class="dot" style="background:var(--re)"></span>Contrôle qualité <span id="qualite-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
+    <div class="ni manager-plus" id="ni-asuivre" onclick="goTo('asuivre')" style="position:relative"><span class="dot" style="background:var(--or)"></span>À suivre <span id="asuivre-badge" class="hidden" style="background:var(--or);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-recur" onclick="goTo('recur')"><span class="dot" style="background:var(--or)"></span>Charges récurrentes</div>
   </div>
   <div class="ng" id="ng-perso">
@@ -707,10 +708,19 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Extras collectés</div><div class="kv" style="color:var(--go)" id="d-ext">0 MAD</div></div>
     <div class="kc" id="kc-airbnb-reel" style="display:none"><div class="kl">CA Airbnb réel ⓘ</div><div class="kv" style="color:var(--bl)" id="d-airbnb-reel">0 MAD</div><div class="ks" id="d-airbnb-reel-det"></div></div>
   </div>
+  <div id="d-asuivre-summary"></div>
   <div class="sl">Performance par appartement</div>
   <div class="ap-perf-row" id="d-recap-ap"></div>
   <div class="sl" style="margin-top:18px">Répartition par source</div>
   <div class="rg" id="d-recap-src"></div>
+</div>
+
+<!-- ═══ VIEW: À SUIVRE ═══ -->
+<div class="vw" id="vw-asuivre">
+  <div class="vh">
+    <div><div class="vt" style="color:var(--or)">À suivre</div><div class="vsub">Encaissements en attente · Taxes non reversées</div></div>
+  </div>
+  <div id="asuivre-content"></div>
 </div>
 
 <!-- ═══ VIEW: RÉSERVATIONS ═══ -->
@@ -1539,6 +1549,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt manager-plus" id="mn-recur" onclick="goTo('recur');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🔄</span>Charges</div>
   <div class="mbt manager-plus" id="mn-logements" onclick="goTo('logements');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🏘️</span>Logements</div>
   <div class="mbt manager-plus" id="mn-qualite" onclick="goTo('qualite');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">✅</span>Qualité</div>
+  <div class="mbt manager-plus" id="mn-asuivre" onclick="goTo('asuivre');closeMobMore()" style="gap:4px;padding:6px 16px;position:relative"><span class="mic">⏰</span>À suivre <span id="asuivre-badge-mob" class="hidden" style="background:var(--or);color:#fff;border-radius:10px;padding:1px 5px;font-size:9px;font-weight:700;position:absolute;top:2px;right:2px"></span></div>
   <div class="mbt admin-only" id="mn-reconcil" onclick="goTo('reconcil');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">🔍</span>Réconcil.</div>
   <div class="mbt admin-only" id="mn-messages" onclick="goTo('messages');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">💬</span>Messages</div>
   <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">👥</span>Équipe</div>
@@ -3173,7 +3184,8 @@ async function launchApp() {
   if (normDone) showApp();
 
   // Auto-sync taxes Booking en arrière-plan (après fetchEurMad pour avoir le bon taux)
-  setTimeout(function() { autoSyncTaxesBooking(); }, 1500);
+  setTimeout(function() { autoSyncTaxesBooking().then(function(){ updateAsuivreBadge(); renderDashAsuivreSummary(); }); }, 1500);
+  updateAsuivreBadge();
 }
 
 // Enter key sur les formulaires auth
@@ -4470,7 +4482,7 @@ function goTo(name) {
   if (ROLE) {
     var allowed = {
       admin:   null,  // accès total
-      manager: ['dash','resa','business','taxe','serv','doublons','team','recur','logements','qualite'],
+      manager: ['dash','resa','business','taxe','serv','doublons','team','recur','logements','qualite','asuivre'],
       user:    ['resa'],
     };
     var list = allowed[ROLE];
@@ -4487,7 +4499,7 @@ function goTo(name) {
   });
   closeMobMore();
   msCatClose(); msStClose(); msApClose(); msMenClose(); msPayClose(); msPcatClose(); msRapClose(); msRsrcClose(); msRtypeClose(); msRstClose(); // fermer dropdowns ms si ouverts lors de la navigation
-  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b'};
+  var clsMap = {dash:'on-b',resa:'on-r',business:'on-b',taxe:'on-t',serv:'on-s',perso:'on-p',doublons:'on-d',admin:'on-admin',team:'on-admin',recur:'on-b',logements:'on-t',reconcil:'on-t',qualite:'on-r',messages:'on-b',asuivre:'on-s'};
   var cls = clsMap[name]||'on-b';
   var ni=document.getElementById('ni-'+name);
   var mn=document.getElementById('mn-'+name);
@@ -4495,7 +4507,7 @@ function goTo(name) {
   if(mn){mn.classList.add(cls);}
   // Highlight "Plus" button when a drawer page is active
   var moreBtn = document.getElementById('mn-more');
-  if (moreBtn && ['admin','team','recur','messages'].indexOf(name) !== -1) {
+  if (moreBtn && ['admin','team','recur','messages','asuivre','qualite','logements'].indexOf(name) !== -1) {
     moreBtn.classList.add('on-admin');
   }
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
@@ -4507,6 +4519,7 @@ function goTo(name) {
   if (name === 'reconcil')  { renderReconcil();   return; }
   if (name === 'qualite')   { renderQualite();    return; }
   if (name === 'messages')  { renderMessages();   return; }
+  if (name === 'asuivre')   { renderAsuivre();    return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
 
@@ -5042,6 +5055,193 @@ function renderDash() {
     var comEl2 = document.getElementById('d-kc-com');
     if (comEl2) comEl2.style.display = '';
   }
+  renderDashAsuivreSummary();
+}
+
+// ============================================================
+// VUE À SUIVRE
+// ============================================================
+function getAsuivreData() {
+  var td = today();
+  var d7 = new Date(); d7.setDate(d7.getDate() + 7);
+  var j7 = d7.toISOString().slice(0, 10);
+  var fom = td.slice(0, 7) + '-01';
+
+  var resaRows = (DB.resa || []).filter(function(r) {
+    return r.statut === 'En attente' && r.date_paiement && r.date_paiement <= j7;
+  });
+  var servRows = (DB.serv || []).filter(function(r) {
+    return r.statut === 'En attente'
+      && r.pay_source !== 'Airbnb' && r.pay_source !== 'Booking'
+      && r.date && r.date <= j7;
+  });
+  var taxeRows = (DB.taxe || []).filter(function(r) { return r.rev === 'Non reversé'; });
+
+  return {
+    resa: {
+      red:    resaRows.filter(function(r) { return r.date_paiement < td; }),
+      orange: resaRows.filter(function(r) { return r.date_paiement >= td && r.date_paiement <= j7; })
+    },
+    serv: {
+      red:    servRows.filter(function(r) { return r.date < td; }),
+      orange: servRows.filter(function(r) { return r.date >= td && r.date <= j7; })
+    },
+    taxe: {
+      red:    taxeRows.filter(function(r) { return r.date && r.date < fom; }),
+      orange: taxeRows.filter(function(r) { return !r.date || r.date >= fom; })
+    }
+  };
+}
+
+function updateAsuivreBadge() {
+  var d = getAsuivreData();
+  var totalRed    = d.resa.red.length + d.serv.red.length + d.taxe.red.length;
+  var totalOrange = d.resa.orange.length + d.serv.orange.length + d.taxe.orange.length;
+  var total = totalRed + totalOrange;
+  var color = totalRed > 0 ? 'var(--re)' : 'var(--or)';
+  ['asuivre-badge', 'asuivre-badge-mob'].forEach(function(id) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    if (total > 0) {
+      b.textContent = total;
+      b.style.background = color;
+      b.classList.remove('hidden');
+    } else {
+      b.classList.add('hidden');
+    }
+  });
+}
+
+function renderAsuivre() {
+  var el = document.getElementById('asuivre-content');
+  if (!el) return;
+  var d   = getAsuivreData();
+  var td  = today();
+  var html = '';
+
+  function rowResa(r, color) {
+    var montant = Math.round(rNetMAD(r));
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'resa\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voyageur||'—')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.source||'')+'</span>'+
+      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date_paiement||'')+'</span>'+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--gr);white-space:nowrap">'+montant.toLocaleString('fr-MA')+' MAD</span>'+
+    '</div>';
+  }
+
+  function rowServ(r, color) {
+    var svc = (r.svc||'').split(',')[0].trim();
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'serv\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voy||'—')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(svc)+'</span>'+
+      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date||'')+'</span>'+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--go);white-space:nowrap">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>'+
+    '</div>';
+  }
+
+  function rowTaxe(r, color) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer" onclick="buildForm(\'taxe\',\''+r.id+'\')" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voy||'—')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
+      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.reservation_ref||'—')+'</span>'+
+      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date||'')+'</span>'+
+      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--te);white-space:nowrap">'+(r.montant||0).toLocaleString('fr-MA')+' MAD</span>'+
+    '</div>';
+  }
+
+  function block(title, allRows, redRows, orangeRows, emptyMsg, totalStr, rowFn) {
+    var h = '<div style="margin-bottom:24px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<div class="sl" style="margin:0">'+title+'</div>'+
+        '<div style="font-size:12px;color:var(--td)">'+allRows.length+' élément'+(allRows.length!==1?'s':'')+
+          (totalStr?' · <span style="font-family:\'DM Mono\',monospace;font-weight:600">'+totalStr+'</span>':'')+
+        '</div>'+
+      '</div>';
+    if (!allRows.length) {
+      h += '<div style="padding:18px;text-align:center;color:var(--td);font-size:13px;background:var(--s);border:1px solid var(--br);border-radius:10px">'+emptyMsg+'</div>';
+    } else {
+      h += '<div style="background:var(--s);border:1px solid var(--br);border-radius:10px;overflow:hidden">';
+      redRows.forEach(function(r) { h += rowFn(r, 'var(--re)'); });
+      orangeRows.forEach(function(r) { h += rowFn(r, 'var(--or)'); });
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  // Légende couleurs
+  html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;font-size:12px;color:var(--td)">'+
+    '<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--re);display:inline-block"></span>En retard</span>'+
+    '<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--or);display:inline-block"></span>Dans les 7 jours</span>'+
+  '</div>';
+
+  // Block 1 — Réservations
+  var resaAll = d.resa.red.concat(d.resa.orange);
+  var resaTot = resaAll.reduce(function(s, r) { return s + rNetMAD(r); }, 0);
+  html += block('🏠 Réservations à encaisser', resaAll, d.resa.red, d.resa.orange,
+    '✅ Aucune réservation en attente cette semaine',
+    resaAll.length ? Math.round(resaTot).toLocaleString('fr-MA') + ' MAD' : '',
+    rowResa);
+
+  // Block 2 — Services
+  var servAll = d.serv.red.concat(d.serv.orange);
+  var servTot = servAll.reduce(function(s, r) { return s + (r.montant || 0); }, 0);
+  html += block('⭐ Services additionnels en attente', servAll, d.serv.red, d.serv.orange,
+    '✅ Aucun service en attente cette semaine',
+    servAll.length ? Math.round(servTot).toLocaleString('fr-MA') + ' MAD' : '',
+    rowServ);
+
+  // Block 3 — Taxe de séjour
+  var taxeAll = d.taxe.red.concat(d.taxe.orange);
+  var taxeTot = taxeAll.reduce(function(s, r) { return s + (r.montant || 0); }, 0);
+  html += block('🧾 Taxe de séjour non reversée', taxeAll, d.taxe.red, d.taxe.orange,
+    '✅ Toutes les taxes ont été reversées',
+    taxeAll.length ? Math.round(taxeTot).toLocaleString('fr-MA') + ' MAD' : '',
+    rowTaxe);
+
+  el.innerHTML = html;
+  updateAsuivreBadge();
+}
+
+function renderDashAsuivreSummary() {
+  var el = document.getElementById('d-asuivre-summary');
+  if (!el) return;
+  var d = getAsuivreData();
+  var resaAll  = d.resa.red.concat(d.resa.orange);
+  var servAll  = d.serv.red.concat(d.serv.orange);
+  var taxeAll  = d.taxe.red.concat(d.taxe.orange);
+  var totalRed = d.resa.red.length + d.serv.red.length + d.taxe.red.length;
+  var total    = resaAll.length + servAll.length + taxeAll.length;
+
+  if (!total) { el.innerHTML = ''; return; }
+
+  var accentColor = totalRed > 0 ? 'var(--re)' : 'var(--or)';
+
+  el.innerHTML =
+    '<div style="background:var(--s);border:1px solid var(--br);border-left:3px solid '+accentColor+';border-radius:10px;padding:14px 16px;margin-bottom:18px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:'+accentColor+'">⏰ À suivre — '+total+' élément'+(total!==1?'s en attente':' en attente')+'</div>'+
+        '<button onclick="goTo(\'asuivre\')" style="font-size:11px;background:'+accentColor+';color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:600">Voir tout</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+        (resaAll.length ? '<div onclick="goTo(\'asuivre\')" style="cursor:pointer;background:var(--s2);border-radius:8px;padding:8px 14px;text-align:center;flex:1;min-width:80px">'+
+          '<div style="font-size:20px;font-weight:700;color:'+(d.resa.red.length?'var(--re)':'var(--or)')+'">'+resaAll.length+'</div>'+
+          '<div style="font-size:11px;color:var(--td);margin-top:2px">Réservations</div>'+
+        '</div>' : '') +
+        (servAll.length ? '<div onclick="goTo(\'asuivre\')" style="cursor:pointer;background:var(--s2);border-radius:8px;padding:8px 14px;text-align:center;flex:1;min-width:80px">'+
+          '<div style="font-size:20px;font-weight:700;color:'+(d.serv.red.length?'var(--re)':'var(--or)')+'">'+servAll.length+'</div>'+
+          '<div style="font-size:11px;color:var(--td);margin-top:2px">Services</div>'+
+        '</div>' : '') +
+        (taxeAll.length ? '<div onclick="goTo(\'asuivre\')" style="cursor:pointer;background:var(--s2);border-radius:8px;padding:8px 14px;text-align:center;flex:1;min-width:80px">'+
+          '<div style="font-size:20px;font-weight:700;color:'+(d.taxe.red.length?'var(--re)':'var(--or)')+'">'+taxeAll.length+'</div>'+
+          '<div style="font-size:11px;color:var(--td);margin-top:2px">Taxes</div>'+
+        '</div>' : '') +
+      '</div>'+
+    '</div>';
 }
 
 function periodDays(k) {
@@ -7513,7 +7713,7 @@ async function saveResa() {
     mad_reel_source: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
     mad_reel_updated_at: (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
-  await upsert('resa',entry); closeModal(); renderResa();
+  await upsert('resa',entry); closeModal(); renderResa(); updateAsuivreBadge();
   if (QUALITE_ANOMALIES.length) runQualiteCheck();
 }
 
@@ -7554,7 +7754,7 @@ async function saveTaxe() {
   if(!d||!m){alert('Date et montant requis');return;}
   var _tPay=gv('fi-pay')||'Cash';
   await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev'),note:(gv('fi-note')||'').trim()||null});
-  closeModal(); renderTaxe();
+  closeModal(); renderTaxe(); updateAsuivreBadge();
 }
 
 async function saveServ() {
@@ -7570,7 +7770,7 @@ async function saveServ() {
   if(!_svcs){alert('Sélectionne au moins un type de service');return;}
   var _note=(gv('fi-note')||'').trim()||null;
   await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
-  closeModal(); renderServ();
+  closeModal(); renderServ(); updateAsuivreBadge();
 }
 
 // ── Auto-sync taxes Booking ────────────────────────────────────────────────
