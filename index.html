@@ -3269,17 +3269,25 @@ function uid()   { return Date.now().toString(36)+Math.random().toString(36).sli
 // AIRCOVER/AJUSTEMENT utilisent mad_reel quand renseigné (fiable CSV ou validé manuellement).
 // RESOLUTION : toujours fallback EUR×EUR_MAD (jamais de mad_reel en base pour ce type).
 var MAD_REEL_ELIGIBLE = ['RESERVATION','ANNULATION_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT'];
+// Pour les resas non réconciliées : taux live uniquement pour le mois courant.
+// Les mois passés utilisent EUR_MAD_REF (10.5) pour stabiliser l'historique.
+var EUR_MAD_REF = 10.5;
+function _resaRate(r) {
+  var curMk = (new Date()).toISOString().slice(0, 7);
+  var mk = (r.mois_kpi || r.date_paiement || r.checkin || '').slice(0, 7);
+  return mk >= curMk ? EUR_MAD : EUR_MAD_REF;
+}
 function rNetMAD(r) {
   if (r.mad_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return r.mad_reel;
-  return (r.net || 0) * EUR_MAD;
+  return (r.net || 0) * _resaRate(r);
 }
 function rBrutMAD(r) {
   if (r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return (r.brut || 0) * r.taux_reel;
-  return (r.brut || 0) * EUR_MAD;
+  return (r.brut || 0) * _resaRate(r);
 }
 function rComMAD(r) {
   if (r.taux_reel != null && MAD_REEL_ELIGIBLE.indexOf(r.type_norm) >= 0) return (r.commission || 0) * r.taux_reel;
-  return (r.commission || 0) * EUR_MAD;
+  return (r.commission || 0) * _resaRate(r);
 }
 function sumNetMAD(rows) { return rows.reduce(function(s,r){ return s + rNetMAD(r); }, 0); }
 
