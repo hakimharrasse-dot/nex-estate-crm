@@ -6741,7 +6741,7 @@ function renderWkCards() {
   if (total <= 5) {
     var cols;
     if (isMobile()) {
-      cols = Math.min(total, 2);
+      cols = 1; // pleine largeur — 2 colonnes illisibles sur mobile (libellés hachés)
     } else if (total === 5) {
       cols = 3; // 3+2 : cartes à ~375px, propre et lisible
     } else {
@@ -6761,7 +6761,7 @@ function renderWkCards() {
   if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
   var start   = WK_CARD_PAGE * perPage;
   var sliced  = cards.slice(start, start + perPage);
-  var cols    = Math.min(sliced.length, perPage);
+  var cols    = isMobile() ? 1 : Math.min(sliced.length, perPage); // mobile : 2 cartes/page mais empilées
   var grid    = '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'+sliced.join('')+'</div>';
 
   var canPrev = WK_CARD_PAGE > 0;
