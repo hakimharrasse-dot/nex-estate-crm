@@ -3200,6 +3200,31 @@ async function launchApp() {
   updateAsuivreBadge();
   // Alerte si la sync Smoobu (cron poll) n'a pas tourné depuis > 2h
   setTimeout(checkSmoobuHeartbeat, 2500);
+  // Sync ciblée des statuts expirés vers Supabase (champ dérivé du temps)
+  setTimeout(syncStatutsDB, 3500);
+}
+
+// ── Sync statuts dérivés → Supabase ──────────────────────────────────────────
+// Le statut dépend de la date du jour (dp <= aujourd'hui → Payé). Le CRM le
+// recalcule en mémoire au boot, mais la base vieillit entre deux "Recalculer".
+// Cette sync ne PATCH que les lignes expirées — ciblée, silencieuse, idempotente.
+// AJUSTEMENT exclu (statut manuel) · ANNULATION_NON_PAYEE exclu (toujours Annulé).
+function syncStatutsDB() {
+  if (!SUPA || ROLE === 'user') return;
+  var td = today();
+  SUPA.from(TABLE['resa']).update({ statut: 'Payé' })
+    .eq('statut', 'En attente').lte('date_paiement', td)
+    .neq('type_norm', 'ANNULATION_NON_PAYEE').neq('type_norm', 'AJUSTEMENT')
+    .then(function(r1) {
+      if (r1.error) { console.warn('[syncStatuts] Payé:', r1.error.message); return; }
+      return SUPA.from(TABLE['resa']).update({ statut: 'En attente' })
+        .eq('statut', 'Payé').gt('date_paiement', td)
+        .neq('type_norm', 'ANNULATION_NON_PAYEE').neq('type_norm', 'AJUSTEMENT');
+    })
+    .then(function(r2) {
+      if (r2 && r2.error) { console.warn('[syncStatuts] En attente:', r2.error.message); return; }
+      console.log('[syncStatuts] statuts dérivés synchronisés en base');
+    });
 }
 
 // ── Alerte sync Smoobu — lit sync_heartbeat (écrit par smoobu-poll à chaque run) ──
