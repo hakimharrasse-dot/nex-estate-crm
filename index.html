@@ -4370,6 +4370,10 @@ function onBizCatChange(sel) {
 
 function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'); }
 
+// ── Mémoire des derniers choix de formulaire (vitesse de saisie) ──
+function lastChoice(k,fb){ try{ return localStorage.getItem('nex_last_'+k)||fb; }catch(e){ return fb; } }
+function setLastChoice(k,val){ try{ if(val) localStorage.setItem('nex_last_'+k,val); }catch(e){} }
+
 function actBtns(type,id) {
   return '<div class="acts">'+
     '<button class="bedit" onclick="openModal(\''+type+'\',\''+id+'\')">✏️</button>'+
@@ -8117,11 +8121,11 @@ function buildForm(type, editId) {
     var _txPay=v('pay','Cash');
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
+      field2('Appartement','fi-app','select',v('appart',lastChoice('appart','Agdal 13')),getAppartsForForm(v('appart','')))+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       fieldFull('Réf. réservation (optionnel)','fi-resa-ref','text',v('reservation_ref',''),'Lie à la réservation — ex: AIR-XXXX')+
       '<div class="ff"><label class="fl">Mode de paiement</label><select class="fse" id="fi-pay" onchange="document.getElementById(\'ff-taxe-col\').style.display=this.value===\'Cash\'?\'block\':\'none\'">'+['Cash','Virement MAD','Virement EUR','Airbnb','Booking'].map(function(o){return '<option'+(_txPay===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-taxe-col" style="display:'+(_txPay==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select></div>'+
+      '<div class="ff" id="ff-taxe-col" style="display:'+(_txPay==='Cash'?'block':'none')+'"><label class="fl">Collecté par</label><select class="fse" id="fi-col">'+buildCollectorOptions(v('col',lastChoice('col','')))+'</select></div>'+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       field2('Reversement','fi-rev','select',v('rev','Non reversé'),['Non reversé','Reversé'])+
       fieldFull('Note (optionnel)','fi-note','text',v('note',''),'Commentaire libre...')+
@@ -8131,7 +8135,7 @@ function buildForm(type, editId) {
   if(type==='serv') {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
+      field2('Appartement','fi-app','select',v('appart',lastChoice('appart','Agdal 13')),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service <span style="font-size:11px;color:var(--re);font-weight:400">* au moins 1</span></label>'+
         '<div id="fi-svc-wrap" style="display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--s2);border:1px solid var(--br);border-radius:8px">'+
         CATS_S.map(function(c){
@@ -8157,7 +8161,7 @@ function buildForm(type, editId) {
           '</select></div>'+
           '<div class="ff" id="ff-serv-col" style="display:'+(_showCol?'block':'none')+'">'+
             '<label class="fl">Collecté par</label>'+
-            '<select class="fse" id="fi-col">'+buildCollectorOptions(v('col',''))+'</select>'+
+            '<select class="fse" id="fi-col">'+buildCollectorOptions(v('col',lastChoice('col','')))+'</select>'+
           '</div>';
       })()+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
@@ -8542,6 +8546,7 @@ async function saveTaxe() {
   if(!d||!m){alert('Date et montant requis');return;}
   var _tPay=gv('fi-pay')||'Cash';
   var _okT = await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev'),note:(gv('fi-note')||'').trim()||null});
+  setLastChoice('appart',gv('fi-app')); if(_tPay==='Cash') setLastChoice('col',gv('fi-col'));
   closeModal(); renderTaxe(); updateAsuivreBadge();
   toastSaveResult(_okT);
 }
@@ -8559,6 +8564,7 @@ async function saveServ() {
   if(!_svcs){alert('Sélectionne au moins un type de service');return;}
   var _note=(gv('fi-note')||'').trim()||null;
   var _okS = await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
+  setLastChoice('appart',gv('fi-app')); if(_col) setLastChoice('col',_col);
   closeModal(); renderServ(); updateAsuivreBadge();
   toastSaveResult(_okS);
 }
