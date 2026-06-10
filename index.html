@@ -8139,6 +8139,17 @@ function pickServRef(ref) {
   if (inp) inp.value = ref;
   var box = document.getElementById('fi-resa-ref-sug');
   if (box) { box.style.display='none'; box.innerHTML=''; }
+  // Sync auto depuis la réservation choisie : appartement + voyageur si vide
+  var r = DB.resa.find(function(x) { return x.ref === ref; });
+  if (!r) return;
+  var apEl = document.getElementById('fi-app');
+  if (apEl && r.appart) {
+    for (var i = 0; i < apEl.options.length; i++) {
+      if (apEl.options[i].value === r.appart || apEl.options[i].text === r.appart) { apEl.selectedIndex = i; break; }
+    }
+  }
+  var voyEl = document.getElementById('fi-voy');
+  if (voyEl && !voyEl.value.trim() && r.voyageur) voyEl.value = r.voyageur;
 }
 
 function field2(lbl,id,type,val,opts) {
