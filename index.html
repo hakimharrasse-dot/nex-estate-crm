@@ -4374,11 +4374,29 @@ function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'
 function lastChoice(k,fb){ try{ return localStorage.getItem('nex_last_'+k)||fb; }catch(e){ return fb; } }
 function setLastChoice(k,val){ try{ if(val) localStorage.setItem('nex_last_'+k,val); }catch(e){} }
 
-function actBtns(type,id) {
-  return '<div class="acts">'+
+function actBtns(type,id,extraHtml) {
+  return '<div class="acts">'+(extraHtml||'')+
     '<button class="bedit" onclick="openModal(\''+type+'\',\''+id+'\')">✏️</button>'+
     '<button class="bdel" onclick="delEntry(\''+type+'\',\''+id+'\')">✕</button>'+
     '</div>';
+}
+
+// ── Lien contextuel : ajouter un extra pré-rempli depuis une réservation ──
+function addExtraForResa(id){
+  var r=DB.resa.find(function(x){return x.id===id;}); if(!r) return;
+  openModal('serv');
+  var ov=document.getElementById('modal-overlay');
+  if(!ov||ov.classList.contains('hidden')) return; // bloqué par le guard rôle
+  var f=document.getElementById('fi-resa-ref'); if(f&&r.ref) f.value=r.ref;
+  f=document.getElementById('fi-app');
+  if(f&&r.appart){
+    var hasOpt=Array.prototype.some.call(f.options,function(o){return o.value===r.appart||o.text===r.appart;});
+    if(hasOpt) f.value=r.appart;
+  }
+  f=document.getElementById('fi-voy'); if(f&&r.voyageur&&!isInfoManquante(r)) f.value=r.voyageur;
+}
+function resaExtraBtn(r){
+  return '<button class="bedit" title="Ajouter un extra lié à cette réservation" onclick="addExtraForResa(\''+r.id+'\')">⭐</button>';
 }
 
 // ============================================================
@@ -6020,7 +6038,7 @@ function renderResa() {
           '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
           '<span class="r-card-net">'+Math.round(rNetMAD(r)).toLocaleString('fr-MA')+' MAD'+_resaRateTag(r)+'</span>'+
         '</div>'+
-        '<div class="r-card-acts">'+actBtns('resa',r.id)+'</div>'+
+        '<div class="r-card-acts">'+actBtns('resa',r.id,resaExtraBtn(r))+'</div>'+
       '</div>';
     }).join('');
   } else {
@@ -6047,7 +6065,7 @@ function renderResa() {
         })()+
         '<td>'+chip(r.type_norm||'',typeClass(r.type_norm||''))+'</td>'+
         '<td>'+chip(r.statut||'',stClass(r.statut||''))+'</td>'+
-        '<td>'+actBtns('resa',r.id)+'</td>'+
+        '<td>'+actBtns('resa',r.id,resaExtraBtn(r))+'</td>'+
         '</tr>';
     }).join('');
     // Sync select-all checkbox (desktop seulement)
