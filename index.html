@@ -8097,13 +8097,23 @@ function servRefSuggest(q) {
   var box = document.getElementById('fi-resa-ref-sug');
   if (!box) return;
   q = (q||'').trim();
-  if (q.length < 2) { box.style.display='none'; box.innerHTML=''; return; }
-  var nq = _normStr(q);
-  var hits = getServResaCandidates().filter(function(r) {
-    return _normStr(r.voyageur||'').indexOf(nq) >= 0
-        || _normStr(r.ref||'').indexOf(nq) >= 0
-        || _normStr(r.appart||'').indexOf(nq) >= 0;
-  }).slice(0, 8);
+  // Champ vide → reprendre le nom déjà saisi dans Voyageur
+  if (q.length < 2) {
+    var voyEl = document.getElementById('fi-voy');
+    if (voyEl && (voyEl.value||'').trim().length >= 2) q = voyEl.value.trim();
+  }
+  var hits;
+  if (q.length < 2) {
+    // Aucune saisie → proposer les réservations les plus récentes
+    hits = getServResaCandidates().slice(0, 8);
+  } else {
+    var nq = _normStr(q);
+    hits = getServResaCandidates().filter(function(r) {
+      return _normStr(r.voyageur||'').indexOf(nq) >= 0
+          || _normStr(r.ref||'').indexOf(nq) >= 0
+          || _normStr(r.appart||'').indexOf(nq) >= 0;
+    }).slice(0, 8);
+  }
   if (!hits.length) { box.style.display='none'; box.innerHTML=''; return; }
   box.innerHTML = hits.map(function(r) {
     var refAttr = escHtml(r.ref).replace(/'/g, '&#39;');
