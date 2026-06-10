@@ -395,8 +395,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
   .mobnav{display:flex;}.hm{display:none;}
   .circ-card{min-width:0;}
-  /* Filtres — stack vertical */
-  .fb .fr{flex-direction:column;gap:6px;}
+  /* Filtres — grille 2 colonnes pleine largeur (tabs/nav/période/recherche sur ligne entière) */
+  .fb .fr{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;}
+  .fb .fr>.tabs,.fb .fr>div[id$="-nav"],.fb .fr>select[id$="-per"],.fb .fr>input.fsel{grid-column:1/-1;}
+  .fb .fr>*{min-width:0!important;width:100%;max-width:none!important;}
+  .ms-btn{width:100%;min-height:38px;}
   .fsel{width:100%;}
   .tabs{width:100%;justify-content:space-between;}
   .tab{flex:1;text-align:center;font-size:11px;padding:6px 4px;}
