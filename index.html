@@ -84,6 +84,9 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .ms-reset{width:100%;padding:5px 8px;border:none;background:none;color:var(--td);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;text-align:left;border-radius:6px;}
 .ms-reset:hover{background:var(--s2);color:var(--tx);}
 .ms-ov{display:none;position:fixed;inset:0;z-index:209;}
+/* FAB mobile "+ Ajouter" — visible <700px uniquement, au-dessus de la mobnav */
+#fab-add{display:none;position:fixed;right:14px;bottom:78px;width:54px;height:54px;border-radius:50%;background:var(--or);color:#fff;border:none;font-size:28px;font-weight:600;z-index:19;box-shadow:0 6px 18px rgba(0,0,0,.45);cursor:pointer;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;line-height:1;padding:0;}
+@media(min-width:700px){#fab-add{display:none!important;}}
 @media(max-width:699px){
   .ms-drop{position:fixed;bottom:0;left:0;right:0;top:auto;min-width:unset;max-height:55vh;border-radius:16px 16px 0 0;padding:14px;z-index:211;}
   .ms-ov{background:rgba(0,0,0,.35);}
@@ -1572,6 +1575,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt" id="mn-perso" onclick="goTo('perso')"><span class="mic">👤</span>Perso</div>
   <div class="mbt" id="mn-more" onclick="toggleMobMore()"><span class="mic">⋯</span>Plus</div>
 </div>
+
+<!-- FAB mobile "+ Ajouter" (contextuel — géré par updateFab dans goTo) -->
+<button id="fab-add" onclick="fabAdd()" title="Ajouter">+</button>
 
 <!-- Mobile — Backdrop + drawer "Plus" -->
 <div id="mob-backdrop" style="display:none;position:fixed;inset:0;z-index:21;background:rgba(0,0,0,.45)" onclick="closeMobMore()"></div>
@@ -4712,6 +4718,7 @@ function goTo(name) {
   }
   var navKey={dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'d'}[name];
   if(navKey) renderNav(navKey);
+  updateFab(name);
   if (name === 'admin')     { renderAdminUsers(); return; }
   if (name === 'team')      { renderTeamAdmin();  return; }
   if (name === 'recur')     { renderRecurAdmin(); return; }
@@ -4722,6 +4729,16 @@ function goTo(name) {
   if (name === 'asuivre')   { renderAsuivre();    return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
+
+// ── FAB mobile "+ Ajouter" — contextuel à la vue active ──────
+var FAB_VIEWS = {resa:'resa',business:'business',taxe:'taxe',serv:'serv',perso:'perso'};
+function updateFab(name){
+  var f=document.getElementById('fab-add'); if(!f) return;
+  var t=FAB_VIEWS[name];
+  f.style.display = (t && ROLE!=='user') ? 'flex' : 'none';
+  f.dataset.type = t||'';
+}
+function fabAdd(){ var f=document.getElementById('fab-add'); if(f&&f.dataset.type) openModal(f.dataset.type); }
 
 // ============================================================
 // CIRCLE KPI HELPER
