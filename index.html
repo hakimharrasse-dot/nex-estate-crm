@@ -8363,6 +8363,22 @@ async function saveResa() {
   var comEur = brutEur * comPct;
   // netEur : si mad_reel connu → conserver rec.net en base (mad_reel est le NET réel, pas recalculer)
   var netEur = _hasMadReel ? (_exRec.net||0) : (brutEur - comEur);
+  // ── Correction manuelle du MAD réel ──────────────────────────────────────
+  // Si l'utilisateur modifie le champ "Montant net (MAD)" alors qu'un mad_reel
+  // est verrouillé → confirmation explicite, puis nouvelle valeur enregistrée
+  // (net EUR recalculé au taux verrouillé, source passée à 'manuel').
+  var _netManuel = parseFloat(gv('fi-net')) || 0;
+  var _madEdited = false;
+  if (_hasMadReel && !_lockNow && _netManuel > 0 && Math.abs(_netManuel - (_exRec.mad_reel||0)) > 0.01) {
+    var _madEditRate = _exRec.taux_reel != null ? _exRec.taux_reel : EUR_MAD;
+    _madEdited = confirm('💱 Corriger le montant net réel verrouillé ?\n\n'
+      + (_exRec.mad_reel||0).toFixed(2) + ' MAD  →  ' + _netManuel.toFixed(2) + ' MAD\n\n'
+      + 'Le net EUR sera recalculé au taux verrouillé ' + _madEditRate.toFixed(4) + '.\n'
+      + 'Annuler = conserver l\'ancien montant.');
+  }
+  if (_madEdited) {
+    netEur = _netManuel / _madEditRate;
+  }
   var taxeMad = parseFloat(gv('fi-taxe'))||0;
   var taxeEur = taxeMad / EUR_MAD;
   var entry={
@@ -8375,9 +8391,13 @@ async function saveResa() {
     checkin:ci, checkout:co, nuits_sejour:diffNuits(ci,co), nuits_fact:nf,
     nb_personnes:parseInt(gv('fi-np'))||1,
     brut: _hasTauxReel ? (_exRec.brut||Math.round(brutEur*100)/100) : Math.round(brutEur*100)/100,
-    com_pct:comPct,
-    commission: _hasMadReel ? (_exRec.commission||0) : Math.round(comEur*100)/100,
-    net: _hasMadReel ? (_exRec.net||0) : Math.round(netEur*100)/100,
+    com_pct: _madEdited
+      ? (function(){ var b=_hasTauxReel?(_exRec.brut||0):brutEur; return b>0?Math.round((b-netEur)/b*10000)/10000:comPct; })()
+      : comPct,
+    commission: _madEdited
+      ? (function(){ var b=_hasTauxReel?(_exRec.brut||0):brutEur; return Math.round((b-netEur)*100)/100; })()
+      : (_hasMadReel ? (_exRec.commission||0) : Math.round(comEur*100)/100),
+    net: (_madEdited || !_hasMadReel) ? Math.round(netEur*100)/100 : (_exRec.net||0),
     taxe_sejour: Math.round(taxeEur*100)/100,
     type_norm:gv('fi-type')||'RESERVATION',
     mode_paiement:gv('fi-mode')||'Virement plateforme',
@@ -8400,14 +8420,16 @@ async function saveResa() {
     // MAD réel : lock maintenant (manuel ou auto-Payé) ou valeur existante préservée
     mad_reel: _lockNow
       ? (parseFloat(gv('fi-net'))||null)
+      : _madEdited ? _netManuel
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel??null:null; })(),
     taux_reel: _lockNow
       ? _lockRate
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.taux_reel??null:null; })(),
     mad_reel_source: _lockNow
       ? _lockSrc
+      : _madEdited ? 'manuel'
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_source??null:null; })(),
-    mad_reel_updated_at: _lockNow
+    mad_reel_updated_at: (_lockNow || _madEdited)
       ? new Date().toISOString()
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
