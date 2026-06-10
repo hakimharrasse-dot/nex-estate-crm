@@ -546,7 +546,8 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-10 | **RÈGLE MAJ** : `mad_reel_source='auto'` (auto-lock) = estimation remplaçable par la réconciliation. Guards assouplis : Airbnb `addRow`, Booking `applyBkBatch`, filtre post-apply, B-MADAPPLIED skip 'auto'. Les sources `manuel` / `CSV Airbnb payout` / `booking_pdf` restent intouchables |
 | 2026-06-10 | feat(sync): `syncStatutsDB()` au boot — PATCH ciblé des statuts dérivés expirés vers Supabase (AJUSTEMENT et ANNULATION_NON_PAYEE exclus) ; 20 statuts périmés nettoyés en base le jour même (`fe7b619`) |
 | 2026-06-10 | Alerte Smoobu testée en réel (antidate 6h → badge visible → restauré) ; audit complet base : 0 anomalie (0 payée sans verrou, 153 CSV Airbnb + 55 booking_pdf + 6 complexes intacts) |
-| 2026-06-10 | Backup `nex-estate-crm-backup-2026-06-10-stable-complet` produit (projet + git + skills dans `_skills_backup/`) — suppression ancien backup 2026-06-09 — ← **HEAD** |
+| 2026-06-10 | Backup `nex-estate-crm-backup-2026-06-10-stable-complet` produit (projet + git + skills dans `_skills_backup/`) — suppression ancien backup 2026-06-09 |
+| 2026-06-10 | **P3.8 Mobile complet** (dernier item roadmap — roadmap close) : filtres grille 2 colonnes <700px toutes vues (`b2ba95a`) ; cartes Réservations avec checkout (`30be250`) ; modals bottom-sheet pleine largeur + inputs 16px anti-zoom iOS (`2130201`) ; Dashboard mobile — cartes récap en colonne, delta dédié, barchart 9px, filtre appart pleine largeur (`1456910`) ← **HEAD** |
 
 ---
 
@@ -621,6 +622,12 @@ var CATS_B = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais 
 
 - Cartes Business : `paid_by` affiché comme badge bleu 💳 dans `row2`
 - Logique : `isMobile()` = `window.innerWidth < 700`
+- **Architecture CSS mobile (2026-06-10, P3.8)** — tout dans le bloc `@media(max-width:700px)` :
+  - Filtres : `.fb .fr` passe en `display:grid;grid-template-columns:1fr 1fr` ; `.tabs`, `div[id$="-nav"]`, `select[id$="-per"]` et `input.fsel` (recherches) prennent `grid-column:1/-1` ; les multi-selects `.ms-wrap` s'appairent en 2×2 ; `#vw-dash .fb .fr>select` pleine largeur
+  - Modals : `.ov` aligné en bas, `.mbox` bottom-sheet pleine largeur (`max-height:94dvh`, coins arrondis haut) ; `.fi/.fse` à 16px (anti-zoom iOS)
+  - Cartes récap `.rc` (Revenus par appartement, Répartition par source) : `flex-direction:column`
+  - Barchart 12 mois : labels `_bfs = isMobile() ? 9 : 8` px dans `renderMonthlyBarchart()`
+  - Cartes Réservations : row3 = `📅 checkin → checkout` (checkout en MM-DD si même année)
 
 ---
 

@@ -19,7 +19,15 @@
 
 ## 🔲 Reste à faire
 
-1. **P3.8 Mobile complet** — Réservations + Dashboard en priorité, commits séparés (gros chantier) — dernier item de la roadmap
+*(vide — roadmap close le 2026-06-10)*
+
+## ✅ P3.8 Mobile complet — fait 2026-06-10 (commits b2ba95a → 1456910)
+
+- `b2ba95a` — Barre de filtres compacte toutes vues : grille CSS 2 colonnes <700px (multi-selects appairés 2×2, tabs/nav/sélecteur période/champs recherche sur ligne entière)
+- `30be250` — Cartes Réservations : date checkout ajoutée (format court MM-DD si même année)
+- `2130201` — Modals bottom-sheet pleine largeur (max-height 94dvh, coins arrondis haut) + inputs `.fi/.fse` à 16px (anti-zoom iOS au focus)
+- `1456910` — Dashboard : cartes récap appartement/source en colonne, delta "vs mois préc." du Résultat net réel sur ligne dédiée, labels barchart 9px sur mobile (`_bfs` via `isMobile()`), filtre appartement pleine largeur
+- Vérifié en preview locale 390×844 avec données factices (login bypassé) : Réservations, Dashboard, Business, Services + non-régression desktop 1280px, 0 erreur console
 
 ---
 
@@ -35,7 +43,7 @@
 | Services Additionnels | 75/100 | Bien — multi-services + note ajoutés 2026-06-08 |
 | Réservations (filtres) | 80/100 | Bien — 4 filtres multi-select ajoutés 2026-06-08 |
 | Messages IA | 60/100 | Fonctionnel mais UX basique |
-| Mobile | 55/100 | Desktop-first — mobile partiel |
+| Mobile | 80/100 | Filtres grille 2 col, cartes complètes, modals bottom-sheet, dashboard adapté (2026-06-10) |
 | UX globale | 60/100 | Fonctionnel, peu de polish |
 
 ---
