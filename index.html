@@ -428,6 +428,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .r-cards,.b-cards,.t-cards,.s-cards,.p-cards,.dup-cards{display:flex;}
   /* Bedit/bdel plus grand sur mobile */
   .bedit,.bdel{padding:8px 10px;font-size:17px;}
+  /* Dashboard — cartes récap (appartement/source) en colonne, plus lisibles */
+  .rc{flex-direction:column;align-items:flex-start;gap:5px;}
+  .rv{font-size:15px;}
+  /* Delta "vs mois préc." sur sa propre ligne dans le bloc Résultat net réel */
+  #d-res-reel-delta{display:block;margin-left:0!important;margin-top:2px;}
+  /* Filtre appartement Dashboard pleine largeur */
+  #vw-dash .fb .fr>select{grid-column:1/-1;}
   /* Modals — bottom sheet pleine largeur */
   .ov{padding:0;align-items:flex-end;}
   .mbox{max-width:none;width:100%;max-height:94dvh;border-radius:16px 16px 0 0;padding:20px 16px calc(24px + env(safe-area-inset-bottom,0px));}
@@ -5606,6 +5613,7 @@ function renderDashAsuivreSummary() {
 function renderMonthlyBarchart() {
   var el = document.getElementById('d-barchart-monthly');
   if (!el) return;
+  var _bfs = isMobile() ? 9 : 8; // labels plus lisibles sur mobile
 
   var now = new Date();
   var months = [];
@@ -5663,7 +5671,7 @@ function renderMonthlyBarchart() {
         (m.caServ>0?'\n  Serv. : '+Math.round(m.caServ).toLocaleString('fr-MA')+' MAD':'')+
         (m.caTaxe>0?'\n  Taxe : '+Math.round(m.caTaxe).toLocaleString('fr-MA')+' MAD':'')+
         (m.dep>0?'\nDép. : '+Math.round(m.dep).toLocaleString('fr-MA')+' MAD':'')+'">'+
-        '<div style="font-size:8px;color:'+(m.isCur?'var(--gr)':'var(--td)')+';margin-bottom:1px;font-weight:'+(m.isCur?'700':'400')+'">'+caK+'</div>'+
+        '<div style="font-size:'+_bfs+'px;color:'+(m.isCur?'var(--gr)':'var(--td)')+';margin-bottom:1px;font-weight:'+(m.isCur?'700':'400')+'">'+caK+'</div>'+
         '<div style="width:100%;position:relative;height:'+pctCa+'%;min-height:'+(m.ca>0?'3':'0')+'px">'+
           '<div style="position:absolute;inset:0;background:'+(m.isCur?'var(--gr)':'rgba(76,175,125,0.6)')+';border-radius:2px 2px 0 0;'+borderStyle+'"></div>'+
           (m.dep>0 ? '<div style="position:absolute;bottom:0;left:0;right:0;height:'+Math.round(pctDep*100/Math.max(pctCa,1))+'%;background:rgba(255,152,0,0.55);border-radius:2px 2px 0 0;"></div>' : '')+
@@ -5676,9 +5684,9 @@ function renderMonthlyBarchart() {
   var labels = '<div style="display:flex;gap:3px;padding:3px 0 0">';
   months.forEach(function(m) {
     labels +=
-      '<div style="flex:1;text-align:center;font-size:8px;color:'+(m.isCur?'var(--gr)':'var(--td)')+
+      '<div style="flex:1;text-align:center;font-size:'+_bfs+'px;color:'+(m.isCur?'var(--gr)':'var(--td)')+
       ';font-weight:'+(m.isCur?'700':'400')+'">'+
-        m.lbl+(m.isNewYr?'<br><span style="font-size:7px;opacity:.7">'+m.yr+'</span>':'')+'</div>';
+        m.lbl+(m.isNewYr?'<br><span style="font-size:'+(_bfs-1)+'px;opacity:.7">'+m.yr+'</span>':'')+'</div>';
   });
   labels += '</div>';
 
