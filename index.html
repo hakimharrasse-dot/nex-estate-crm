@@ -10363,7 +10363,9 @@ function buildMadRealRows(parsed, taux) {
     var _natifForceComplex = _isNativeMad && matches.length > 1;
     matches.forEach(function(crm) {
       if (TYPES_OK.indexOf(crm.type_norm) < 0) return;
-      if (crm.mad_reel != null) return;
+      // mad_reel existant → skip, SAUF source 'auto' (estimation au taux du jour,
+      // remplaçable par la vérité CSV — règle validée 2026-06-10)
+      if (crm.mad_reel != null && crm.mad_reel_source !== 'auto') return;
       if (seen[crm.id]) return;
       if (ignoredMadReel[crm.id]) return;
       var madReel, madEstime, ecart;
@@ -11142,8 +11144,8 @@ async function applyMadReal() {
       ok++;
     }
   }
-  // Retirer les lignes traitées avec succès
-  MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(row) { return row.crm.mad_reel == null; });
+  // Retirer les lignes traitées avec succès (les verrous 'auto' non traités restent affichés)
+  MAD_REEL_ROWS = MAD_REEL_ROWS.filter(function(row) { return row.crm.mad_reel == null || row.crm.mad_reel_source === 'auto'; });
   // Si plus aucune ligne MAD réel restante, basculer sur l'onglet Anomalies
   if (!MAD_REEL_ROWS.length) setReconcilTab('anomalies');
   else renderMadRealSection();
@@ -12017,7 +12019,7 @@ async function applyBkBatch(bi) {
     var matches = bkFindCRM(r.numRef, r);
     if (matches.length) anyFound = true;
     matches.forEach(function(crm) {
-      if (crm.mad_reel != null) return;  // déjà renseigné, on ne réécrit pas
+      if (crm.mad_reel != null && crm.mad_reel_source !== 'auto') return;  // déjà renseigné, on ne réécrit pas — sauf estimation 'auto' (PDF = vérité)
       toApply.push({ crm:crm, madReel: Math.round(r.net * d.taux * 100) / 100, csvRow:r });
     });
   });
@@ -13067,7 +13069,8 @@ function runReconciliation(parsed) {
     // Détecter : crm.mad_reel != null ET crm.override_manual = false ET absEcart > 0.
     // → message clair, action : ✏️ Modifier pour aligner l'EUR directement.
     // NE PAS confondre avec crm.override_manual=true (EUR déjà corrigé avec MAD réel).
-    if (crm && crm.mad_reel != null && !crm.override_manual && absEcart >= 0.01) {
+    // Les verrous 'auto' sont gérés par l'onglet MAD réel (remplaçables) → pas de double signalement ici
+    if (crm && crm.mad_reel != null && crm.mad_reel_source !== 'auto' && !crm.override_manual && absEcart >= 0.01) {
       var bMadLevel, bMadCause;
       if (absEcart <= 0.10) {
         bMadLevel = 'info';
