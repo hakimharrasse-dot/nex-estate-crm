@@ -8029,7 +8029,7 @@ function buildForm(type, editId) {
       field2('Date','fi-date','date',v('date',T))+
       field2('Appartement','fi-app','select',v('appart','Agdal 13'),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service <span style="font-size:11px;color:var(--re);font-weight:400">* au moins 1</span></label>'+
-        '<div id="fi-svc-wrap" style="display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--bg2);border:1px solid var(--br);border-radius:8px">'+
+        '<div id="fi-svc-wrap" style="display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--s2);border:1px solid var(--br);border-radius:8px">'+
         CATS_S.map(function(c){
           var svcs=(v('svc','')||'').split(',').map(function(s){return s.trim();});
           return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;user-select:none"><input type="checkbox" class="fi-svc-cb" value="'+escHtml(c)+'"'+(svcs.indexOf(c)!==-1?' checked':'')+' style="accent-color:var(--go);width:14px;height:14px;flex-shrink:0">'+escHtml(c)+'</label>';
@@ -8039,7 +8039,7 @@ function buildForm(type, editId) {
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       '<div class="ff" style="position:relative"><label class="fl">Réservation liée (optionnel)</label>'+
         '<input type="text" class="fi" id="fi-resa-ref" autocomplete="off" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Nom du voyageur, code Airbnb/Booking ou appartement" oninput="servRefSuggest(this.value)" onfocus="servRefSuggest(this.value)" onblur="setTimeout(function(){var b=document.getElementById(\'fi-resa-ref-sug\');if(b)b.style.display=\'none\';},150)">'+
-        '<div id="fi-resa-ref-sug" style="position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--bg2);border:1px solid var(--br);border-radius:8px;max-height:220px;overflow:auto;display:none;box-shadow:0 6px 18px rgba(0,0,0,.45)"></div>'+
+        '<div id="fi-resa-ref-sug" style="position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:200;background:#1c1c1c;border:1px solid var(--or);border-radius:10px;max-height:240px;overflow:auto;display:none;box-shadow:0 10px 30px rgba(0,0,0,.75)"></div>'+
         '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — tapez un nom ou collez le code</div>'+
       '</div>'+
       (function(){
@@ -8127,9 +8127,9 @@ function servRefSuggest(q) {
     var srcBadge = r.source === 'Airbnb'
       ? '<span style="color:#ff5a5f;font-weight:700">Airbnb</span>'
       : '<span style="color:#4a90d9;font-weight:700">Booking</span>';
-    return '<div onmousedown="pickServRef(\''+refAttr+'\')" style="padding:7px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--br)" onmouseover="this.style.background=\'rgba(255,255,255,.05)\'" onmouseout="this.style.background=\'none\'">'+
-      srcBadge+' <b>'+escHtml(r.voyageur||'?')+'</b>'+
-      '<div style="color:var(--td);font-size:11px;margin-top:1px">'+escHtml(r.ref)+' · '+escHtml(r.appart||'')+' · '+escHtml(r.checkin||'')+'</div>'+
+    return '<div onmousedown="pickServRef(\''+refAttr+'\')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #2a2a2a;background:#1c1c1c" onmouseover="this.style.background=\'#2c2c2c\'" onmouseout="this.style.background=\'#1c1c1c\'">'+
+      srcBadge+' <b style="color:var(--tx)">'+escHtml(r.voyageur||'?')+'</b>'+
+      '<div style="color:var(--tm);font-size:11px;margin-top:2px">'+escHtml(r.ref)+' · '+escHtml(r.appart||'')+' · '+escHtml(r.checkin||'')+'</div>'+
     '</div>';
   }).join('');
   box.style.display = 'block';
