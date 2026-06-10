@@ -543,7 +543,10 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-10 | feat(alerte): heartbeat sync Smoobu — table `sync_heartbeat` (RLS read authenticated, écriture service_role only), `writeHeartbeat()` dans smoobu-poll, badge rouge sidebar `smoobu-hb-alert` si > 2h (`654fb39`) |
 | 2026-06-10 | fix(taux): er-api.com en premier (taux quotidien frais 00h02 UTC, date via unix timestamp), frankfurter.app retirée (domaine mort, ECB sans MAD), currency-api jsdelivr en secours (`52bef78`) |
 | 2026-06-10 | fix(resa): correction manuelle du MAD réel verrouillé — modifier "Montant net (MAD)" sur une resa verrouillée → confirm() explicite → mad_reel mis à jour, net EUR recalculé au taux figé, commission=brut−net, `mad_reel_source='manuel'` (`1764ef7`) |
-| 2026-06-10 | **RÈGLE MAJ** : `mad_reel_source='auto'` (auto-lock) = estimation remplaçable par la réconciliation. Guards assouplis : Airbnb `addRow`, Booking `applyBkBatch`, filtre post-apply, B-MADAPPLIED skip 'auto'. Les sources `manuel` / `CSV Airbnb payout` / `booking_pdf` restent intouchables — ← **HEAD** |
+| 2026-06-10 | **RÈGLE MAJ** : `mad_reel_source='auto'` (auto-lock) = estimation remplaçable par la réconciliation. Guards assouplis : Airbnb `addRow`, Booking `applyBkBatch`, filtre post-apply, B-MADAPPLIED skip 'auto'. Les sources `manuel` / `CSV Airbnb payout` / `booking_pdf` restent intouchables |
+| 2026-06-10 | feat(sync): `syncStatutsDB()` au boot — PATCH ciblé des statuts dérivés expirés vers Supabase (AJUSTEMENT et ANNULATION_NON_PAYEE exclus) ; 20 statuts périmés nettoyés en base le jour même (`fe7b619`) |
+| 2026-06-10 | Alerte Smoobu testée en réel (antidate 6h → badge visible → restauré) ; audit complet base : 0 anomalie (0 payée sans verrou, 153 CSV Airbnb + 55 booking_pdf + 6 complexes intacts) |
+| 2026-06-10 | Backup `nex-estate-crm-backup-2026-06-10-stable-complet` produit (projet + git + skills dans `_skills_backup/`) — suppression ancien backup 2026-06-09 — ← **HEAD** |
 
 ---
 
