@@ -86,7 +86,9 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .ms-ov{display:none;position:fixed;inset:0;z-index:209;}
 /* FAB mobile "+ Ajouter" — visible <700px uniquement, au-dessus de la mobnav */
 #fab-add{display:none;position:fixed;right:14px;bottom:78px;width:54px;height:54px;border-radius:50%;background:var(--or);color:#fff;border:none;font-size:28px;font-weight:600;z-index:19;box-shadow:0 6px 18px rgba(0,0,0,.45);cursor:pointer;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;line-height:1;padding:0;}
-@media(min-width:700px){#fab-add{display:none!important;}}
+/* Retour en haut mobile — bas gauche, discret */
+#scrolltop-btn{display:none;position:fixed;left:14px;bottom:78px;width:42px;height:42px;border-radius:50%;background:var(--s2);border:1px solid var(--br);color:var(--tx);font-size:18px;z-index:19;box-shadow:0 4px 14px rgba(0,0,0,.4);cursor:pointer;align-items:center;justify-content:center;padding:0;}
+@media(min-width:700px){#fab-add,#scrolltop-btn{display:none!important;}}
 @media(max-width:699px){
   .ms-drop{position:fixed;bottom:0;left:0;right:0;top:auto;min-width:unset;max-height:55vh;border-radius:16px 16px 0 0;padding:14px;z-index:211;}
   .ms-ov{background:rgba(0,0,0,.35);}
@@ -1578,6 +1580,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 
 <!-- FAB mobile "+ Ajouter" (contextuel — géré par updateFab dans goTo) -->
 <button id="fab-add" onclick="fabAdd()" title="Ajouter">+</button>
+<!-- Retour en haut mobile (apparaît après 600px de scroll) -->
+<button id="scrolltop-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Retour en haut">↑</button>
 
 <!-- Mobile — Backdrop + drawer "Plus" -->
 <div id="mob-backdrop" style="display:none;position:fixed;inset:0;z-index:21;background:rgba(0,0,0,.45)" onclick="closeMobMore()"></div>
@@ -4761,6 +4765,12 @@ function updateFab(name){
   f.dataset.type = t||'';
 }
 function fabAdd(){ var f=document.getElementById('fab-add'); if(f&&f.dataset.type) openModal(f.dataset.type); }
+
+// ── Retour en haut mobile — visible après 600px de scroll ──
+window.addEventListener('scroll', function(){
+  var b=document.getElementById('scrolltop-btn'); if(!b) return;
+  b.style.display=(window.scrollY>600&&isMobile())?'flex':'none';
+}, {passive:true});
 
 // ============================================================
 // CIRCLE KPI HELPER
