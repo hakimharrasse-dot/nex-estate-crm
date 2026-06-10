@@ -8149,7 +8149,7 @@ function pickServRef(ref) {
     }
   }
   var voyEl = document.getElementById('fi-voy');
-  if (voyEl && !voyEl.value.trim() && r.voyageur) voyEl.value = r.voyageur;
+  if (voyEl && r.voyageur) voyEl.value = r.voyageur;
 }
 
 function field2(lbl,id,type,val,opts) {
