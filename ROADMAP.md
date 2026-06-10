@@ -19,9 +19,13 @@
 
 ## 🔲 Reste à faire — chantier UX globale (ouvert 2026-06-10, après clôture roadmap initiale)
 
-1. **UX Navigation & liens** : raccourcis entre vues liées (résa → ses extras / sa taxe / ses messages), retour en haut mobile
-2. **UX Lisibilité** : harmonisation chips/espacements, hiérarchie KPIs, états vides plus parlants
-3. **UX Messages IA** (60/100) : refonte UX du module
+1. **UX Lisibilité** : harmonisation chips/espacements, hiérarchie KPIs, états vides plus parlants
+2. **UX Messages IA** (60/100) : refonte UX du module
+
+## ✅ UX globale — lot 2 livré 2026-06-10 (commits dbf3f91 → c29f7d9)
+
+- `dbf3f91` — **Extra lié depuis une résa** : bouton ⭐ sur cartes mobiles + lignes desktop Réservations → `addExtraForResa(id)` ouvre le modal Services pré-rempli (resa_ref, appartement si option existante, voyageur sauf infos manquantes Smoobu) ; `actBtns(type,id,extraHtml)` étendu avec slot optionnel
+- `c29f7d9` — **Retour en haut mobile** : `#scrolltop-btn` bas gauche, listener scroll passif, visible si `scrollY>600 && isMobile()`, scroll smooth
 
 ## ✅ UX globale — lot 1 livré 2026-06-10 (commits a680b92 → 760dd77)
 
