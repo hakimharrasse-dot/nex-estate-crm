@@ -516,6 +516,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="bs">CRM v3.0 · Supabase</div>
     <div id="rate-disp" style="margin-top:8px;font-size:10px;color:var(--tm);font-family:'DM Mono',monospace;background:var(--s2);border-radius:6px;padding:5px 8px;text-align:center">1 EUR = — MAD</div>
     <div id="db-status" style="margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;background:var(--s2);border-radius:6px;padding:4px 8px;text-align:center;color:var(--td)">● Connexion...</div>
+    <div id="smoobu-hb-alert" style="display:none;margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;background:var(--res);border:1px solid rgba(224,82,82,.4);border-radius:6px;padding:4px 8px;text-align:center;color:var(--re);font-weight:600"></div>
     <div id="user-info">
       <span id="user-email"></span>
       <span id="user-role-badge" class="role-badge"></span>
@@ -3197,6 +3198,28 @@ async function launchApp() {
   // Auto-sync taxes Booking en arrière-plan (après fetchEurMad pour avoir le bon taux)
   setTimeout(function() { autoSyncTaxesBooking().then(function(){ updateAsuivreBadge(); renderDashAsuivreSummary(); }); }, 1500);
   updateAsuivreBadge();
+  // Alerte si la sync Smoobu (cron poll) n'a pas tourné depuis > 2h
+  setTimeout(checkSmoobuHeartbeat, 2500);
+}
+
+// ── Alerte sync Smoobu — lit sync_heartbeat (écrit par smoobu-poll à chaque run) ──
+function checkSmoobuHeartbeat() {
+  var el = document.getElementById('smoobu-hb-alert');
+  if (!el || !SUPA) return;
+  SUPA.from('sync_heartbeat').select('last_run,detail').eq('id', 'smoobu-poll').maybeSingle()
+    .then(function(res) {
+      if (res.error || !res.data || !res.data.last_run) return; // table vide = pas encore de heartbeat → silencieux
+      var ageMs = Date.now() - new Date(res.data.last_run).getTime();
+      var ageH  = ageMs / 3600000;
+      if (ageH > 2) {
+        var lbl = ageH < 48 ? Math.floor(ageH) + 'h' : Math.floor(ageH / 24) + 'j';
+        el.textContent = '⚠️ Sync Smoobu inactive depuis ' + lbl;
+        el.title = 'Dernier poll : ' + res.data.last_run.slice(0, 16).replace('T', ' ') + ' UTC — vérifier le cron Vercel / webhook Smoobu';
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    });
 }
 
 // Enter key sur les formulaires auth

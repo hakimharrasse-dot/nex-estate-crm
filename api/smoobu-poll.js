@@ -145,6 +145,19 @@ async function sbUpsert(table, row) {
   });
 }
 
+// Heartbeat — trace de la dernière exécution réussie du poll (alerte CRM si > 2h)
+async function writeHeartbeat(detail) {
+  try {
+    await sbUpsert('sync_heartbeat', {
+      id: 'smoobu-poll',
+      last_run: new Date().toISOString(),
+      detail: detail || null,
+    });
+  } catch (e) {
+    console.error('[poll] heartbeat error:', e.message);
+  }
+}
+
 async function sbPatch(table, id, fields) {
   return sbFetch(`${table}?id=eq.${id}`, {
     method: 'PATCH',
@@ -455,6 +468,7 @@ export default async function handler(req, res) {
   console.log(`[poll] total: ${bookings.length} réservations Smoobu reçues`);
 
   if (!bookings.length) {
+    await writeHeartbeat('0 réservation');
     return res.json({ ok: true, modifiedFrom, stats: { fetched: 0, skipped: 0, warnings: 0, errors: 0, upserted: 0 } });
   }
 
@@ -709,5 +723,6 @@ export default async function handler(req, res) {
   }
 
   console.log('[poll] terminé:', JSON.stringify(stats));
+  await writeHeartbeat(`${stats.upserted} upsert / ${stats.fetched} fetched`);
   return res.json({ ok: true, modifiedFrom, datesOnly, stats });
 }
