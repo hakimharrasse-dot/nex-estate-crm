@@ -17,9 +17,18 @@
 - P3.11 Alerte sync Smoobu : ✅ fait 2026-06-10 (`654fb39`) — table `sync_heartbeat` (RLS read authenticated), `smoobu-poll.js` écrit un heartbeat à chaque run, badge rouge sidebar si > 2h
 - Récap équipe : nb passages en attente + détail dépliable dates/appart/montant (`41947f4`)
 
-## 🔲 Reste à faire
+## 🔲 Reste à faire — chantier UX globale (ouvert 2026-06-10, après clôture roadmap initiale)
 
-*(vide — roadmap close le 2026-06-10)*
+1. **UX Navigation & liens** : raccourcis entre vues liées (résa → ses extras / sa taxe / ses messages), retour en haut mobile
+2. **UX Lisibilité** : harmonisation chips/espacements, hiérarchie KPIs, états vides plus parlants
+3. **UX Messages IA** (60/100) : refonte UX du module
+
+## ✅ UX globale — lot 1 livré 2026-06-10 (commits a680b92 → 760dd77)
+
+- `dabe09e` — fix(mobile) : Récap équipe en 1 colonne (2 colonnes illisibles — retour terrain Hakim)
+- `a680b92` — **Feedback fiable** : `saveOne`/`deleteOne`/`upsert` retournent ok/échec ; `toastSaveResult()` → toast vert "✓ Enregistré" ou rouge 6s "⚠️ Erreur d'écriture — donnée NON sauvegardée en base" sur les 5 save* + delEntry ; confirm suppression enrichi (libellé + montant) ; toast au-dessus de la mobnav sur mobile. **Trou critique corrigé** : avant, une erreur Supabase n'était visible que dans db-status (sidebar masquée sur mobile)
+- `4bb5e6f` — **FAB mobile "+ Ajouter"** : bouton flottant orange contextuel (resa/business/taxe/serv/perso), masqué rôle user et sur les autres vues, `updateFab()` dans `goTo()`
+- `760dd77` — **Mémoire des derniers choix** : appartement + collecteur pré-remplis dans Taxe et Services (`lastChoice`/`setLastChoice`, clés `nex_last_appart`/`nex_last_col`) ; éditions existantes non touchées ; Business exclu volontairement (multi-chips appartement = risque de saisie sur le mauvais appart)
 
 ## ✅ P3.8 Mobile complet — fait 2026-06-10 (commits b2ba95a → 1456910)
 

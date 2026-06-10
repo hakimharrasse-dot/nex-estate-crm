@@ -547,7 +547,9 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-10 | feat(sync): `syncStatutsDB()` au boot — PATCH ciblé des statuts dérivés expirés vers Supabase (AJUSTEMENT et ANNULATION_NON_PAYEE exclus) ; 20 statuts périmés nettoyés en base le jour même (`fe7b619`) |
 | 2026-06-10 | Alerte Smoobu testée en réel (antidate 6h → badge visible → restauré) ; audit complet base : 0 anomalie (0 payée sans verrou, 153 CSV Airbnb + 55 booking_pdf + 6 complexes intacts) |
 | 2026-06-10 | Backup `nex-estate-crm-backup-2026-06-10-stable-complet` produit (projet + git + skills dans `_skills_backup/`) — suppression ancien backup 2026-06-09 |
-| 2026-06-10 | **P3.8 Mobile complet** (dernier item roadmap — roadmap close) : filtres grille 2 colonnes <700px toutes vues (`b2ba95a`) ; cartes Réservations avec checkout (`30be250`) ; modals bottom-sheet pleine largeur + inputs 16px anti-zoom iOS (`2130201`) ; Dashboard mobile — cartes récap en colonne, delta dédié, barchart 9px, filtre appart pleine largeur (`1456910`) ← **HEAD** |
+| 2026-06-10 | **P3.8 Mobile complet** (dernier item roadmap — roadmap close) : filtres grille 2 colonnes <700px toutes vues (`b2ba95a`) ; cartes Réservations avec checkout (`30be250`) ; modals bottom-sheet pleine largeur + inputs 16px anti-zoom iOS (`2130201`) ; Dashboard mobile — cartes récap en colonne, delta dédié, barchart 9px, filtre appart pleine largeur (`1456910`) |
+| 2026-06-10 | fix(mobile): Récap équipe en 1 colonne — retour terrain Hakim, 2 colonnes illisibles (`dabe09e`) |
+| 2026-06-10 | **UX globale lot 1** : feedback fiable — saveOne/deleteOne/upsert retournent ok/échec, `toastSaveResult()` vert/rouge 6s sur les 5 save* + delEntry, confirm suppression enrichi, toast au-dessus mobnav (`a680b92`) ; FAB mobile "+ Ajouter" contextuel via `updateFab()` dans goTo (`4bb5e6f`) ; mémoire derniers choix appart/collecteur Taxe+Serv (`lastChoice`/`setLastChoice`, localStorage `nex_last_*`, Business exclu volontairement) (`760dd77`) ← **HEAD** |
 
 ---
 
