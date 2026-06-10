@@ -8037,10 +8037,10 @@ function buildForm(type, editId) {
         '</div></div>'+
       fieldFull('Note / détail (optionnel)','fi-note','text',v('note',''),'Ex: arrivée 8h, clim chambre principale...')+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
-      '<div class="ff"><label class="fl">Réservation liée (optionnel)</label>'+
-        '<input type="text" class="fi" id="fi-resa-ref" list="fi-resa-ref-list" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Code Airbnb ou tapez le voyageur">'+
-        '<datalist id="fi-resa-ref-list">'+buildServResaOptions()+'</datalist>'+
-        '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — sélectionnez ou collez le code</div>'+
+      '<div class="ff" style="position:relative"><label class="fl">Réservation liée (optionnel)</label>'+
+        '<input type="text" class="fi" id="fi-resa-ref" autocomplete="off" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Nom du voyageur, code Airbnb/Booking ou appartement" oninput="servRefSuggest(this.value)" onfocus="servRefSuggest(this.value)" onblur="setTimeout(function(){var b=document.getElementById(\'fi-resa-ref-sug\');if(b)b.style.display=\'none\';},150)">'+
+        '<div id="fi-resa-ref-sug" style="position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--bg2);border:1px solid var(--br);border-radius:8px;max-height:220px;overflow:auto;display:none;box-shadow:0 6px 18px rgba(0,0,0,.45)"></div>'+
+        '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — tapez un nom ou collez le code</div>'+
       '</div>'+
       (function(){
         var _ps=v('pay_source','')||'';
@@ -8085,17 +8085,43 @@ function buildForm(type, editId) {
   return '';
 }
 
-// Génère les <option> pour le datalist "Réservation liée" du formulaire serv
-// Retourne les 80 dernières réservations Airbnb : value=code, label=voyageur+appart+checkin
-function buildServResaOptions() {
+// Autocomplete "Réservation liée" du formulaire serv — Airbnb + Booking
+// Recherche par voyageur (accents ignorés), code ou appartement
+function getServResaCandidates() {
   return DB.resa
-    .filter(function(r) { return r.source === 'Airbnb' && r.ref; })
+    .filter(function(r) { return (r.source === 'Airbnb' || r.source === 'Booking.com') && r.ref; })
     .sort(function(a, b) { return (b.checkin||'').localeCompare(a.checkin||''); })
-    .slice(0, 80)
-    .map(function(r) {
-      var label = (r.voyageur||'?') + ' — ' + (r.appart||'') + ' — ' + (r.checkin||'');
-      return '<option value="' + escHtml(r.ref) + '">' + escHtml(label) + '</option>';
-    }).join('');
+    .slice(0, 400);
+}
+function servRefSuggest(q) {
+  var box = document.getElementById('fi-resa-ref-sug');
+  if (!box) return;
+  q = (q||'').trim();
+  if (q.length < 2) { box.style.display='none'; box.innerHTML=''; return; }
+  var nq = _normStr(q);
+  var hits = getServResaCandidates().filter(function(r) {
+    return _normStr(r.voyageur||'').indexOf(nq) >= 0
+        || _normStr(r.ref||'').indexOf(nq) >= 0
+        || _normStr(r.appart||'').indexOf(nq) >= 0;
+  }).slice(0, 8);
+  if (!hits.length) { box.style.display='none'; box.innerHTML=''; return; }
+  box.innerHTML = hits.map(function(r) {
+    var refAttr = escHtml(r.ref).replace(/'/g, '&#39;');
+    var srcBadge = r.source === 'Airbnb'
+      ? '<span style="color:#ff5a5f;font-weight:700">Airbnb</span>'
+      : '<span style="color:#4a90d9;font-weight:700">Booking</span>';
+    return '<div onmousedown="pickServRef(\''+refAttr+'\')" style="padding:7px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--br)" onmouseover="this.style.background=\'rgba(255,255,255,.05)\'" onmouseout="this.style.background=\'none\'">'+
+      srcBadge+' <b>'+escHtml(r.voyageur||'?')+'</b>'+
+      '<div style="color:var(--td);font-size:11px;margin-top:1px">'+escHtml(r.ref)+' · '+escHtml(r.appart||'')+' · '+escHtml(r.checkin||'')+'</div>'+
+    '</div>';
+  }).join('');
+  box.style.display = 'block';
+}
+function pickServRef(ref) {
+  var inp = document.getElementById('fi-resa-ref');
+  if (inp) inp.value = ref;
+  var box = document.getElementById('fi-resa-ref-sug');
+  if (box) { box.style.display='none'; box.innerHTML=''; }
 }
 
 function field2(lbl,id,type,val,opts) {
