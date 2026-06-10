@@ -3346,18 +3346,21 @@ function fetchEurMad() {
 
   // ── 2. APIs en cascade — première réponse valide gagne ──────────────────────
   var APIS = [
+    // open.er-api.com en premier : taux frais publié chaque jour à 00h02 UTC
     {
-      url: 'https://api.frankfurter.app/latest?from=EUR&to=MAD',
-      parse: function(d) { return d&&d.rates&&d.rates.MAD>1 ? {rate:d.rates.MAD, date:d.date||''} : null; }
+      url: 'https://open.er-api.com/v6/latest/EUR',
+      parse: function(d) {
+        if (!(d&&d.rates&&d.rates.MAD>1)) return null;
+        var dt = d.time_last_update_unix ? new Date(d.time_last_update_unix*1000).toISOString().slice(0,10) : '';
+        return {rate:d.rates.MAD, date:dt};
+      }
     },
+    // currency-api (jsdelivr) en secours : peut servir le dataset de la veille (cache CDN)
     {
       url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json',
       parse: function(d) { return d&&d.eur&&d.eur.mad>1 ? {rate:d.eur.mad, date:d.date||''} : null; }
-    },
-    {
-      url: 'https://open.er-api.com/v6/latest/EUR',
-      parse: function(d) { return d&&d.rates&&d.rates.MAD>1 ? {rate:d.rates.MAD, date:(d.time_last_update_utc||'').slice(0,10)} : null; }
     }
+    // frankfurter.app retiré 2026-06-10 : domaine migré (301 → not found), ECB ne publie pas le MAD
   ];
 
   function fetchWithTimeout(url) {
