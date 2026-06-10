@@ -6527,7 +6527,9 @@ function renderWkCards() {
     ext = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
     if (isCleaner) {
       var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
-      men  = sum(bPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
+      var menPendRows = bPend.filter(function(r){ return r.cat==='Ménage'; })
+        .sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      men  = sum(menPendRows, 'montant');
       // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
       adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
       nbMen= DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).length;
@@ -6558,7 +6560,19 @@ function renderWkCards() {
         (menEffectue > 0 || nbEffectue > 0
           ? '<div class="ccr" style="background:var(--s2);border-radius:6px;padding:4px 6px;margin-bottom:4px"><div class="ccl" style="color:var(--td)">Effectué (période)</div><div class="ccv" style="color:var(--tx)">'+fmt(menEffectue)+'<span style="font-size:11px;color:var(--td);margin-left:4px">· '+nbEffectue+' passage'+(nbEffectue>1?'s':'')+'</span></div></div>'
           : '')+
-        '<div class="ccr"><div class="ccl">Ménage (en attente)</div><div class="ccv">'+fmt(men)+'</div></div>'+
+        '<div class="ccr"><div class="ccl">Ménage (en attente)</div><div class="ccv">'+fmt(men)+
+          (menPendRows.length?'<span style="font-size:11px;color:var(--td);margin-left:4px">· '+menPendRows.length+' passage'+(menPendRows.length>1?'s':'')+'</span>':'')+
+        '</div></div>'+
+        (menPendRows.length
+          ? '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ Voir les passages en attente</summary>'+
+            '<div style="margin-top:3px">'+menPendRows.map(function(r){
+              return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--tm);padding:2px 0;border-bottom:1px solid var(--br)">'+
+                '<span style="white-space:nowrap">'+(r.date||'—')+'</span>'+
+                '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(aptShort(r.appart||'')||r.appart||'—')+'</span>'+
+                '<span style="font-family:\'DM Mono\',monospace;color:var(--or);white-space:nowrap">'+fmt(r.montant)+'</span>'+
+              '</div>';
+            }).join('')+'</div></details>'
+          : '')+
         (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl)">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
         (adv>0 ? '<div class="ccr"><div class="ccl">Avancé</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
         '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:6px">'+
