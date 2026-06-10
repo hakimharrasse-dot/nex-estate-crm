@@ -428,6 +428,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .r-cards,.b-cards,.t-cards,.s-cards,.p-cards,.dup-cards{display:flex;}
   /* Bedit/bdel plus grand sur mobile */
   .bedit,.bdel{padding:8px 10px;font-size:17px;}
+  /* Modals — bottom sheet pleine largeur */
+  .ov{padding:0;align-items:flex-end;}
+  .mbox{max-width:none;width:100%;max-height:94dvh;border-radius:16px 16px 0 0;padding:20px 16px calc(24px + env(safe-area-inset-bottom,0px));}
+  /* Anti-zoom iOS au focus (inputs < 16px déclenchent un zoom) */
+  .fi,.fse{font-size:16px;}
 }
 /* ── Logements ── */
 .log-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
