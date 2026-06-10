@@ -14,10 +14,12 @@
 - Bug Faiz Remmache : réglé (plus de doublon)
 - Audit `smoobu-enrich` : ✅ conforme — ne patch que voyageur/ref/lang/email/phone, jamais de champs financiers
 
+- P3.11 Alerte sync Smoobu : ✅ fait 2026-06-10 (`654fb39`) — table `sync_heartbeat` (RLS read authenticated), `smoobu-poll.js` écrit un heartbeat à chaque run, badge rouge sidebar si > 2h
+- Récap équipe : nb passages en attente + détail dépliable dates/appart/montant (`41947f4`)
+
 ## 🔲 Reste à faire
 
-1. **P3.11 Alerte webhook Smoobu** — badge nav si aucune sync depuis > 2h (~1-2h)
-2. **P3.8 Mobile complet** — Réservations + Dashboard en priorité, commits séparés (gros chantier)
+1. **P3.8 Mobile complet** — Réservations + Dashboard en priorité, commits séparés (gros chantier) — dernier item de la roadmap
 
 ---
 
