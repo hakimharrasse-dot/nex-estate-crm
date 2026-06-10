@@ -5977,7 +5977,7 @@ function renderResa() {
         '</div>'+
         '<div class="r-card-voyageur">'+(isInfoManquante(r)?chip('Infos client en attente Smoobu','smoobu-wait'):(r.voyageur||'—'))+'</div>'+
         '<div class="r-card-row3">'+
-          '<span>📅 '+(r.checkin||'—')+'</span>'+
+          '<span>📅 '+(r.checkin||'—')+(r.checkout?' → '+(r.checkout.slice(0,4)===String(r.checkin||'').slice(0,4)?r.checkout.slice(5):r.checkout):'')+'</span>'+
           '<span>🌙 '+(r.nuits_fact||0)+' nuit'+(r.nuits_fact>1?'s':'')+'</span>'+
           '<span class="r-card-net">'+Math.round(rNetMAD(r)).toLocaleString('fr-MA')+' MAD'+_resaRateTag(r)+'</span>'+
         '</div>'+
