@@ -248,7 +248,8 @@ input[type=checkbox].scb{width:15px;height:15px;accent-color:var(--go);cursor:po
 .bdel-mois:hover{opacity:.85;}
 .bdel-mois:disabled{opacity:.4;cursor:default;}
 input[type=checkbox].rcb{width:15px;height:15px;accent-color:var(--re);cursor:pointer;flex-shrink:0;}
-.toast-ok{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gr);color:#fff;border-radius:10px;padding:11px 22px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:opacity .4s;}
+.toast-ok{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gr);color:#fff;border-radius:10px;padding:11px 22px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:opacity .4s;max-width:92vw;text-align:center;}
+.toast-ok.toast-err{background:var(--re);}
 .toast-ok.hide{opacity:0;}
 /* ── Visibilité par rôle ─────────────────────────────────────── */
 /* admin-only : caché par défaut, visible UNIQUEMENT pour role-admin */
@@ -440,6 +441,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .mbox{max-width:none;width:100%;max-height:94dvh;border-radius:16px 16px 0 0;padding:20px 16px calc(24px + env(safe-area-inset-bottom,0px));}
   /* Anti-zoom iOS au focus (inputs < 16px déclenchent un zoom) */
   .fi,.fse{font-size:16px;}
+  /* Toast au-dessus de la mobnav */
+  .toast-ok{bottom:84px;}
 }
 /* ── Logements ── */
 .log-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
@@ -1732,11 +1735,12 @@ async function loadAllDB() {
 }
 
 async function saveOne(k, entry) {
-  if (!SUPA) { setDBStatus(false, 'Non connecté — écriture impossible'); return; }
+  if (!SUPA) { setDBStatus(false, 'Non connecté — écriture impossible'); return false; }
   try {
     var res = await SUPA.from(TABLE[k]).upsert(entry, {onConflict:'id'});
     if (res.error) throw res.error;
-  } catch(e) { setDBStatus(false, 'Erreur écriture'); console.error('Supabase saveOne error:', e); }
+    return true;
+  } catch(e) { setDBStatus(false, 'Erreur écriture'); console.error('Supabase saveOne error:', e); return false; }
 }
 
 async function saveAll(k) {
@@ -1753,11 +1757,12 @@ async function saveAll(k) {
 }
 
 async function deleteOne(k, id) {
-  if (!SUPA) { setDBStatus(false, 'Non connecté — suppression impossible'); return; }
+  if (!SUPA) { setDBStatus(false, 'Non connecté — suppression impossible'); return false; }
   try {
     var res = await SUPA.from(TABLE[k]).delete().eq('id', id);
     if (res.error) throw res.error;
-  } catch(e) { setDBStatus(false, 'Erreur suppression'); console.error('Supabase delete error:', e); }
+    return true;
+  } catch(e) { setDBStatus(false, 'Erreur suppression'); console.error('Supabase delete error:', e); return false; }
 }
 
 // DB in-memory
@@ -6160,13 +6165,14 @@ async function deleteResaMois() {
   showToast('✅ '+ids.length+' réservation'+(ids.length>1?'s':'')+' du mois '+mk+' supprimée'+(ids.length>1?'s':''));
 }
 
-function showToast(msg) {
+function showToast(msg, type) {
   var old=document.getElementById('_toast');
   if(old) old.remove();
   var t=document.createElement('div');
-  t.id='_toast'; t.className='toast-ok'; t.textContent=msg;
+  t.id='_toast'; t.className='toast-ok'+(type==='err'?' toast-err':''); t.textContent=msg;
   document.body.appendChild(t);
-  setTimeout(function(){t.classList.add('hide');setTimeout(function(){t.remove();},500);},2800);
+  // Erreur : affichée plus longtemps (l'utilisateur doit la voir, surtout sur mobile où db-status est masqué)
+  setTimeout(function(){t.classList.add('hide');setTimeout(function(){t.remove();},500);},type==='err'?6000:2800);
 }
 
 // ============================================================
@@ -8474,7 +8480,8 @@ async function saveResa() {
       ? new Date().toISOString()
       : (function(){ if(!M_ID) return null; var ex=DB.resa.find(function(x){return x.id===M_ID;}); return ex?ex.mad_reel_updated_at??null:null; })()
   };
-  await upsert('resa',entry); closeModal(); renderResa(); updateAsuivreBadge();
+  var _okR = await upsert('resa',entry); closeModal(); renderResa(); updateAsuivreBadge();
+  toastSaveResult(_okR);
   if (QUALITE_ANOMALIES.length) runQualiteCheck();
 }
 
@@ -8496,26 +8503,30 @@ async function saveBiz() {
     ? (_recurChargeEl.value || null)
     : (_existBiz ? (_existBiz.recurring_charge_id || null) : null);
   var _recurMo  = _existBiz ? (_existBiz.recurring_month    || null) : null;
+  var _okB = true;
   if(scope === 'global') {
-    await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
+    _okB = await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
+      var _ok1 = await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
+      if(!_ok1) _okB = false;
     }
   }
   closeModal(); renderBiz();
+  toastSaveResult(_okB);
 }
 
 async function saveTaxe() {
   var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
   if(!d||!m){alert('Date et montant requis');return;}
   var _tPay=gv('fi-pay')||'Cash';
-  await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev'),note:(gv('fi-note')||'').trim()||null});
+  var _okT = await upsert('taxe',{id:M_ID||uid(),date:d,appart:gv('fi-app'),voy:gv('fi-voy'),reservation_ref:gv('fi-resa-ref')||null,col:_tPay==='Cash'?gv('fi-col'):null,pay:_tPay,montant:m,rev:gv('fi-rev'),note:(gv('fi-note')||'').trim()||null});
   closeModal(); renderTaxe(); updateAsuivreBadge();
+  toastSaveResult(_okT);
 }
 
 async function saveServ() {
@@ -8530,8 +8541,9 @@ async function saveServ() {
   var _svcs=Array.prototype.map.call(_svcCbs,function(cb){return cb.value;}).join(', ');
   if(!_svcs){alert('Sélectionne au moins un type de service');return;}
   var _note=(gv('fi-note')||'').trim()||null;
-  await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
+  var _okS = await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
   closeModal(); renderServ(); updateAsuivreBadge();
+  toastSaveResult(_okS);
 }
 
 // ── Auto-sync taxes Booking ────────────────────────────────────────────────
@@ -8659,21 +8671,38 @@ async function savePerso() {
   if(!d||!m){alert('Date et montant requis');return;}
   var donChk=document.getElementById('fi-don-chk');
   var don=(donChk&&donChk.checked)?(parseFloat(gv('fi-don'))||0):0;
-  await upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest'),don:don});
+  var _okP = await upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest'),don:don});
   closeModal(); renderPerso();
+  toastSaveResult(_okP);
 }
 
 async function upsert(type,entry) {
   var idx=DB[type].findIndex(function(x){return x.id===entry.id;});
   if(idx>=0) DB[type][idx]=entry; else DB[type].push(entry);
-  await saveOne(type,entry);
+  return await saveOne(type,entry);
+}
+
+// Toast standard après écriture — erreur visible même sur mobile (db-status masqué <700px)
+function toastSaveResult(ok) {
+  if (ok) showToast('✓ Enregistré');
+  else showToast('⚠️ Erreur d\'écriture — donnée NON sauvegardée en base', 'err');
+}
+
+function delEntryLabel(type,id) {
+  var r=DB[type].find(function(x){return x.id===id;});
+  if(!r) return '';
+  var who=r.voyageur||r.voy||r.desc||r.cat||r.svc||'';
+  var amt=r.montant!=null?r.montant:(r.net!=null?Math.round(r.net*EUR_MAD):null);
+  return '\n'+(who?who+' — ':'')+(amt!=null?amt.toLocaleString('fr-MA')+' MAD':'');
 }
 
 async function delEntry(type,id) {
-  if(!confirm('Supprimer ?'))return;
+  if(!confirm('Supprimer cette entrée ?'+delEntryLabel(type,id)))return;
   DB[type]=DB[type].filter(function(x){return x.id!==id;});
-  await deleteOne(type,id);
+  var ok=await deleteOne(type,id);
   renderView({resa:'r',business:'b',taxe:'t',serv:'s',perso:'p'}[type]);
+  if (ok) showToast('🗑 Supprimé');
+  else showToast('⚠️ Erreur — suppression NON appliquée en base', 'err');
 }
 
 
