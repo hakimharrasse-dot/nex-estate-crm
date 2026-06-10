@@ -1,7 +1,23 @@
-# Nex-Estate CRM — Roadmap & Audit 2026-06-08
+# Nex-Estate CRM — Roadmap & Audit 2026-06-08 (MAJ 2026-06-10)
 
-> Audit complet réalisé le 2026-06-08. Score global : **73/100**.
+> Audit complet réalisé le 2026-06-08. Score global : **73/100** → estimé **~85-88/100** au 2026-06-10.
 > Ce document sert de roadmap pour les prochaines sessions.
+
+---
+
+## ✅ État au 2026-06-10 — fait depuis l'audit
+
+- P1.1 Fix "null" collecteur (`e17ad7e`) · P1.2 Recherche Taxe/Services/Perso (`57952d4`) · P1.3 Taux EUR/MAD multi-source + cache + auto-lock (`b9005e9`→`8b1df0e`)
+- P2.4 Multi-select Business (Commits A→E) · P2.5 Export CSV 4 vues (`cd7cf49`) · P2.6 Vue "À suivre" (`2517f54`→`f129756`) · P2.7 Barchart CA mensuel 12 mois (`9c6490d`)
+- P3.9 Stats par appartement (`d4f754a`→`04acbd9`) · P3.10 Taxe de séjour auto-créée pour les résas Booking (`57952d4` session 06-09)
+- Hors roadmap : **CA unifié** (resa+serv+taxe — dashboard, appartements, sources `681dd40`/`c5d7137`), note extras cash par client plateforme (`ed35a0c`), autocomplete Réservation liée Airbnb+Booking avec sync appartement/voyageur (`6487eeb`→`6f674ef`)
+- Bug Faiz Remmache : réglé (plus de doublon)
+- Audit `smoobu-enrich` : ✅ conforme — ne patch que voyageur/ref/lang/email/phone, jamais de champs financiers
+
+## 🔲 Reste à faire
+
+1. **P3.11 Alerte webhook Smoobu** — badge nav si aucune sync depuis > 2h (~1-2h)
+2. **P3.8 Mobile complet** — Réservations + Dashboard en priorité, commits séparés (gros chantier)
 
 ---
 
