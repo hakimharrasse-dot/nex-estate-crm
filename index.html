@@ -3262,19 +3262,24 @@ function syncStatutsDB() {
     });
 }
 
-// ── Alerte sync Smoobu — lit sync_heartbeat (écrit par smoobu-poll à chaque run) ──
+// ── Alerte sync Smoobu — lit sync_heartbeat (poll quotidien 12h UTC + webhook temps réel) ──
+// Le cron poll Vercel est QUOTIDIEN (plan Hobby) ; le webhook écrit aussi un heartbeat
+// à chaque événement Smoobu. On prend l'activité la plus récente, seuil 26h :
+// alerte uniquement si le poll quotidien a raté son créneau ET aucun webhook reçu.
 function checkSmoobuHeartbeat() {
   var el = document.getElementById('smoobu-hb-alert');
   if (!el || !SUPA) return;
-  SUPA.from('sync_heartbeat').select('last_run,detail').eq('id', 'smoobu-poll').maybeSingle()
+  SUPA.from('sync_heartbeat').select('id,last_run,detail')
     .then(function(res) {
-      if (res.error || !res.data || !res.data.last_run) return; // table vide = pas encore de heartbeat → silencieux
-      var ageMs = Date.now() - new Date(res.data.last_run).getTime();
-      var ageH  = ageMs / 3600000;
-      if (ageH > 2) {
+      if (res.error || !res.data || !res.data.length) return; // table vide = pas encore de heartbeat → silencieux
+      var newest = null;
+      res.data.forEach(function(r){ if (r.last_run && (!newest || r.last_run > newest.last_run)) newest = r; });
+      if (!newest) return;
+      var ageH = (Date.now() - new Date(newest.last_run).getTime()) / 3600000;
+      if (ageH > 26) {
         var lbl = ageH < 48 ? Math.floor(ageH) + 'h' : Math.floor(ageH / 24) + 'j';
         el.textContent = '⚠️ Sync Smoobu inactive depuis ' + lbl;
-        el.title = 'Dernier poll : ' + res.data.last_run.slice(0, 16).replace('T', ' ') + ' UTC — vérifier le cron Vercel / webhook Smoobu';
+        el.title = 'Dernière activité (' + newest.id + ') : ' + newest.last_run.slice(0, 16).replace('T', ' ') + ' UTC — vérifier le cron Vercel / webhook Smoobu';
         el.style.display = '';
       } else {
         el.style.display = 'none';

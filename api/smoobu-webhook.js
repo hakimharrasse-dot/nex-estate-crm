@@ -252,6 +252,19 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Configuration Supabase manquante' });
   }
 
+  // Heartbeat : toute activité webhook = preuve que la sync Smoobu est vivante.
+  // Le poll cron n'est que quotidien (12h UTC, plan Vercel Hobby) — sans ce
+  // heartbeat, l'alerte sidebar serait rouge la majorité de la journée.
+  try {
+    await supabase.from('sync_heartbeat').upsert({
+      id: 'smoobu-webhook',
+      last_run: new Date().toISOString(),
+      detail: action,
+    }, { onConflict: 'id' });
+  } catch (e) {
+    console.error('[webhook] heartbeat error:', e.message);
+  }
+
   try {
     switch (action) {
 
