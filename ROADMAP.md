@@ -19,8 +19,13 @@
 
 ## 🔲 Reste à faire — chantier UX globale (ouvert 2026-06-10, après clôture roadmap initiale)
 
-1. **UX Lisibilité** : harmonisation chips/espacements, hiérarchie KPIs, états vides plus parlants
-2. **UX Messages IA** (60/100) : refonte UX du module
+1. **UX Messages IA** (60/100) : refonte UX du module — dernier item
+
+## ✅ UX Lisibilité — livré 2026-06-12 (commits da53cfe → 1a7c428)
+
+- `da53cfe` — **États vides actionnables** : icône + message + hint "Vérifie la période ou les filtres actifs" + bouton "+ Ajouter" contextuel (resa/business/taxe/serv/perso, desktop + mobile, helper `emptyStateHtml`)
+- `6712e91` — **Hiérarchie KPIs** : classe `kc-hero` sur le KPI principal de chaque vue — valeur 23px desktop / 20px mobile + accent latéral couleur module (vert resa/dash, orange business, teal taxe, doré serv, violet perso)
+- `1a7c428` — **Harmonisation Services** : colonne "Collecte" fusionnée comme Taxe (chip "Via Airbnb"/"Via Booking" pour pay_source, sinon collecteur + mode) — supprime le faux "Cash" affiché sur les extras plateforme
 
 ## ✅ UX globale — lot 3 desktop livré 2026-06-10 (commits 1d95810 → 9c5c68c)
 
