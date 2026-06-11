@@ -7147,10 +7147,27 @@ function renderServ() {
   var topK=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];})[0]||'—';
   set('s-top',topK);
   var allS=filterPer(DB.serv,'s');
-  set('s-recap',CATS_S.map(function(sv){
-    var x=allS.filter(function(r){return (r.svc||'').split(',').map(function(s){return s.trim();}).indexOf(sv)!==-1;}); if(!x.length)return'';
-    return'<div class="rc"><div><div class="rn">'+sv+'</div><div class="rsb">'+x.length+'×</div></div><div class="rv" style="color:var(--go)">'+fmt(sum(x,'montant'))+'</div></div>';
-  }).join('')||'<div style="color:var(--td);font-size:13px">Aucun service</div>');
+  // Résumé par service — les combos multi-services ont leur propre carte :
+  // attribuer le montant complet à chaque service le double-comptait
+  // (la somme des cartes doit égaler le Total période)
+  var _grp={};
+  allS.forEach(function(r){
+    var _svcs=(r.svc||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var _key=_svcs.length>1?_svcs.join(' + '):(_svcs[0]||'Autre');
+    if(!_grp[_key])_grp[_key]={n:0,tot:0,combo:_svcs.length>1};
+    _grp[_key].n++;_grp[_key].tot+=(r.montant||0);
+  });
+  var _solo=CATS_S.filter(function(sv){return _grp[sv];}).map(function(sv){
+    var g=_grp[sv];
+    return'<div class="rc"><div><div class="rn">'+sv+'</div><div class="rsb">'+g.n+'×</div></div><div class="rv" style="color:var(--go)">'+fmt(g.tot)+'</div></div>';
+  });
+  var _combos=Object.keys(_grp).filter(function(k){return _grp[k].combo;})
+    .sort(function(a,b){return _grp[b].tot-_grp[a].tot;})
+    .map(function(k){
+      var g=_grp[k];
+      return'<div class="rc" style="border-left:3px solid var(--go)"><div><div class="rn">'+escHtml(k)+'</div><div class="rsb">'+g.n+'× · combo</div></div><div class="rv" style="color:var(--go)">'+fmt(g.tot)+'</div></div>';
+    });
+  set('s-recap',_solo.concat(_combos).join('')||'<div style="color:var(--td);font-size:13px">Aucun service</div>');
   var tb=document.getElementById('s-tb'),em=document.getElementById('s-em');
   var cardsCont=document.getElementById('s-cards');
   var mobile=isMobile();
