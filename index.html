@@ -4777,6 +4777,52 @@ window.addEventListener('scroll', function(){
   b.style.display=(window.scrollY>600)?'flex':'none';
 }, {passive:true});
 
+// ── Raccourcis clavier (desktop) ─────────────────────────────
+// N = nouvelle entrée (vue active) · / = recherche · Échap = fermer modal/aide · ? = aide
+var KBD_SEARCH = {resa:'r-search',business:'b-fq',taxe:'t-fsearch',serv:'s-fsearch',perso:'p-fsearch'};
+function showKbdHelp(){
+  var old=document.getElementById('kbd-help'); if(old){ old.remove(); return; }
+  var d=document.createElement('div');
+  d.id='kbd-help';
+  d.style.cssText='position:fixed;bottom:80px;right:24px;background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 18px;z-index:510;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+  d.innerHTML='<div style="font-weight:600;margin-bottom:8px">⌨️ Raccourcis clavier</div>'+
+    '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;color:var(--tm)">'+
+    '<b style="color:var(--tx)">N</b><span>Nouvelle entrée (vue active)</span>'+
+    '<b style="color:var(--tx)">/</b><span>Recherche (vue active)</span>'+
+    '<b style="color:var(--tx)">Échap</b><span>Fermer le modal / cette aide</span>'+
+    '<b style="color:var(--tx)">?</b><span>Afficher / masquer cette aide</span>'+
+    '</div>';
+  document.body.appendChild(d);
+  setTimeout(function(){ var x=document.getElementById('kbd-help'); if(x) x.remove(); },10000);
+}
+document.addEventListener('keydown', function(e){
+  var app=document.getElementById('app');
+  if(!app||app.style.display==='none') return; // login / reset screen
+  // Échap : prioritaire, même pendant la saisie (fermer modal ou aide)
+  if(e.key==='Escape'){
+    var h=document.getElementById('kbd-help'); if(h){ h.remove(); return; }
+    var ov=document.getElementById('modal-overlay');
+    if(ov&&!ov.classList.contains('hidden')){ closeModal(); }
+    return;
+  }
+  var tag=(e.target.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'||e.target.isContentEditable) return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  var ovM=document.getElementById('modal-overlay');
+  if(ovM&&!ovM.classList.contains('hidden')) return; // modal ouvert → pas de raccourcis
+  if(e.key==='n'||e.key==='N'){
+    var t=FAB_VIEWS[CUR];
+    if(t&&ROLE!=='user'){ e.preventDefault(); openModal(t); }
+    return;
+  }
+  if(e.key==='/'){
+    var sid=KBD_SEARCH[CUR], el=sid&&document.getElementById(sid);
+    if(el){ e.preventDefault(); el.focus(); el.scrollIntoView({block:'center'}); }
+    return;
+  }
+  if(e.key==='?'){ showKbdHelp(); return; }
+});
+
 // ============================================================
 // CIRCLE KPI HELPER
 // ============================================================
