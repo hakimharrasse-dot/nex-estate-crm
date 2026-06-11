@@ -914,10 +914,10 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <button class="ba bat" onclick="openModal('taxe')">+ Ajouter</button>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Collecté période</div><div class="kv" style="color:var(--te)" id="t-tot">0 MAD</div><div class="ks" id="t-cnt">0 entrées</div></div>
-    <div class="kc"><div class="kl">Par Hakim</div><div class="kv" id="t-hak">0 MAD</div></div>
-    <div class="kc"><div class="kl">Par l'équipe</div><div class="kv" id="t-eqp">0 MAD</div></div>
-    <div class="kc"><div class="kl">Non reversé</div><div class="kv" style="color:var(--re)" id="t-nr">0 MAD</div></div>
+    <div class="kc"><div class="kl">Collecté terrain</div><div class="kv" style="color:var(--te)" id="t-tot">0 MAD</div><div class="ks" id="t-cnt">0 entrées</div></div>
+    <div class="kc"><div class="kl">Via plateforme</div><div class="kv" style="color:var(--bl)" id="t-plat">0 MAD</div><div class="ks">Encaissée avec le versement Booking</div></div>
+    <div class="kc"><div class="kl">Non reversé</div><div class="kv" style="color:var(--re)" id="t-nr">0 MAD</div><div class="ks">À reverser à l'État</div></div>
+    <div class="kc"><div class="kl">Reversé</div><div class="kv" style="color:var(--gr)" id="t-rev">0 MAD</div></div>
   </div>
 
   <div class="fb"><div class="fr">
@@ -945,7 +945,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="t-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th style="width:32px"><input type="checkbox" class="tcb" id="taxe-chk-all" onchange="toggleTaxeAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="tcb" id="taxe-chk-all" onchange="toggleTaxeAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecte</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
     <tbody id="t-tb"></tbody>
   </table><div class="empty hidden" id="t-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe</div></div>
   <div id="t-cards" class="t-cards"></div>
@@ -7052,12 +7052,14 @@ function renderTaxe() {
   if(fs)rows=rows.filter(function(r){return r.rev===fs;});
   if(fq)rows=rows.filter(function(r){return (r.voy||'').toLowerCase().includes(fq)||(r.reservation_ref||'').toLowerCase().includes(fq)||(r.note||'').toLowerCase().includes(fq)||(r.appart||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var tot=sum(rows,'montant');
-  var hak=sum(rows.filter(function(r){return r.col==='Hakim';}),'montant');
-  var eqp=sum(rows.filter(function(r){return r.col!=='Hakim';}),'montant');
-  var nr=sum(rows.filter(function(r){return r.rev==='Non reversé'&&r.col!=='Hakim';}),'montant');
-  set('t-tot',fmt(tot)); set('t-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
-  set('t-hak',fmt(hak)); set('t-eqp',fmt(eqp)); set('t-nr',fmt(nr));
+  // Collecté terrain = cash réellement encaissé sur place ; Via plateforme = taxe incluse dans le versement Booking
+  var terrain=sum(rows.filter(function(r){return r.pay!=='Booking';}),'montant');
+  var plat=sum(rows.filter(function(r){return r.pay==='Booking';}),'montant');
+  var nr=sum(rows.filter(function(r){return r.rev==='Non reversé';}),'montant');
+  var rev=sum(rows.filter(function(r){return r.rev==='Reversé';}),'montant');
+  var nbTerrain=rows.filter(function(r){return r.pay!=='Booking';}).length;
+  set('t-tot',fmt(terrain)); set('t-cnt',nbTerrain+' entrée'+(nbTerrain>1?'s':'')+' cash');
+  set('t-plat',fmt(plat)); set('t-nr',fmt(nr)); set('t-rev',fmt(rev));
   var tb=document.getElementById('t-tb'), em=document.getElementById('t-em');
   var cardsCont=document.getElementById('t-cards');
   var mobile=isMobile();
@@ -7088,8 +7090,9 @@ function renderTaxe() {
           chip(r.rev,r.rev==='Reversé'?'rev':'att')+
         '</div>'+
         '<div class="r-card-row2">'+
-          chip(r.col||r.pay||'Cash',colClass(r.col||r.pay||'Cash'))+
-          chip(r.pay||'Cash','eau')+
+          (r.pay==='Booking'
+            ? chip('Via Booking','booking')
+            : chip(r.col||'—',colClass(r.col||'Cash'))+chip(r.pay||'Cash','eau'))+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
         '<div class="r-card-row3">'+
@@ -7107,8 +7110,9 @@ function renderTaxe() {
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+(r.note?'<div style="font-size:11px;font-style:italic;color:var(--td)">'+escHtml(r.note)+'</div>':'')+'</td>'+
-        '<td>'+chip(r.col||r.pay||'Cash',colClass(r.col||r.pay||'Cash'))+'</td>'+
-        '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
+        '<td>'+(r.pay==='Booking'
+          ? chip('Via Booking','booking')
+          : chip(r.col||'—',colClass(r.col||'Cash'))+' '+chip(r.pay||'Cash','eau'))+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.rev,r.rev==='Reversé'?'rev':'att')+'</td>'+
         '<td>'+actBtns('taxe',r.id)+'</td>'+
