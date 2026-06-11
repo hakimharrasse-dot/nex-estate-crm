@@ -33,6 +33,14 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 /* KPI cards */
 .kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
 .kc{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:14px 16px;}
+/* KPI principal de chaque vue — valeur plus grande + accent latéral couleur module */
+.kc-hero .kv{font-size:23px;}
+#vw-dash .kc-hero{border-left:3px solid var(--gr);}
+#vw-resa .kc-hero{border-left:3px solid var(--gr);}
+#vw-business .kc-hero{border-left:3px solid var(--or);}
+#vw-taxe .kc-hero{border-left:3px solid var(--te);}
+#vw-serv .kc-hero{border-left:3px solid var(--go);}
+#vw-perso .kc-hero{border-left:3px solid var(--pu);}
 .kl{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;font-weight:500;margin-bottom:5px;}
 .kv{font-size:18px;font-weight:600;font-family:'DM Mono',monospace;}
 .ks{font-size:11px;color:var(--td);margin-top:3px;}
@@ -453,6 +461,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .fi,.fse{font-size:16px;}
   /* Toast au-dessus de la mobnav */
   .toast-ok{bottom:84px;}
+  /* KPI hero : taille réduite pour tenir sur une ligne en carte demi-largeur */
+  .kc-hero .kv{font-size:20px;}
 }
 /* ── Logements ── */
 .log-card{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
@@ -666,7 +676,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 
   <div class="kg">
-    <div class="kc"><div class="kl" id="d-kl-net">CA encaissé</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="ks" id="d-net-att" style="color:var(--or)"></div><div class="kd" id="d-delta-net"></div></div>
+    <div class="kc kc-hero"><div class="kl" id="d-kl-net">CA encaissé</div><div class="kv" style="color:var(--gr)" id="d-net">0 MAD</div><div class="ks" id="d-brut">Brut : 0 MAD</div><div class="ks" id="d-net-att" style="color:var(--or)"></div><div class="kd" id="d-delta-net"></div></div>
     <div class="kc" id="kc-res"><div class="kl">Résultat net</div><div class="kv" id="d-res">0 MAD</div><div class="ks" id="d-ks-res">Revenus nets − Dépenses business</div><div class="kd" id="d-delta-res"></div></div>
     <div class="kc"><div class="kl">Taux d'occupation</div><div class="kv" style="color:var(--te)" id="d-occ">0 %</div><div class="ks" id="d-occ-det">0 / 0 nuits</div><div class="kd" id="d-delta-occ2"></div></div>
     <div class="kc"><div class="kl">ADR</div><div class="kv" style="color:var(--bl)" id="d-adr">0 MAD</div><div class="ks" id="d-ks-adr">Prix moyen / nuit facturée</div><div class="kd" id="d-delta-adr"></div></div>
@@ -783,7 +793,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <button class="ba ba-ghost" id="r-sel-all-filtered" onclick="selectAllFiltered()" style="padding:6px 12px;font-size:12px;display:none">☑ Sélectionner toutes les réservations filtrées</button>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
+    <div class="kc kc-hero"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
     <div class="kc"><div class="kl">Revenus bruts</div><div class="kv" id="r-brut">0 MAD</div></div>
     <div class="kc"><div class="kl">Commissions</div><div class="kv" style="color:var(--re)" id="r-com">0 MAD</div></div>
     <div class="kc"><div class="kl">Nuits facturées</div><div class="kv" id="r-nuits">0</div></div>
@@ -846,7 +856,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl" id="b-kl-tot">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
+    <div class="kc kc-hero"><div class="kl" id="b-kl-tot">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Ménage</div><div class="kv" id="b-men">0 MAD</div></div>
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
@@ -914,7 +924,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <button class="ba bat" onclick="openModal('taxe')">+ Ajouter</button>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Collecté terrain</div><div class="kv" style="color:var(--te)" id="t-tot">0 MAD</div><div class="ks" id="t-cnt">0 entrées</div></div>
+    <div class="kc kc-hero"><div class="kl">Collecté terrain</div><div class="kv" style="color:var(--te)" id="t-tot">0 MAD</div><div class="ks" id="t-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Via plateforme</div><div class="kv" style="color:var(--bl)" id="t-plat">0 MAD</div><div class="ks">Encaissée avec le versement Booking</div></div>
     <div class="kc"><div class="kl">Non reversé</div><div class="kv" style="color:var(--re)" id="t-nr">0 MAD</div><div class="ks">À reverser à l'État</div></div>
     <div class="kc"><div class="kl">Reversé</div><div class="kv" style="color:var(--gr)" id="t-rev">0 MAD</div></div>
@@ -962,7 +972,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--go)" id="s-tot">0 MAD</div><div class="ks" id="s-cnt">0 services</div></div>
+    <div class="kc kc-hero"><div class="kl">Total période</div><div class="kv" style="color:var(--go)" id="s-tot">0 MAD</div><div class="ks" id="s-cnt">0 services</div></div>
     <div class="kc"><div class="kl">Payé</div><div class="kv" style="color:var(--gr)" id="s-pay">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="s-att">0 MAD</div></div>
     <div class="kc"><div class="kl">+ Fréquent</div><div class="kv" style="font-size:12px;color:var(--go)" id="s-top">—</div></div>
@@ -1234,7 +1244,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
+    <div class="kc kc-hero"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
     <div class="kc"><div class="kl">Crédits & Loyer</div><div class="kv" id="p-crd">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="p-att">0 MAD</div></div>
