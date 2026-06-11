@@ -8697,16 +8697,19 @@ function svcSelChanged(){
   if(chips) chips.innerHTML = sel.map(function(s){return '<span class="ch ch-serv">'+escHtml(s)+'</span>';}).join(' ');
   svcAmountsRefresh(sel);
 }
-// Montant par service : uniquement en CRÉATION avec ≥2 services
-// (en édition, l'entrée existante garde son montant global — rétrocompatible)
+// Montant par service : dès 2 services sélectionnés (création ET édition).
+// En édition d'un ancien combo, l'entrée sera DIVISÉE en une ligne par service à l'enregistrement.
 function svcAmountsRefresh(sel){
   var wrap=document.getElementById('fi-svc-amts'), mEl=document.getElementById('fi-montant');
   if(!wrap||!mEl) return;
-  if(M_ID || sel.length<2){ wrap.style.display='none'; wrap.innerHTML=''; mEl.readOnly=false; return; }
+  if(sel.length<2){ wrap.style.display='none'; wrap.innerHTML=''; mEl.readOnly=false; return; }
+  // Mémoriser le montant global d'origine (avant verrouillage) pour l'afficher en aide à la répartition
+  if(wrap.dataset.orig===undefined||wrap.dataset.orig==='') wrap.dataset.orig=(!mEl.readOnly&&parseFloat(mEl.value)>0)?mEl.value:'';
   var prev={};
   wrap.querySelectorAll('.fi-svc-amt').forEach(function(i){ prev[i.dataset.svc]=i.value; });
+  var origHint=(M_ID&&wrap.dataset.orig)?' <span style="font-size:11px;color:var(--go);font-weight:600">— '+parseFloat(wrap.dataset.orig).toLocaleString('fr-MA')+' MAD à répartir</span>':'';
   wrap.style.display='block';
-  wrap.innerHTML='<label class="fl">Montant par service (MAD) <span style="font-size:11px;color:var(--td);font-weight:400">— une ligne sera créée par service</span></label>'+
+  wrap.innerHTML='<label class="fl">Montant par service (MAD) <span style="font-size:11px;color:var(--td);font-weight:400">— une ligne par service'+(M_ID?' (cette entrée sera divisée)':'')+'</span>'+origHint+'</label>'+
     sel.map(function(s){
       return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
         '<span style="flex:1;font-size:13px;min-width:0">'+escHtml(s)+'</span>'+
@@ -8738,8 +8741,10 @@ async function saveServ() {
   var _note=(gv('fi-note')||'').trim()||null;
   var _common={date:d,appart:gv('fi-app'),voy:gv('fi-voy'),col:_col,pay:_pay,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note};
 
-  // Création multi-services → UNE LIGNE PAR SERVICE avec son propre montant
-  if(!M_ID && _svcArr.length>=2){
+  // Multi-services (création OU édition) → UNE LIGNE PAR SERVICE avec son propre montant.
+  // En édition d'un ancien combo : la ligne existante (M_ID) devient le 1er service,
+  // les suivants sont créés comme nouvelles lignes (mêmes infos communes).
+  if(_svcArr.length>=2){
     var _amts={}, _bad=false;
     Array.prototype.forEach.call(document.querySelectorAll('.fi-svc-amt'),function(i){
       var a=parseFloat(i.value)||0;
@@ -8750,7 +8755,8 @@ async function saveServ() {
     var _okAll=true;
     for(var _i=0;_i<_svcArr.length;_i++){
       var _sv=_svcArr[_i];
-      var _ok1=await upsert('serv',Object.assign({id:uid(),svc:_sv,montant:_amts[_sv]||0},_common));
+      var _id=(_i===0&&M_ID)?M_ID:uid();
+      var _ok1=await upsert('serv',Object.assign({id:_id,svc:_sv,montant:_amts[_sv]||0},_common));
       if(!_ok1) _okAll=false;
     }
     setLastChoice('appart',gv('fi-app')); if(_col) setLastChoice('col',_col);
