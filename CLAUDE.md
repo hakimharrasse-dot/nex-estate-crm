@@ -235,8 +235,8 @@ Variables d'environnement Vercel configurées et testées.
 - Utilise `lib/smoobu-normalizer.js` pour la normalisation
 - URL configurée dans Smoobu : Settings → Advanced → API Keys → Webhook URLs
 
-**B. Cron polling horaire** (`/api/smoobu-poll.js`)
-- Cron `0 * * * *` (toutes les heures) défini dans `vercel.json`
+**B. Cron polling quotidien** (`/api/smoobu-poll.js`)
+- Cron `0 12 * * *` (une fois par jour, 12h UTC) défini dans `vercel.json` — **plan Vercel Hobby = crons quotidiens uniquement**, le déclenchement réel a lieu dans l'heure qui suit (ex: 12h47). Le webhook temps réel reste le canal principal ; le poll est un filet de sécurité quotidien.
 - Fenêtre par défaut : 25h (`POLL_WINDOW_HOURS`)
 - Endpoint manuel : `GET /api/smoobu-poll?from=YYYY-MM-DD` (backfill)
 - Endpoint diagnostic : `GET /api/smoobu-poll?probe=SMOOBU_ID`
@@ -551,7 +551,10 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-10 | fix(mobile): Récap équipe en 1 colonne — retour terrain Hakim, 2 colonnes illisibles (`dabe09e`) |
 | 2026-06-10 | **UX globale lot 1** : feedback fiable — saveOne/deleteOne/upsert retournent ok/échec, `toastSaveResult()` vert/rouge 6s sur les 5 save* + delEntry, confirm suppression enrichi, toast au-dessus mobnav (`a680b92`) ; FAB mobile "+ Ajouter" contextuel via `updateFab()` dans goTo (`4bb5e6f`) ; mémoire derniers choix appart/collecteur Taxe+Serv (`lastChoice`/`setLastChoice`, localStorage `nex_last_*`, Business exclu volontairement) (`760dd77`) |
 | 2026-06-10 | **UX globale lot 2** : bouton ⭐ extra lié depuis une résa — `addExtraForResa(id)` ouvre modal Services pré-rempli resa_ref/appart/voyageur, `actBtns(type,id,extraHtml)` étendu (`dbf3f91`) ; retour en haut mobile `#scrolltop-btn` visible après 600px de scroll (`c29f7d9`) |
-| 2026-06-10 | **UX globale lot 3 (parité desktop)** : retour en haut étendu au desktop — bas droite 24px, hover orange (`1d95810`) ; raccourcis clavier desktop — `N` nouvelle entrée vue active, `/` recherche (`KBD_SEARCH`), `Échap` ferme modal/aide, `?` aide (`showKbdHelp`, auto-expire 10s) ; guards saisie/modal/rôle (`9c5c68c`) ← **HEAD** |
+| 2026-06-10 | **UX globale lot 3 (parité desktop)** : retour en haut étendu au desktop — bas droite 24px, hover orange (`1d95810`) ; raccourcis clavier desktop — `N` nouvelle entrée vue active, `/` recherche (`KBD_SEARCH`), `Échap` ferme modal/aide, `?` aide (`showKbdHelp`, auto-expire 10s) ; guards saisie/modal/rôle (`9c5c68c`) |
+| 2026-06-11 | **fix(alerte sync)** : le cron poll est QUOTIDIEN (12h UTC, plan Hobby) pas horaire — l'alerte seuil 2h était rouge en permanence à tort. Webhook écrit désormais un heartbeat (`id='smoobu-webhook'`, detail=action) ; `checkSmoobuHeartbeat()` lit toutes les lignes, prend la plus récente, seuil 26h (`077178c`) |
+| 2026-06-11 | **fix(taxe)** : KPIs — "Par Hakim" (`col==='Hakim'` ne matchait jamais les noms team `HAKIM HARRAASSE`) remplacé par : Collecté terrain (pay≠Booking) / Via plateforme (pay=Booking) / Non reversé / Reversé ; colonnes "Collecté par"+"Paiement" fusionnées en "Collecte" (chip "Via Booking" ou personne+mode) (`e10157a`) |
+| 2026-06-11 | **fix(serv)** : Résumé par service — les combos multi-services ont leur propre carte (bord doré, "n× · combo") au lieu d'attribuer le montant complet à chaque service (341=108+233 corrigé) ; somme des cartes = Total période (`dd574df`) ← **HEAD** |
 
 ---
 
