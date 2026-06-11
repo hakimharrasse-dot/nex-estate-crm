@@ -824,7 +824,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="r-chk-all" onchange="toggleResaAll(this.checked)" title="Sélectionner la page visible"></th><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
     <tbody id="r-tb"></tbody>
-  </table><div class="empty hidden" id="r-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div></div>
+  </table><div class="empty hidden" id="r-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('resa')">+ Ajouter une réservation</button></div></div></div>
   <div id="r-cards" class="r-cards"></div>
   <div id="csv-prev" class="hidden" style="margin-top:16px">
     <div class="sl">Aperçu import — vérifier avant de confirmer</div>
@@ -902,7 +902,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Payé par</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="b-tb"></tbody>
-  </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div></div>
+  </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('business')">+ Ajouter une dépense</button></div></div></div>
   <div id="b-cards" class="b-cards"></div>
 </div>
 <div id="ms-ov" class="ms-ov" onclick="msCatClose();msStClose();msApClose();msMenClose();msPayClose();msPcatClose();msRapClose();msRsrcClose();msRtypeClose();msRstClose()"></div>
@@ -947,7 +947,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="tcb" id="taxe-chk-all" onchange="toggleTaxeAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th class="hm">Voyageur</th><th>Collecte</th><th>Montant</th><th>Reversement</th><th></th></tr></thead>
     <tbody id="t-tb"></tbody>
-  </table><div class="empty hidden" id="t-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe</div></div>
+  </table><div class="empty hidden" id="t-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('taxe')">+ Ajouter une taxe</button></div></div></div>
   <div id="t-cards" class="t-cards"></div>
 </div>
 
@@ -997,7 +997,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="scb" id="serv-chk-all" onchange="toggleServAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="s-tb"></tbody>
-  </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service</div></div>
+  </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('serv')">+ Ajouter un service</button></div></div></div>
   <div id="s-cards" class="s-cards"></div>
 </div>
 
@@ -1309,7 +1309,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="tw"><table>
     <thead><tr><th>Date</th><th>Catégorie</th><th class="hm">Description</th><th class="hm">Récurrence</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="p-tb"></tbody>
-  </table><div class="empty hidden" id="p-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense</div></div>
+  </table><div class="empty hidden" id="p-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost" onclick="openModal('perso')">+ Ajouter une dépense</button></div></div></div>
   <div id="p-cards" class="p-cards"></div>
 
   <!-- ── Charges récurrentes perso ─────────────────────────── -->
@@ -4388,6 +4388,14 @@ function aptShort(a)   { return a.replace('Résidence Al Boustane','Al Boustane'
 function lastChoice(k,fb){ try{ return localStorage.getItem('nex_last_'+k)||fb; }catch(e){ return fb; } }
 function setLastChoice(k,val){ try{ if(val) localStorage.setItem('nex_last_'+k,val); }catch(e){} }
 
+// ── État vide actionnable : icône + message + hint filtres + bouton Ajouter (masqué rôle user via .manager-plus) ──
+function emptyStateHtml(icon,msg,type,label){
+  return '<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">'+icon+'</div>'+msg+
+    '<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div>'+
+    (type?'<div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal(\''+type+'\')">+ Ajouter '+(label||'une entrée')+'</button></div>':'')+
+    '</div>';
+}
+
 function actBtns(type,id,extraHtml) {
   return '<div class="acts">'+(extraHtml||'')+
     '<button class="bedit" onclick="openModal(\''+type+'\',\''+id+'\')">✏️</button>'+
@@ -6073,7 +6081,7 @@ function renderResa() {
   var mobile=isMobile();
   if(!rows.length){
     if(tb) tb.innerHTML='';
-    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🏠</div>Aucune réservation</div>';
+    if(cardsCont) cardsCont.innerHTML=emptyStateHtml('🏠','Aucune réservation','resa','une réservation');
     em.classList.remove('hidden');
     set('r-pgbar','<div class="r-pgbar"><span style="font-size:12px;color:var(--td)">0 réservation trouvée</span></div>');
     updateResaSelBar();
@@ -6545,7 +6553,7 @@ function renderBiz() {
   var pageRows=rows.slice(pageStart,pageStart+B_PER);
   if(!rows.length){
     if(tb) tb.innerHTML='';
-    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense</div>';
+    if(cardsCont) cardsCont.innerHTML=emptyStateHtml('📋','Aucune dépense','business','une dépense');
     em.classList.remove('hidden');
     set('b-pgbar','');
     updateBizSelBar();
@@ -7070,7 +7078,7 @@ function renderTaxe() {
   var pageRows=rows.slice((T_PAGE-1)*T_PER, T_PAGE*T_PER);
   if(!rows.length){
     if(tb) tb.innerHTML='';
-    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">🧾</div>Aucune taxe</div>';
+    if(cardsCont) cardsCont.innerHTML=emptyStateHtml('🧾','Aucune taxe','taxe','une taxe');
     em.classList.remove('hidden');
     set('t-pgbar','');
     updateTaxeSelBar();
@@ -7178,7 +7186,7 @@ function renderServ() {
   var pageRows=rows.slice((S_PAGE-1)*S_PER, S_PAGE*S_PER);
   if(!rows.length){
     if(tb) tb.innerHTML='';
-    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service</div>';
+    if(cardsCont) cardsCont.innerHTML=emptyStateHtml('⭐','Aucun service','serv','un service');
     em.classList.remove('hidden');
     set('s-pgbar','');
     updateServSelBar();
@@ -7330,7 +7338,7 @@ function renderPerso() {
   var pageRows=rows.slice((P_PAGE-1)*P_PER, P_PAGE*P_PER);
   if(!rows.length){
     if(tb) tb.innerHTML='';
-    if(cardsCont) cardsCont.innerHTML='<div class="empty"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense</div>';
+    if(cardsCont) cardsCont.innerHTML=emptyStateHtml('💳','Aucune dépense','perso','une dépense');
     em.classList.remove('hidden');
     set('p-pgbar','');
     return;
