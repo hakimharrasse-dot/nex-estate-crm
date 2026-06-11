@@ -8242,12 +8242,23 @@ function buildForm(type, editId) {
       field2('Date','fi-date','date',v('date',T))+
       field2('Appartement','fi-app','select',v('appart',lastChoice('appart','Agdal 13')),getAppartsForForm(v('appart','')))+
       '<div class="ff"><label class="fl">Type de service <span style="font-size:11px;color:var(--re);font-weight:400">* au moins 1</span></label>'+
-        '<div id="fi-svc-wrap" style="display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--s2);border:1px solid var(--br);border-radius:8px">'+
-        CATS_S.map(function(c){
-          var svcs=(v('svc','')||'').split(',').map(function(s){return s.trim();});
-          return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;user-select:none"><input type="checkbox" class="fi-svc-cb" value="'+escHtml(c)+'"'+(svcs.indexOf(c)!==-1?' checked':'')+' style="accent-color:var(--go);width:14px;height:14px;flex-shrink:0">'+escHtml(c)+'</label>';
-        }).join('')+
-        '</div></div>'+
+        '<div id="fi-svc-box" style="position:relative">'+
+          '<button type="button" class="fi" id="fi-svc-btn" style="text-align:left;cursor:pointer" onclick="svcDropToggle(event)">Choisir des services ▾</button>'+
+          '<div id="fi-svc-drop" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:300;background:var(--s);border:1px solid var(--br);border-radius:10px;padding:8px;max-height:280px;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.5)" onclick="event.stopPropagation()">'+
+            '<input type="text" class="fi" id="fi-svc-search" placeholder="🔍 Rechercher un service…" oninput="svcDropFilter(this.value)" style="margin-bottom:6px;padding:7px 10px;font-size:13px">'+
+            '<div id="fi-svc-wrap">'+
+            CATS_S.map(function(c){
+              var svcs=(v('svc','')||'').split(',').map(function(s){return s.trim();});
+              return '<label class="ms-item"><input type="checkbox" class="fi-svc-cb" value="'+escHtml(c)+'"'+(svcs.indexOf(c)!==-1?' checked':'')+' onchange="svcSelChanged()">'+escHtml(c)+'</label>';
+            }).join('')+
+            '</div>'+
+            '<div style="text-align:right;padding-top:6px"><button type="button" class="ba ba-sm" onclick="svcDropClose()">✓ Valider</button></div>'+
+          '</div>'+
+        '</div>'+
+        '<div id="fi-svc-chips" class="chips-row" style="margin-top:7px"></div>'+
+      '</div>'+
+      '<div class="ff" id="fi-svc-amts" style="display:none"></div>'+
+      (function(){ setTimeout(function(){ if(typeof svcSelChanged==='function') svcSelChanged(); },0); return ''; })()+
       fieldFull('Note / détail (optionnel)','fi-note','text',v('note',''),'Ex: arrivée 8h, clim chambre principale...')+
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       '<div class="ff" style="position:relative"><label class="fl">Réservation liée (optionnel)</label>'+
@@ -8656,19 +8667,102 @@ async function saveTaxe() {
   toastSaveResult(_okT);
 }
 
+// ── Sélecteur de services (formulaire serv) — dropdown avec recherche + montant par service ──
+function svcDropToggle(e){
+  e.stopPropagation();
+  var d=document.getElementById('fi-svc-drop'); if(!d) return;
+  var open=d.style.display==='block';
+  d.style.display=open?'none':'block';
+  if(!open){ var s=document.getElementById('fi-svc-search'); if(s){ s.value=''; svcDropFilter(''); } }
+}
+function svcDropClose(){ var d=document.getElementById('fi-svc-drop'); if(d) d.style.display='none'; }
+document.addEventListener('click', function(ev){
+  var d=document.getElementById('fi-svc-drop');
+  if(d && d.style.display==='block' && !(ev.target.closest && ev.target.closest('#fi-svc-box'))) d.style.display='none';
+});
+function svcDropFilter(q){
+  q=(q||'').toLowerCase();
+  document.querySelectorAll('#fi-svc-wrap .ms-item').forEach(function(l){
+    l.style.display = l.textContent.toLowerCase().indexOf(q)>=0 ? 'flex' : 'none';
+  });
+}
+function svcSelected(){
+  return Array.prototype.map.call(document.querySelectorAll('#fi-svc-wrap .fi-svc-cb:checked'),function(cb){return cb.value;});
+}
+function svcSelChanged(){
+  var sel=svcSelected();
+  var btn=document.getElementById('fi-svc-btn');
+  if(btn) btn.textContent = sel.length ? sel.length+' service'+(sel.length>1?'s':'')+' sélectionné'+(sel.length>1?'s':'')+' ▾' : 'Choisir des services ▾';
+  var chips=document.getElementById('fi-svc-chips');
+  if(chips) chips.innerHTML = sel.map(function(s){return '<span class="ch ch-serv">'+escHtml(s)+'</span>';}).join(' ');
+  svcAmountsRefresh(sel);
+}
+// Montant par service : uniquement en CRÉATION avec ≥2 services
+// (en édition, l'entrée existante garde son montant global — rétrocompatible)
+function svcAmountsRefresh(sel){
+  var wrap=document.getElementById('fi-svc-amts'), mEl=document.getElementById('fi-montant');
+  if(!wrap||!mEl) return;
+  if(M_ID || sel.length<2){ wrap.style.display='none'; wrap.innerHTML=''; mEl.readOnly=false; return; }
+  var prev={};
+  wrap.querySelectorAll('.fi-svc-amt').forEach(function(i){ prev[i.dataset.svc]=i.value; });
+  wrap.style.display='block';
+  wrap.innerHTML='<label class="fl">Montant par service (MAD) <span style="font-size:11px;color:var(--td);font-weight:400">— une ligne sera créée par service</span></label>'+
+    sel.map(function(s){
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<span style="flex:1;font-size:13px;min-width:0">'+escHtml(s)+'</span>'+
+        '<input type="number" class="fi fi-svc-amt" data-svc="'+escHtml(s)+'" value="'+(prev[s]||'')+'" placeholder="0" style="width:130px;flex-shrink:0" oninput="svcAmountsTotal()">'+
+      '</div>';
+    }).join('');
+  svcAmountsTotal();
+}
+function svcAmountsTotal(){
+  var mEl=document.getElementById('fi-montant'); if(!mEl) return;
+  var amts=document.querySelectorAll('.fi-svc-amt');
+  if(!amts.length){ mEl.readOnly=false; return; }
+  var t=0;
+  Array.prototype.forEach.call(amts,function(i){ t+=parseFloat(i.value)||0; });
+  mEl.value=Math.round(t*100)/100;
+  mEl.readOnly=true;
+}
+
 async function saveServ() {
-  var m=parseFloat(gv('fi-montant'))||0, d=gv('fi-date');
-  if(!d||!m){alert('Date et montant requis');return;}
+  var d=gv('fi-date');
+  if(!d){alert('Date requise');return;}
   var _resaRef = (gv('fi-resa-ref')||'').trim() || null;
   var _modeVal = gv('fi-mode-plat') || 'Cash';
   var _paySrc  = (_modeVal==='Airbnb'||_modeVal==='Booking') ? _modeVal : null;
   var _pay     = _paySrc ? null : _modeVal;
   var _col     = _paySrc ? null : (gv('fi-col') || null);
-  var _svcCbs=document.querySelectorAll('#fi-svc-wrap .fi-svc-cb:checked');
-  var _svcs=Array.prototype.map.call(_svcCbs,function(cb){return cb.value;}).join(', ');
-  if(!_svcs){alert('Sélectionne au moins un type de service');return;}
+  var _svcArr=svcSelected();
+  if(!_svcArr.length){alert('Sélectionne au moins un type de service');return;}
   var _note=(gv('fi-note')||'').trim()||null;
-  var _okS = await upsert('serv',{id:M_ID||uid(),date:d,appart:gv('fi-app'),svc:_svcs,voy:gv('fi-voy'),col:_col,pay:_pay,montant:m,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note});
+  var _common={date:d,appart:gv('fi-app'),voy:gv('fi-voy'),col:_col,pay:_pay,statut:gv('fi-st'),resa_ref:_resaRef,pay_source:_paySrc,note:_note};
+
+  // Création multi-services → UNE LIGNE PAR SERVICE avec son propre montant
+  if(!M_ID && _svcArr.length>=2){
+    var _amts={}, _bad=false;
+    Array.prototype.forEach.call(document.querySelectorAll('.fi-svc-amt'),function(i){
+      var a=parseFloat(i.value)||0;
+      if(a<=0) _bad=true;
+      _amts[i.dataset.svc]=a;
+    });
+    if(_bad){alert('Indique un montant pour chaque service sélectionné');return;}
+    var _okAll=true;
+    for(var _i=0;_i<_svcArr.length;_i++){
+      var _sv=_svcArr[_i];
+      var _ok1=await upsert('serv',Object.assign({id:uid(),svc:_sv,montant:_amts[_sv]||0},_common));
+      if(!_ok1) _okAll=false;
+    }
+    setLastChoice('appart',gv('fi-app')); if(_col) setLastChoice('col',_col);
+    closeModal(); renderServ(); updateAsuivreBadge();
+    toastSaveResult(_okAll);
+    return;
+  }
+
+  // Mono-service ou édition : comportement historique (montant global)
+  var m=parseFloat(gv('fi-montant'))||0;
+  if(!m){alert('Montant requis');return;}
+  var _okS = await upsert('serv',Object.assign({id:M_ID||uid(),svc:_svcArr.join(', '),montant:m},_common));
   setLastChoice('appart',gv('fi-app')); if(_col) setLastChoice('col',_col);
   closeModal(); renderServ(); updateAsuivreBadge();
   toastSaveResult(_okS);
