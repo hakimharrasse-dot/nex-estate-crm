@@ -550,7 +550,8 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 | 2026-06-10 | **P3.8 Mobile complet** (dernier item roadmap — roadmap close) : filtres grille 2 colonnes <700px toutes vues (`b2ba95a`) ; cartes Réservations avec checkout (`30be250`) ; modals bottom-sheet pleine largeur + inputs 16px anti-zoom iOS (`2130201`) ; Dashboard mobile — cartes récap en colonne, delta dédié, barchart 9px, filtre appart pleine largeur (`1456910`) |
 | 2026-06-10 | fix(mobile): Récap équipe en 1 colonne — retour terrain Hakim, 2 colonnes illisibles (`dabe09e`) |
 | 2026-06-10 | **UX globale lot 1** : feedback fiable — saveOne/deleteOne/upsert retournent ok/échec, `toastSaveResult()` vert/rouge 6s sur les 5 save* + delEntry, confirm suppression enrichi, toast au-dessus mobnav (`a680b92`) ; FAB mobile "+ Ajouter" contextuel via `updateFab()` dans goTo (`4bb5e6f`) ; mémoire derniers choix appart/collecteur Taxe+Serv (`lastChoice`/`setLastChoice`, localStorage `nex_last_*`, Business exclu volontairement) (`760dd77`) |
-| 2026-06-10 | **UX globale lot 2** : bouton ⭐ extra lié depuis une résa — `addExtraForResa(id)` ouvre modal Services pré-rempli resa_ref/appart/voyageur, `actBtns(type,id,extraHtml)` étendu (`dbf3f91`) ; retour en haut mobile `#scrolltop-btn` visible après 600px de scroll (`c29f7d9`) ← **HEAD** |
+| 2026-06-10 | **UX globale lot 2** : bouton ⭐ extra lié depuis une résa — `addExtraForResa(id)` ouvre modal Services pré-rempli resa_ref/appart/voyageur, `actBtns(type,id,extraHtml)` étendu (`dbf3f91`) ; retour en haut mobile `#scrolltop-btn` visible après 600px de scroll (`c29f7d9`) |
+| 2026-06-10 | **UX globale lot 3 (parité desktop)** : retour en haut étendu au desktop — bas droite 24px, hover orange (`1d95810`) ; raccourcis clavier desktop — `N` nouvelle entrée vue active, `/` recherche (`KBD_SEARCH`), `Échap` ferme modal/aide, `?` aide (`showKbdHelp`, auto-expire 10s) ; guards saisie/modal/rôle (`9c5c68c`) ← **HEAD** |
 
 ---
 

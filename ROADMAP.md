@@ -22,6 +22,11 @@
 1. **UX Lisibilité** : harmonisation chips/espacements, hiérarchie KPIs, états vides plus parlants
 2. **UX Messages IA** (60/100) : refonte UX du module
 
+## ✅ UX globale — lot 3 desktop livré 2026-06-10 (commits 1d95810 → 9c5c68c)
+
+- `1d95810` — **Retour en haut étendu au desktop** : bas droite (24px), hover orange ; gate `isMobile()` retiré du listener scroll
+- `9c5c68c` — **Raccourcis clavier desktop** : `N` nouvelle entrée (vue active via `FAB_VIEWS[CUR]`), `/` focus recherche (`KBD_SEARCH` map), `Échap` ferme modal puis aide, `?` panneau d'aide auto-expirant 10s — guards : saisie en cours, modal ouvert, rôle user, login screen
+
 ## ✅ UX globale — lot 2 livré 2026-06-10 (commits dbf3f91 → c29f7d9)
 
 - `dbf3f91` — **Extra lié depuis une résa** : bouton ⭐ sur cartes mobiles + lignes desktop Réservations → `addExtraForResa(id)` ouvre le modal Services pré-rempli (resa_ref, appartement si option existante, voyageur sauf infos manquantes Smoobu) ; `actBtns(type,id,extraHtml)` étendu avec slot optionnel
