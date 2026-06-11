@@ -1005,7 +1005,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="s-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th style="width:32px"><input type="checkbox" class="scb" id="serv-chk-all" onchange="toggleServAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecté par</th><th>Paiement</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="scb" id="serv-chk-all" onchange="toggleServAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Service</th><th class="hm">Voyageur</th><th>Collecte</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="s-tb"></tbody>
   </table><div class="empty hidden" id="s-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">⭐</div>Aucun service<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('serv')">+ Ajouter un service</button></div></div></div>
   <div id="s-cards" class="s-cards"></div>
@@ -7217,8 +7217,9 @@ function renderServ() {
         '</div>'+
         (r.note?'<div style="font-size:11px;color:var(--td);padding:2px 0 4px;font-style:italic">'+escHtml(r.note)+'</div>':'')+
         '<div class="r-card-row2">'+
-          chip(r.col||r.pay_source||'Cash',colClass(r.col||r.pay_source||'Cash'))+
-          chip(r.pay||(r.pay_source||'Cash'),'eau')+
+          ((r.pay_source==='Airbnb'||r.pay_source==='Booking')
+            ? chip('Via '+r.pay_source,r.pay_source==='Airbnb'?'airbnb':'booking')
+            : chip(r.col||'—',colClass(r.col||'Cash'))+chip(r.pay||'Cash','eau'))+
           (r.voy?'<span style="font-size:12px;color:var(--tm)">'+r.voy+'</span>':'')+
         '</div>'+
         '<div class="r-card-row3">'+
@@ -7238,8 +7239,9 @@ function renderServ() {
         '<td><span class="apt">'+aptShort(r.appart||'')+'</span></td>'+
         '<td><div>'+(r.svc||'').split(',').map(function(s){return chip(s.trim(),'serv');}).join(' ')+(r.note?'<div style="font-size:11px;color:var(--td);margin-top:2px;font-style:italic">'+escHtml(r.note)+'</div>':'')+'</div></td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.voy||'—')+'</td>'+
-        '<td>'+chip(r.col||r.pay_source||'Cash',colClass(r.col||r.pay_source||'Cash'))+'</td>'+
-        '<td>'+chip(r.pay||'Cash','eau')+'</td>'+
+        '<td>'+((r.pay_source==='Airbnb'||r.pay_source==='Booking')
+          ? chip('Via '+r.pay_source,r.pay_source==='Airbnb'?'airbnb':'booking')
+          : chip(r.col||'—',colClass(r.col||'Cash'))+' '+chip(r.pay||'Cash','eau'))+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--go)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
         '<td>'+actBtns('serv',r.id)+'</td>'+
