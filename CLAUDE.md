@@ -1099,6 +1099,17 @@ Classifications possibles :
 - `msgToggleCard(id)` : bascule **DOM pure** (jamais de re-render → les brouillons édités dans les textareas des autres cartes sont préservés), ouverture exclusive (une seule carte ouverte), `MSG_OPEN_ID` survit aux re-renders, auto-dépli si un seul message affiché.
 - Les ids et fonctions d'action (`msgSend`/`msgRegenerate`/`msgIgnore`/`msgResolve`/`msgToggleMic`) sont inchangés — tous les garde-fous (stale, texte vide, anti double-clic, confirm) intacts.
 
+### Faits structurels Smoobu (audit 2026-06-12 — NE PAS RÉ-INVESTIGUER)
+- **L'API Smoobu n'expose PAS les messages de l'hôte** : `/reservations/{id}/messages` retourne uniquement type=1 (guest) — vérifié sur booking 140560917 (11/11 messages type=1 alors que Hakim avait répondu plusieurs fois). → toute détection "hostRepliedAfter" au niveau conversation est structurellement morte ; seule l'expiration temporelle fonctionne.
+- **Smoobu n'envoie ses webhooks qu'à UNE seule URL** (celle des résas) : les `newMessage` arrivaient sur `smoobu-webhook.js` et étaient jetés ("action non gérée") → 100% des messages créés au cron 8h (latence jusqu'à 24h, prouvé par les created_at en base tous à 08:1x-08:5x UTC).
+- **Prospects** : l'API Smoobu n'expose AUCUNE conversation sans booking (threads exigent `t.booking.id`) — les inquiries Airbnb avant réservation sont invisibles pour tout outil branché Smoobu. Répondre dans l'app Airbnb directement.
+- **Booking.com** : couvert par le scan direct du sync (section 4 — GET messages sur les résas Booking récentes, car Booking ne remonte pas dans /threads automatiquement). Les règles P1/P2 s'appliquent aux deux plateformes.
+
+### Fixes P1/P2 (2026-06-12, `a967d7f` + `604d742`)
+- **P1 latence 24h → secondes** : `case 'newMessage'` dans smoobu-webhook.js → forward HTTP vers `/api/smoobu-messages` (checkDuplicate protège du double traitement) ; maxDuration webhook 10→30s (analyse Claude dans le flux) ; badge Messages auto-rafraîchi toutes les 5 min côté CRM (`refreshMsgBadge`, requête légère qui ne touche jamais MSG_DATA ni la vue).
+- **P2 hygiène** : au début de chaque sync, expiration automatique des pending > 48h (Hakim répond toujours < 1h sur la plateforme → un pending vieux = déjà traité) — `resolved`, ou `ignored` si no_reply_needed ; les messages classés `no_reply_needed` par Claude (pas seulement la regex triviale) sont archivés d'office (`ignored`) sur les 4 chemins insert/update ; nettoyage one-shot des 8 zombies en base le 2026-06-12 (0 pending restant).
+- **Backlog P3 (validé dans le principe, non implémenté)** : base de connaissances par appartement (wifi, étage, check-in/out, accès, parking, équipements, règles, FAQ) éditable dans la vue Logements + injection dans le prompt `generateFullAnalysis` comme "informations vérifiées" → réponses précises non génériques.
+
 ### Mobile
 - Section Messages IA accessible via le drawer "Plus" → `mn-messages` (admin only)
 - L'en-tête compact accordéon règle l'essentiel du confort mobile (plus de mur de cartes dépliées)
