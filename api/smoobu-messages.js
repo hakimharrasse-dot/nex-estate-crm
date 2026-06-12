@@ -578,6 +578,31 @@ export default async function handler(req, res) {
       const since = new Date(Date.now() - hoursBack * 3600 * 1000);
       console.log('[sync] démarrage — fenêtre:', hoursBack, 'h | since:', since.toISOString());
 
+      // ── 0. Expiration automatique des pending obsolètes (> 48h) ──
+      // Hakim répond TOUJOURS sur la plateforme en < 1h (règle Superhost). Or l'API
+      // Smoobu n'expose PAS les messages hôte (tous les messages sont type=1 guest,
+      // vérifié sur booking 140560917 : 11/11 type=1) → impossible de détecter sa
+      // réponse. Conclusion : tout pending de plus de 48h est par définition déjà
+      // traité ailleurs → résolu automatiquement (ignored si sans-réponse).
+      let expired = 0;
+      try {
+        const cutoff  = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+        const nowExp  = new Date().toISOString();
+        const oldPend = await sbGet(
+          `messages?statut=eq.pending&created_at=lt.${encodeURIComponent(cutoff)}&select=id,classification&limit=100`
+        );
+        for (const op of (oldPend || [])) {
+          await sbPatch('messages', `id=eq.${encodeURIComponent(op.id)}`, {
+            statut:     op.classification === 'no_reply_needed' ? 'ignored' : 'resolved',
+            updated_at: nowExp,
+          });
+          expired++;
+        }
+        if (expired) console.log('[sync] expiration 48h —', expired, 'pending auto-résolus');
+      } catch (expErr) {
+        console.warn('[sync] expiration error:', expErr.message);
+      }
+
       // ── 1. Collecter les threads récents (pagination) ─────
       const recentThreads = [];
       let page = 1;
@@ -822,6 +847,7 @@ export default async function handler(req, res) {
                 classification:    newAnalysis.classification    || null,
                 ai_draft:          newAnalysis.ai_draft          || null,
                 ai_draft_fr:       newAnalysis.ai_draft_fr       || null,
+                ...(newAnalysis.classification === 'no_reply_needed' ? { statut: 'ignored' } : {}),
                 is_stale:          false,
                 updated_at:        now,
               });
@@ -879,6 +905,9 @@ export default async function handler(req, res) {
           }
 
           const now = new Date().toISOString();
+          // no_reply_needed (regex triviale OU classification Claude) → archivé d'office :
+          // aucune action requise, ne doit pas occuper la liste pending
+          const noReplySync = trivial || analysis.classification === 'no_reply_needed';
           await sbInsert('messages', {
             id:                uid(),
             smoobu_booking_id: bookingId,
@@ -896,7 +925,7 @@ export default async function handler(req, res) {
             smoobu_message_id: smoobuMessageId            || null,
             is_stale:          false,
             raw_payload:       { booking_id: bookingId, thread },
-            statut:            trivial ? 'ignored' : 'pending',
+            statut:            noReplySync ? 'ignored' : 'pending',
             created_at:        now,
             updated_at:        now,
           });
@@ -1480,7 +1509,7 @@ export default async function handler(req, res) {
         classification:    analysis.classification      || null,
         ai_draft:          analysis.ai_draft            || null,
         ai_draft_fr:       analysis.ai_draft_fr         || null,
-        ...(trivialWh ? { statut: 'ignored' } : {}),
+        ...((trivialWh || analysis.classification === 'no_reply_needed') ? { statut: 'ignored' } : {}),
         is_stale:          false,
         updated_at:        now,
       });
@@ -1505,7 +1534,7 @@ export default async function handler(req, res) {
       smoobu_message_id: smoobuMessageId     || null,
       is_stale:          false,
       raw_payload:       booking             || null,
-      statut:            trivialWh ? 'ignored' : 'pending',
+      statut:            (trivialWh || analysis.classification === 'no_reply_needed') ? 'ignored' : 'pending',
       created_at:        now,
       updated_at:        now,
     };
