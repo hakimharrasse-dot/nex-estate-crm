@@ -15441,9 +15441,48 @@ async function renderMessages() {
       ? new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
       : '';
 
-    // Bordure rouge pour les records en erreur
+    // ── Accordéon : en-tête compact toujours visible, corps replié par défaut ──
+    var isOpen = (MSG_OPEN_ID === m.id) || (displayData.length === 1);
     var cardBorder = isError ? '1px solid var(--re)' : '1px solid var(--br)';
-    html += '<div class="msg-card" id="msgcard-' + m.id + '" style="background:var(--s);border:' + cardBorder + ';border-radius:12px;padding:16px 18px;margin-bottom:14px;transition:opacity .2s">';
+    html += '<div class="msg-card" id="msgcard-' + m.id + '" style="background:var(--s);border:' + cardBorder + ';border-radius:12px;margin-bottom:10px;overflow:hidden;transition:opacity .2s">';
+
+    // ── En-tête compact cliquable ────────────────────────────
+    html += '<div onclick="msgToggleCard(\'' + m.id + '\')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">';
+    if (isError) html += '<span style="color:var(--re);font-size:13px" title="Erreur de traitement webhook">⚠</span>';
+    html += '<span style="font-weight:700;font-size:14px;color:var(--tx)">' + escHtml(m.voyageur || '(voyageur inconnu)') + '</span>';
+    if (m.classification && MSG_CLASSIF[m.classification]) {
+      var cl = MSG_CLASSIF[m.classification];
+      html += '<span style="background:' + cl.bg + ';color:' + cl.color + ';border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700">' + cl.label + '</span>';
+    }
+    if (m.detected_language && m.detected_language !== 'fr') {
+      html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:1px 6px;font-size:10px;color:var(--tm)" title="Langue du voyageur">🌐 ' + escHtml(String(m.detected_language).toUpperCase()) + '</span>';
+    }
+    if (m.is_stale && !isError) html += '<span style="background:rgba(200,119,58,.15);color:var(--or);border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700">⚠ à regénérer</span>';
+    if (!m.reservation_id) {
+      html += '<span style="background:rgba(200,119,58,.15);color:var(--or);border:1px solid rgba(200,119,58,.3);border-radius:5px;font-size:10px;font-weight:700;padding:1px 6px" title="Aucune réservation confirmée dans le CRM — message prospect ou avant réservation">Prospect</span>';
+    }
+    html += '</div>';
+    var _apercu = (m.client_summary_fr || m.message_content || '').replace(/\s+/g, ' ').trim();
+    html += '<div style="font-size:12px;color:var(--tm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(_apercu) + '</div>';
+    html += '</div>';
+    html += '<div style="flex-shrink:0;text-align:right">';
+    if (ts) html += '<div style="font-size:11px;color:var(--td)">' + ts + '</div>';
+    html += '<div class="msg-chev" style="font-size:11px;color:var(--bl);margin-top:3px">' + (isOpen ? '▲ replier' : '▼ ouvrir') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // ── Corps détaillé (accordéon) ───────────────────────────
+    html += '<div class="msg-body" id="msgbody-' + m.id + '" style="display:' + (isOpen ? 'block' : 'none') + ';padding:12px 16px 16px;border-top:1px solid var(--br)">';
+
+    // Ligne contexte : appartement, source, booking#, lien CRM
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;margin-bottom:12px">';
+    if (m.appart) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.appart) + '</span>';
+    if (m.source) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.source) + '</span>';
+    html += '<span style="font-size:10px;background:rgba(90,159,212,.15);color:var(--bl);border-radius:6px;padding:2px 8px;font-weight:600;white-space:nowrap">booking #' + m.smoobu_booking_id + '</span>';
+    if (m.reservation_id) html += '<span style="color:var(--gr);font-size:10px" title="Réservation CRM liée">● lié au CRM</span>';
+    html += '</div>';
 
     // ── Bannière erreur ──────────────────────────────────────
     if (isError) {
@@ -15452,32 +15491,6 @@ async function renderMessages() {
       if (m.error_message) html += ' : ' + escHtml(m.error_message);
       html += '</div>';
     }
-
-    // ── En-tête ─────────────────────────────────────────────
-    html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
-    html += '<div style="display:flex;flex-direction:column;gap:5px">';
-    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-    html += '<span style="font-weight:700;font-size:14px;color:var(--tx)">' + escHtml(m.voyageur || '(voyageur inconnu)') + '</span>';
-    // Badge classification si disponible
-    if (m.classification && MSG_CLASSIF[m.classification]) {
-      var cl = MSG_CLASSIF[m.classification];
-      html += '<span style="background:' + cl.bg + ';color:' + cl.color + ';border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">' + cl.label + '</span>';
-    }
-    html += '</div>';
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">';
-    if (m.appart) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.appart) + '</span>';
-    if (m.source) html += '<span style="background:var(--s2);border:1px solid var(--br);border-radius:6px;padding:2px 8px;color:var(--tm)">' + escHtml(m.source) + '</span>';
-    if (ts)       html += '<span style="color:var(--td)">' + ts + '</span>';
-    // Indicateur réservation CRM liée / prospect
-    if (m.reservation_id) {
-      html += '<span style="color:var(--gr);font-size:10px" title="Réservation CRM liée">● lié</span>';
-    } else {
-      html += '<span style="background:rgba(200,119,58,.15);color:var(--or);border:1px solid rgba(200,119,58,.3);border-radius:5px;font-size:10px;font-weight:700;padding:1px 6px" title="Aucune réservation confirmée dans le CRM — message prospect ou avant réservation">Prospect</span>';
-    }
-    html += '</div>';
-    html += '</div>';
-    html += '<span style="font-size:10px;background:rgba(90,159,212,.15);color:var(--bl);border-radius:6px;padding:3px 8px;font-weight:600;white-space:nowrap">booking #' + m.smoobu_booking_id + '</span>';
-    html += '</div>';
 
     if (!isError) {
       // ── Bannière "conversation mise à jour" si brouillon périmé ──
@@ -15580,7 +15593,8 @@ async function renderMessages() {
       html += '</div>';
     }
 
-    html += '</div>';
+    html += '</div>'; // /msg-body
+    html += '</div>'; // /msg-card
   });
 
   el.innerHTML = html;
@@ -15590,6 +15604,27 @@ async function renderMessages() {
 function msgToggleNoReply() {
   MSG_SHOW_NO_REPLY = !MSG_SHOW_NO_REPLY;
   renderMessages();
+}
+
+// ── Accordéon Messages IA — bascule DOM uniquement (préserve les brouillons
+// édités dans les textareas des autres cartes : pas de re-render) ──
+var MSG_OPEN_ID = null;
+function msgToggleCard(id) {
+  var body = document.getElementById('msgbody-' + id);
+  if (!body) return;
+  var willOpen = body.style.display === 'none';
+  document.querySelectorAll('.msg-body').forEach(function(b){ b.style.display = 'none'; });
+  document.querySelectorAll('.msg-card .msg-chev').forEach(function(c){ c.textContent = '▼ ouvrir'; });
+  if (willOpen) {
+    body.style.display = 'block';
+    MSG_OPEN_ID = id;
+    var card = document.getElementById('msgcard-' + id);
+    var chev = card ? card.querySelector('.msg-chev') : null;
+    if (chev) chev.textContent = '▲ replier';
+    if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } else {
+    MSG_OPEN_ID = null;
+  }
 }
 
 function msgUpdateBadge() {
