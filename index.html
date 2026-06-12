@@ -4293,7 +4293,10 @@ function selectAllFiltered() {
 function isInfoManquante(r) {
   if (r.override_manual) return false;
   var vide = !(r.voyageur||'').trim() || (r.voyageur||'').trim()==='—';
-  var refNumeric = r.ref && r.smoobu_id && String(r.ref)===String(r.smoobu_id) && /^\d+$/.test(String(r.smoobu_id));
+  // ref===smoobu_id numérique = enrichissement OTA en attente — mais une résa DIRECTE
+  // créée dans Smoobu n'a jamais de reference-id plateforme : ref=smoobu_id à vie.
+  // → critère réservé aux sources OTA, sinon faux positif permanent (cas Sami ALHerz 2026-06-12)
+  var refNumeric = r.source!=='Direct' && r.ref && r.smoobu_id && String(r.ref)===String(r.smoobu_id) && /^\d+$/.test(String(r.smoobu_id));
   return !!(vide || refNumeric);
 }
 function colClass(c) {

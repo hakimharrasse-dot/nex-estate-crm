@@ -55,8 +55,13 @@ function diffNuits(ci, co) {
 function detectSrc(raw) {
   const lw = (raw || '').toLowerCase();
   if (lw.includes('airbnb')) return 'Airbnb';
-  if (lw.includes('booking')) return 'Booking.com';
   if (lw.includes('vrbo') || lw.includes('homeaway')) return 'VRBO';
+  // "Direct" checké AVANT "Booking" — Smoobu envoie "Direct booking" pour les résas
+  // créées dans son portail. Cette copie locale avait gardé l'ancien ordre (fix 06-09
+  // appliqué uniquement à lib/smoobu-normalizer.js) → résas directes classées Booking.com.
+  if (lw.includes('direct') || lw.includes('api') ||
+      lw.includes('portail') || lw.includes('portal')) return 'Direct';
+  if (lw.includes('booking')) return 'Booking.com';
   return 'Direct';
 }
 
@@ -172,7 +177,8 @@ function mapSmoobuBooking(b) {
   // Les champs Smoobu API sont hyphenated/lowercase (ex: 'guest-name', 'reference-id')
   if (b['is-blocked-booking'] === true) return null;
 
-  const src  = detectSrc((b.channel && b.channel.name) || b.type || '');
+  // ⚠️ Jamais b.type en fallback : "modification of booking" contient "booking" → fausse source
+  const src  = detectSrc((b.channel && b.channel.name) || '');
   const ap   = detectAp((b.apartment && b.apartment.name) || '');
   const ci   = normDate(b.arrival || '');
   const co   = normDate(b.departure || '');
