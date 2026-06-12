@@ -17,6 +17,14 @@
 - P3.11 Alerte sync Smoobu : ✅ fait 2026-06-10 (`654fb39`) — table `sync_heartbeat` (RLS read authenticated), `smoobu-poll.js` écrit un heartbeat à chaque run, badge rouge sidebar si > 2h
 - Récap équipe : nb passages en attente + détail dépliable dates/appart/montant (`41947f4`)
 
+## ✅ Thème clair/sombre 🌙/☀️ — livré 2026-06-12 (`dcc3677`)
+
+- Palette claire `html.theme-light` : 17 variables surchargées, accents assombris pour le contraste sur fond blanc (--gr #2e8f5f, --go #a88a14, etc.)
+- Script anti-flash dans `<head>` (classe posée sur documentElement avant le rendu)
+- Persistance `localStorage['nex_theme']` ; boutons : sidebar desktop `#btn-theme` + drawer mobile `#mn-theme` ; `toggleTheme()`/`applyThemeLabels()`
+- Couleurs en dur converties : loading-overlay (var(--bg)), dropdown suggestions resa_ref (var(--s)/var(--s2)/var(--br))
+- Vérifié : Réservations/Dashboard/Services + modal + dropdown services + login, clair et sombre, 1280px et 390px, anti-flash au reload
+
 ## 🔲 Reste à faire — chantier UX globale (ouvert 2026-06-10, après clôture roadmap initiale)
 
 1. **UX Messages IA** (60/100) : refonte UX du module — dernier item
