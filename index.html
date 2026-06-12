@@ -5351,7 +5351,20 @@ function renderDash() {
     });
     return m?m.source:null;
   }
-  var _srcHtml=sources.map(function(src){
+  // ── Parts par source (inspiré Smoobu) : % du CA, % des nuits, annulations ──
+  var _annulRows=filterResa(DB.resa,'d').filter(function(r){
+    return (r.type_norm||'').indexOf('ANNULATION')===0&&(!fa||r.appart===fa);
+  });
+  var SRC_RING={'Airbnb':'var(--re)','Booking.com':'var(--bl)','Direct':'var(--gr)','VRBO':'var(--pu)'};
+  function _miniRing(pct,color){
+    var r=14,c=2*Math.PI*r,dash=c*Math.min(100,Math.max(0,pct))/100;
+    return '<svg width="38" height="38" viewBox="0 0 38 38" style="flex-shrink:0">'+
+      '<circle cx="19" cy="19" r="'+r+'" fill="none" stroke="var(--s2)" stroke-width="5"/>'+
+      '<circle cx="19" cy="19" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="5" stroke-dasharray="'+dash.toFixed(1)+' '+(c-dash).toFixed(1)+'" transform="rotate(-90 19 19)" stroke-linecap="round"/>'+
+      '<text x="19" y="23" text-anchor="middle" font-size="10" font-weight="700" fill="'+color+'">'+Math.round(pct)+'</text></svg>';
+  }
+  var _NUITS_SRC_T=['RESERVATION','RELOCATION','DIRECT'];
+  var _srcItems=sources.map(function(src){
     var x=revRes.filter(function(r){return r.source===src;});
     var nResa=sumNetMAD(x);
     var nServ=0;
@@ -5360,15 +5373,26 @@ function renderDash() {
     var nTaxe=src==='Booking.com'?taxeCollectee:0;
     var nTot=nResa+nServ+nTaxe;
     var nCash=sum(_srcCashTerrain.filter(function(r){return _servClientSrc(r)===src;}),'montant');
-    if(!x.length&&nTot===0&&nCash===0) return '';
-    var det=['Resa '+fmt(nResa)];
-    if(nServ>0) det.push('Extras '+fmt(nServ));
-    if(nTaxe>0) det.push('Taxe '+fmt(nTaxe));
-    return '<div class="rc"><div>'+
-      '<div class="rn">'+src+'</div>'+
-      '<div class="rsb">'+x.length+' rés.'+(nServ>0||nTaxe>0?' · '+det.join(' · '):'')+'</div>'+
-      (nCash>0?'<div style="font-size:10px;color:var(--td);margin-top:2px">💵 + '+fmt(nCash)+' extras cash (compté Terrain)</div>':'')+
-      '</div><div class="rv" style="color:var(--or)">'+fmt(nTot)+'</div></div>';
+    var nuits=x.filter(function(r){return _NUITS_SRC_T.indexOf(r.type_norm)>=0;}).reduce(function(s,r){return s+(r.nuits_sejour||0);},0);
+    var annul=_annulRows.filter(function(r){return r.source===src;}).length;
+    return {src:src,x:x,nResa:nResa,nServ:nServ,nTaxe:nTaxe,nTot:nTot,nCash:nCash,nuits:nuits,annul:annul};
+  }).filter(function(it){return it.x.length||it.nTot!==0||it.nCash>0;});
+  var _caAllSrc=_srcItems.reduce(function(s,it){return s+it.nTot;},0);
+  var _nuitsAllSrc=_srcItems.reduce(function(s,it){return s+it.nuits;},0);
+  var _srcHtml=_srcItems.map(function(it){
+    var det=['Resa '+fmt(it.nResa)];
+    if(it.nServ>0) det.push('Extras '+fmt(it.nServ));
+    if(it.nTaxe>0) det.push('Taxe '+fmt(it.nTaxe));
+    var pctCa=_caAllSrc>0?it.nTot/_caAllSrc*100:0;
+    var pctNuits=_nuitsAllSrc>0?it.nuits/_nuitsAllSrc*100:0;
+    return '<div class="rc"><div style="display:flex;align-items:center;gap:10px;min-width:0">'+
+      _miniRing(pctCa,SRC_RING[it.src]||'var(--tm)')+
+      '<div style="min-width:0">'+
+      '<div class="rn">'+it.src+'</div>'+
+      '<div class="rsb">'+it.x.length+' rés.'+(it.nServ>0||it.nTaxe>0?' · '+det.join(' · '):'')+'</div>'+
+      '<div class="rsb" style="margin-top:2px"><b style="color:var(--tx)">'+Math.round(pctCa)+'%</b> du CA · '+Math.round(pctNuits)+'% des nuits'+(it.annul>0?' · <span style="color:var(--re)">'+it.annul+' annul.</span>':'')+'</div>'+
+      (it.nCash>0?'<div style="font-size:10px;color:var(--td);margin-top:2px">💵 + '+fmt(it.nCash)+' extras cash (compté Terrain)</div>':'')+
+      '</div></div><div class="rv" style="color:var(--or)">'+fmt(it.nTot)+'</div></div>';
   }).join('');
   // Extras terrain (pay_source null/Autre) — ligne dédiée pour cohérence avec le CA unifié
   var _srcServTerrainRows=_srcServPaye.filter(function(r){return r.pay_source!=='Airbnb'&&r.pay_source!=='Booking';});
