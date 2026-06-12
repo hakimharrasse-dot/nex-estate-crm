@@ -562,6 +562,12 @@ Le CSV Smoobu affiche les prix de cet appartement **en MAD** (ex: 1207.68 MAD po
 
 ---
 
+## 12b. Dashboard — blocs inspirés Smoobu (2026-06-12)
+
+- **Bloc "📅 Mois à venir"** (`#d-future-months`, `renderFutureMonths()`) : cartes M+1..M+3 — CA confirmé (`mois_kpi` futur via `sumNetMAD`), nuits réservées (`occupNightsBiz`), % occupation sécurisée (`computeJoursDispo` global ou `joursDispoAppart(ap,...)` si filtre appartement). Lecture seule.
+- **Barchart étendu** : boucle `i=11..-3` — 12 mois passés + 3 futurs (`isFuture`, barres translucides "confirmé à venir").
+- **Parts par source** (carte Répartition par source) : `_miniRing(pct,color)` anneau SVG % du CA ; % des nuits (`nuits_sejour`, types RESERVATION/RELOCATION/DIRECT) ; annulations de la période (`filterResa` + type_norm ANNULATION*). ⚠️ Pour filtrer les résas par période : **`filterResa()`** (date_paiement/mois_kpi), jamais `filterPer()` (qui lit `r.date`, inexistant sur resa).
+
 ## 13. Règles métier Avance caisse / Solder / Équipe (validées 2026-05-04)
 
 ### Architecture Avance caisse
