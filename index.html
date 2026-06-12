@@ -755,8 +755,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <!-- Barchart CA mensuel 12 mois -->
-  <div class="sl" id="d-barchart-lbl" style="margin-top:18px">Évolution CA mensuel — 12 derniers mois</div>
+  <div class="sl" id="d-barchart-lbl" style="margin-top:18px">Évolution CA mensuel — 12 derniers mois + 3 à venir</div>
   <div id="d-barchart-monthly" style="background:var(--s);border:1px solid var(--br);border-radius:10px;padding:14px 10px 8px;margin-bottom:18px"></div>
+  <!-- Mois à venir — CA confirmé + occupation sécurisée (lecture seule, inspiré Smoobu) -->
+  <div class="sl">📅 Mois à venir — déjà sécurisé</div>
+  <div class="rg" id="d-future-months"></div>
   <!-- Décisions rapides -->
   <div class="dec-row" id="d-decisions"></div>
   <div class="kg">
@@ -5467,6 +5470,7 @@ function renderDash() {
   }
   renderDashAsuivreSummary();
   renderMonthlyBarchart();
+  renderFutureMonths();
 }
 
 // ============================================================
@@ -5769,6 +5773,46 @@ function renderDashAsuivreSummary() {
 // ============================================================
 // BARCHART CA MENSUEL 12 MOIS
 // ============================================================
+// ============================================================
+// MOIS À VENIR — CA confirmé + occupation sécurisée (M+1..M+3)
+// Lecture seule : réutilise mois_kpi/sumNetMAD/occupNightsBiz/computeJoursDispo.
+// ============================================================
+function joursDispoAppart(ap, pStart, pEnd) {
+  var l = (DB.logements || []).find(function(x){ return x.nom === ap; });
+  if (!l || !l.date_debut) return diffNuits(pStart, pEnd); // logement inconnu → mois plein
+  var fin = l.actif ? '9999-12-31' : (l.date_fin || null);
+  if (fin === null) return 0;
+  var from = l.date_debut > pStart ? l.date_debut : pStart;
+  var to   = fin < pEnd ? fin : pEnd;
+  return from < to ? diffNuits(from, to) : 0;
+}
+
+function renderFutureMonths() {
+  var el = document.getElementById('d-future-months');
+  if (!el) return;
+  var fa = val('d-fap');
+  var now = new Date();
+  var html = '';
+  for (var k = 1; k <= 3; k++) {
+    var d  = new Date(now.getFullYear(), now.getMonth() + k, 1);
+    var mk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var mStart = mk + '-01';
+    var dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    var mEnd = dEnd.getFullYear() + '-' + String(dEnd.getMonth() + 1).padStart(2, '0') + '-01'; // exclusif
+    var rows = DB.resa.filter(function(r){ return isRevRow(r) && r.mois_kpi === mk && (!fa || r.appart === fa); });
+    var ca    = sumNetMAD(rows);
+    var nuits = occupNightsBiz(fa || null, mStart, mEnd);
+    var dispo = fa ? joursDispoAppart(fa, mStart, mEnd) : computeJoursDispo(mStart, mEnd);
+    var pct   = dispo > 0 ? Math.round(nuits / dispo * 100) : 0;
+    var lbl   = MONTHS_FR[d.getMonth()] + ' ' + d.getFullYear();
+    html += '<div class="rc" style="border-left:3px solid rgba(76,175,125,.45)">'+
+      '<div><div class="rn">'+lbl+'</div>'+
+      '<div class="rsb">'+Math.round(nuits)+' nuit'+(nuits>1?'s':'')+' réservée'+(nuits>1?'s':'')+' · <b style="color:var(--te)">'+pct+'%</b> sécurisé</div></div>'+
+      '<div class="rv" style="color:var(--gr)">'+fmt(ca)+'</div></div>';
+  }
+  el.innerHTML = html;
+}
+
 function renderMonthlyBarchart() {
   var el = document.getElementById('d-barchart-monthly');
   if (!el) return;
@@ -5776,7 +5820,8 @@ function renderMonthlyBarchart() {
 
   var now = new Date();
   var months = [];
-  for (var i = 11; i >= 0; i--) {
+  // 12 derniers mois + 3 mois à venir (i négatif = futur, barres translucides "confirmé")
+  for (var i = 11; i >= -3; i--) {
     var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     var mk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     months.push({
@@ -5784,6 +5829,7 @@ function renderMonthlyBarchart() {
       lbl: MONTHS_FR[d.getMonth()].slice(0, 3),
       yr: d.getFullYear(),
       isCur: (i === 0),
+      isFuture: (i < 0),
       isNewYr: (d.getMonth() === 0 && i < 11)
     });
   }
@@ -5822,17 +5868,18 @@ function renderMonthlyBarchart() {
     var pctDep = Math.max(m.dep > 0 ? 4 : 0, Math.round(m.dep / maxVal * 100));
     var caK  = m.ca  >= 1000 ? (Math.round(m.ca/100)/10).toFixed(1)+'k'  : (m.ca  > 0 ? Math.round(m.ca)  : '');
     var borderStyle = m.isCur ? 'border:1.5px solid var(--gr);border-bottom:none;box-sizing:border-box;' : '';
+    var barBg = m.isFuture ? 'rgba(76,175,125,0.25)' : (m.isCur ? 'var(--gr)' : 'rgba(76,175,125,0.6)');
     bars +=
       '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:1px" title="'+
-        m.mk+
+        m.mk+(m.isFuture?' (confirmé à venir)':'')+
         '\nCA total : '+Math.round(m.ca).toLocaleString('fr-MA')+' MAD'+
         (m.caResa>0?'\n  Rés. : '+Math.round(m.caResa).toLocaleString('fr-MA')+' MAD':'')+
         (m.caServ>0?'\n  Serv. : '+Math.round(m.caServ).toLocaleString('fr-MA')+' MAD':'')+
         (m.caTaxe>0?'\n  Taxe : '+Math.round(m.caTaxe).toLocaleString('fr-MA')+' MAD':'')+
         (m.dep>0?'\nDép. : '+Math.round(m.dep).toLocaleString('fr-MA')+' MAD':'')+'">'+
-        '<div style="font-size:'+_bfs+'px;color:'+(m.isCur?'var(--gr)':'var(--td)')+';margin-bottom:1px;font-weight:'+(m.isCur?'700':'400')+'">'+caK+'</div>'+
+        '<div style="font-size:'+_bfs+'px;color:'+(m.isCur?'var(--gr)':'var(--td)')+';margin-bottom:1px;font-weight:'+(m.isCur?'700':'400')+(m.isFuture?';font-style:italic':'')+'">'+caK+'</div>'+
         '<div style="width:100%;position:relative;height:'+pctCa+'%;min-height:'+(m.ca>0?'3':'0')+'px">'+
-          '<div style="position:absolute;inset:0;background:'+(m.isCur?'var(--gr)':'rgba(76,175,125,0.6)')+';border-radius:2px 2px 0 0;'+borderStyle+'"></div>'+
+          '<div style="position:absolute;inset:0;background:'+barBg+';border-radius:2px 2px 0 0;'+borderStyle+(m.isFuture?'border:1px dashed rgba(76,175,125,.5);border-bottom:none;box-sizing:border-box;':'')+'"></div>'+
           (m.dep>0 ? '<div style="position:absolute;bottom:0;left:0;right:0;height:'+Math.round(pctDep*100/Math.max(pctCa,1))+'%;background:rgba(255,152,0,0.55);border-radius:2px 2px 0 0;"></div>' : '')+
         '</div>'+
       '</div>';
@@ -5854,6 +5901,7 @@ function renderMonthlyBarchart() {
     '<div style="display:flex;align-items:center;gap:14px;margin-top:8px;font-size:10px;color:var(--td)">'+
       '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:6px;background:rgba(76,175,125,0.6);border-radius:1px;display:inline-block"></span>CA net encaissé</span>'+
       '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:6px;background:rgba(255,152,0,0.55);border-radius:1px;display:inline-block"></span>Dép. business</span>'+
+      '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:6px;background:rgba(76,175,125,0.25);border:1px dashed rgba(76,175,125,.5);border-radius:1px;display:inline-block;box-sizing:border-box"></span>Confirmé à venir</span>'+
       '<span style="margin-left:auto;color:var(--go);font-weight:600" id="d-barchart-total"></span>'+
     '</div>';
 
