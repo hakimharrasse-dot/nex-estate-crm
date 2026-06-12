@@ -1094,9 +1094,14 @@ Classifications possibles :
 | 🎤 Dictée vocale | Web Speech API — saisie vocale de l'instruction Hakim |
 | Bouton ✓ Traité | `markTreated(id)` → statut=treated sans envoi |
 
+### UI — liste accordéon (refonte UX 2026-06-12, `7f922d1`)
+- Chaque thread = carte accordéon : **en-tête compact cliquable** (voyageur, badges classification/`🌐 langue` (si ≠ fr)/`⚠ à regénérer` (stale)/Prospect/⚠ erreur, aperçu `client_summary_fr || message_content` 1 ligne ellipsis, heure, chevron) + **corps replié par défaut** (`#msgbody-<id>`) contenant tout le détail historique (contexte appart/source/booking#, résumé FR, message original, brouillon `#draft-<id>`, traduction, instruction `#instr-<id>` + 🎤 + Regénérer, actions).
+- `msgToggleCard(id)` : bascule **DOM pure** (jamais de re-render → les brouillons édités dans les textareas des autres cartes sont préservés), ouverture exclusive (une seule carte ouverte), `MSG_OPEN_ID` survit aux re-renders, auto-dépli si un seul message affiché.
+- Les ids et fonctions d'action (`msgSend`/`msgRegenerate`/`msgIgnore`/`msgResolve`/`msgToggleMic`) sont inchangés — tous les garde-fous (stale, texte vide, anti double-clic, confirm) intacts.
+
 ### Mobile
 - Section Messages IA accessible via le drawer "Plus" → `mn-messages` (admin only)
-- Pas de modification spécifique mobile — responsive CSS standard
+- L'en-tête compact accordéon règle l'essentiel du confort mobile (plus de mur de cartes dépliées)
 
 ---
 
