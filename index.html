@@ -6,8 +6,21 @@
 <title>Nex-Estate CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+// Thème : appliqué AVANT le rendu pour éviter le flash sombre→clair au chargement
+try { if (localStorage.getItem('nex_theme') === 'light') document.documentElement.classList.add('theme-light'); } catch(e) {}
+</script>
 <style>
 :root{--bg:#0f0f0f;--s:#1a1a1a;--s2:#222;--br:#2e2e2e;--or:#c8773a;--ors:rgba(200,119,58,.12);--tx:#f0ede8;--tm:#888;--td:#555;--gr:#4caf7d;--grs:rgba(76,175,125,.1);--re:#e05252;--res:rgba(224,82,82,.1);--bl:#5a9fd4;--pu:#9b7de8;--te:#3dbdaa;--go:#e8c84a;}
+/* ── Thème clair — accents assombris pour le contraste sur fond blanc ── */
+html.theme-light{
+  --bg:#f4f5f7;--s:#ffffff;--s2:#eef0f3;--br:#dcdfe5;
+  --tx:#1c2026;--tm:#5a6270;--td:#8a90a0;
+  --or:#b2632a;--ors:rgba(178,99,42,.13);
+  --gr:#2e8f5f;--grs:rgba(46,143,95,.12);
+  --re:#c63b3b;--res:rgba(198,59,59,.10);
+  --bl:#2f6fae;--pu:#7150c0;--te:#15897b;--go:#a88a14;
+}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-size:14px;}
 .layout{display:flex;min-height:100vh;}
@@ -540,7 +553,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 <!-- ══ APP (masqué jusqu'au login) ══ -->
 <div id="app" style="display:none;">
 
-<div id="loading-overlay" style="position:fixed;inset:0;background:#0f0f0f;z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px">
+<div id="loading-overlay" style="position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px">
   <div style="font-size:20px;font-weight:600;color:#f0ede8;letter-spacing:-.5px">Nex-Estate</div>
   <div style="font-size:12px;color:#888;font-family:'DM Mono',monospace" id="loading-msg">Connexion à Supabase...</div>
   <div class="ldbar"></div>
@@ -563,6 +576,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button id="btn-save" class="admin-only" onclick="exportData()" style="background:var(--gr);color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">💾 Sauvegarder</button>
       <button id="btn-restore" class="admin-only" onclick="document.getElementById('imp-file').click()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">📂 Restaurer</button>
       <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importData(this)">
+      <button id="btn-theme" onclick="toggleTheme()" style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">☀️ Mode clair</button>
       <button onclick="doLogout()" style="background:var(--s2);border:1px solid var(--br);color:var(--td);border-radius:6px;padding:7px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🔒 Déconnexion</button>
     </div>
   </div>
@@ -1609,6 +1623,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="mbt admin-only" id="mn-messages" onclick="goTo('messages');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">💬</span>Messages</div>
   <div class="mbt admin-only" id="mn-team" onclick="goTo('team');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">👥</span>Équipe</div>
   <div class="mbt admin-only" id="mn-admin" onclick="goTo('admin');closeMobMore()" style="gap:4px;padding:6px 16px"><span class="mic">⚙️</span>Utilisateurs</div>
+  <div class="mbt" id="mn-theme" onclick="toggleTheme()" style="gap:4px;padding:6px 16px"><span class="mic">☀️</span>Clair</div>
   <div class="mbt" id="mn-logout" onclick="closeMobMore();doLogout()" style="gap:4px;padding:6px 16px;color:var(--td);border-color:var(--br)"><span class="mic">🔒</span>Déconnexion</div>
 </div>
 
@@ -4799,6 +4814,22 @@ window.addEventListener('scroll', function(){
   var b=document.getElementById('scrolltop-btn'); if(!b) return;
   b.style.display=(window.scrollY>600)?'flex':'none';
 }, {passive:true});
+
+// ── Thème clair/sombre — bascule + persistance localStorage ──
+function applyThemeLabels(){
+  var light=document.documentElement.classList.contains('theme-light');
+  var b=document.getElementById('btn-theme'); if(b) b.textContent=light?'🌙 Mode sombre':'☀️ Mode clair';
+  var m=document.getElementById('mn-theme'); if(m) m.innerHTML='<span class="mic">'+(light?'🌙':'☀️')+'</span>'+(light?'Sombre':'Clair');
+}
+function toggleTheme(){
+  var el=document.documentElement;
+  var light=!el.classList.contains('theme-light');
+  el.classList.toggle('theme-light',light);
+  try{localStorage.setItem('nex_theme',light?'light':'dark');}catch(e){}
+  applyThemeLabels();
+  showToast(light?'☀️ Thème clair activé':'🌙 Thème sombre activé');
+}
+applyThemeLabels();
 
 // ── Raccourcis clavier (desktop) ─────────────────────────────
 // N = nouvelle entrée (vue active) · / = recherche · Échap = fermer modal/aide · ? = aide
@@ -8280,7 +8311,7 @@ function buildForm(type, editId) {
       fieldFull('Voyageur (optionnel)','fi-voy','text',v('voy',''),'Nom du voyageur')+
       '<div class="ff" style="position:relative"><label class="fl">Réservation liée (optionnel)</label>'+
         '<input type="text" class="fi" id="fi-resa-ref" autocomplete="off" value="'+escHtml(v('resa_ref','')+'')+'" placeholder="Nom du voyageur, code Airbnb/Booking ou appartement" oninput="servRefSuggest(this.value)" onfocus="servRefSuggest(this.value)" onblur="setTimeout(function(){var b=document.getElementById(\'fi-resa-ref-sug\');if(b)b.style.display=\'none\';},150)">'+
-        '<div id="fi-resa-ref-sug" style="position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:200;background:#1c1c1c;border:1px solid var(--or);border-radius:10px;max-height:240px;overflow:auto;display:none;box-shadow:0 10px 30px rgba(0,0,0,.75)"></div>'+
+        '<div id="fi-resa-ref-sug" style="position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:200;background:var(--s);border:1px solid var(--or);border-radius:10px;max-height:240px;overflow:auto;display:none;box-shadow:0 10px 30px rgba(0,0,0,.35)"></div>'+
         '<div style="font-size:11px;color:var(--td);margin-top:3px">Lie ce service à une réservation pour la réconciliation — tapez un nom ou collez le code</div>'+
       '</div>'+
       (function(){
@@ -8368,7 +8399,7 @@ function servRefSuggest(q) {
     var srcBadge = r.source === 'Airbnb'
       ? '<span style="color:#ff5a5f;font-weight:700">Airbnb</span>'
       : '<span style="color:#4a90d9;font-weight:700">Booking</span>';
-    return '<div onmousedown="pickServRef(\''+refAttr+'\')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #2a2a2a;background:#1c1c1c" onmouseover="this.style.background=\'#2c2c2c\'" onmouseout="this.style.background=\'#1c1c1c\'">'+
+    return '<div onmousedown="pickServRef(\''+refAttr+'\')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--br);background:var(--s)" onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'var(--s)\'">'+
       srcBadge+' <b style="color:var(--tx)">'+escHtml(r.voyageur||'?')+'</b>'+
       '<div style="color:var(--tm);font-size:11px;margin-top:2px">'+escHtml(r.ref)+' · '+escHtml(r.appart||'')+' · '+escHtml(r.checkin||'')+'</div>'+
     '</div>';
