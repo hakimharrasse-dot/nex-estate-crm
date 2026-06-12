@@ -17,6 +17,13 @@
 - P3.11 Alerte sync Smoobu : ✅ fait 2026-06-10 (`654fb39`) — table `sync_heartbeat` (RLS read authenticated), `smoobu-poll.js` écrit un heartbeat à chaque run, badge rouge sidebar si > 2h
 - Récap équipe : nb passages en attente + détail dépliable dates/appart/montant (`41947f4`)
 
+## ✅ Dashboard "Mois à venir" (inspiré Smoobu) — livré 2026-06-12 (`f91c9f6`)
+
+- Bloc 📅 M+1/M+2/M+3 : CA confirmé (`mois_kpi` futur via `sumNetMAD`), nuits réservées (`occupNightsBiz`), % occupation sécurisée (`computeJoursDispo`, `joursDispoAppart(ap,s,e)` si filtre appartement)
+- Barchart : 12 mois passés + 3 futurs en barres translucides pointillées, légende "Confirmé à venir", labels italiques
+- Lecture seule — aucun calcul KPI existant modifié ; respecte le filtre appartement du dashboard
+- 🔲 Bloc 2 Smoobu (différé, validé dans le principe) : parts en % par source (CA, nuits, annulations) dans "Répartition par source"
+
 ## ✅ Thème clair/sombre 🌙/☀️ — livré 2026-06-12 (`dcc3677`)
 
 - Palette claire `html.theme-light` : 17 variables surchargées, accents assombris pour le contraste sur fond blanc (--gr #2e8f5f, --go #a88a14, etc.)
