@@ -6866,16 +6866,10 @@ function renderWkCards() {
 
   var total = cards.length;
 
-  // ≤ 5 cartes : tout afficher d'un coup, pas de navigation
-  if (total <= 5) {
-    var cols;
-    if (isMobile()) {
-      cols = 1; // pleine largeur — 2 colonnes illisibles sur mobile (libellés hachés)
-    } else if (total === 5) {
-      cols = 3; // 3+2 : cartes à ~375px, propre et lisible
-    } else {
-      cols = total; // 1, 2, 3 ou 4 colonnes égales
-    }
+  // Desktop ≤ 5 cartes : tout afficher d'un coup, pas de navigation
+  // (mobile : toujours le carrousel 1 carte ci-dessous — demande Hakim 2026-06-12)
+  if (!isMobile() && total <= 5) {
+    var cols = (total === 5) ? 3 : total; // 5 → 3+2 : cartes à ~375px, propre et lisible
     set('wk-cards', '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'
       + cards.join('') + '</div>');
     var recapSumEl2 = document.getElementById('recap-summary');
@@ -6883,23 +6877,26 @@ function renderWkCards() {
     return;
   }
 
-  // > 5 cartes : pagination à 4 (desktop) ou 2 (mobile)
-  var perPage = isMobile() ? 2 : 4;
+  // Mobile : carrousel 1 membre à la fois (flèches ← →) · Desktop > 5 : pagination à 4
+  var perPage = isMobile() ? 1 : 4;
   var maxPage = Math.max(0, Math.ceil(total / perPage) - 1);
   if (WK_CARD_PAGE < 0) WK_CARD_PAGE = 0;
   if (WK_CARD_PAGE > maxPage) WK_CARD_PAGE = maxPage;
   var start   = WK_CARD_PAGE * perPage;
   var sliced  = cards.slice(start, start + perPage);
-  var cols    = isMobile() ? 1 : Math.min(sliced.length, perPage); // mobile : 2 cartes/page mais empilées
+  var cols    = Math.min(sliced.length, perPage);
   var grid    = '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'+sliced.join('')+'</div>';
 
   var canPrev = WK_CARD_PAGE > 0;
   var canNext = WK_CARD_PAGE < maxPage;
   var from = start + 1, to = Math.min(start + perPage, total);
-  var nav = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px">'
-    + '<span style="font-size:12px;color:var(--td);margin-right:4px">'+from+'–'+to+' / '+total+'</span>'
-    + '<button class="nb2"'+(canPrev?'':' disabled')+' onclick="wkCardPage(-1)" title="Précédent">←</button>'
-    + '<button class="nb2"'+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Suivant">→</button>'
+  var solo = perPage === 1;
+  var counter = solo ? (start+1)+' / '+total : from+'–'+to+' / '+total;
+  var btnStyle = solo ? ' style="padding:8px 24px;font-size:16px"' : '';
+  var nav = '<div style="display:flex;align-items:center;justify-content:'+(solo?'center':'flex-end')+';gap:'+(solo?'18':'8')+'px;margin-top:10px">'
+    + '<button class="nb2"'+btnStyle+(canPrev?'':' disabled')+' onclick="wkCardPage(-1)" title="Membre précédent">←</button>'
+    + '<span style="font-size:12px;color:var(--td)">'+counter+'</span>'
+    + '<button class="nb2"'+btnStyle+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Membre suivant">→</button>'
     + '</div>';
 
   set('wk-cards', grid + nav);
