@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/smoobu-webhook.js":  { "maxDuration": 10 },
+    "api/smoobu-webhook.js":  { "maxDuration": 30 },
     "api/smoobu-poll.js":     { "maxDuration": 30 },
     "api/admin-users.js":     { "maxDuration": 10 },
     "api/smoobu-messages.js": { "maxDuration": 30 }

@@ -325,6 +325,30 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, action, result });
       }
 
+      // ── Nouveau message voyageur → transférer au module Messages IA ──
+      // Smoobu n'envoie ses webhooks qu'à UNE seule URL (celle-ci). Avant ce forward,
+      // les newMessage étaient jetés ici ("action non gérée") → les messages n'arrivaient
+      // dans le CRM qu'au cron quotidien de 8h (latence jusqu'à 24h, constatée en base :
+      // 100% des messages créés à 08:xx). checkDuplicate côté messages protège du double
+      // traitement si Smoobu ajoute un jour une 2e URL webhook.
+      case 'newMessage': {
+        try {
+          const host = req.headers.host || 'nex-estate-seven.vercel.app';
+          const fr = await fetch(`https://${host}/api/smoobu-messages`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload),
+          });
+          const fj = await fr.json().catch(function() { return {}; });
+          console.log('[webhook] newMessage forwardé → smoobu-messages:', fr.status, JSON.stringify(fj).slice(0, 200));
+          return res.status(200).json({ ok: true, action, forwarded: fr.status });
+        } catch (fwdErr) {
+          console.error('[webhook] forward newMessage error:', fwdErr.message);
+          // 200 quand même : le cron sync quotidien rattrapera ce message
+          return res.status(200).json({ ok: true, action, forwardError: fwdErr.message });
+        }
+      }
+
       // ── Action inconnue ───────────────────────────────────
       default:
         console.log('[webhook] action non gérée:', action);

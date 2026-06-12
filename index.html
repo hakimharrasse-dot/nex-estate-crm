@@ -15636,6 +15636,25 @@ function msgUpdateBadge() {
   else        { badge.classList.add('hidden'); }
 }
 
+// ── Badge Messages auto-rafraîchi (avec le webhook temps réel, un message peut
+// arriver à tout moment) — requête légère, ne touche PAS MSG_DATA ni la vue
+// (les brouillons en cours d'édition ne sont jamais perturbés) ──
+async function refreshMsgBadge() {
+  if (!SUPA || ROLE !== 'admin') return;
+  var badge = document.getElementById('msg-badge');
+  if (!badge) return;
+  try {
+    var r = await SUPA.from('messages').select('id,classification')
+      .eq('statut', 'pending');
+    if (r.error || !r.data) return;
+    var n = r.data.filter(function(m){ return m.classification !== 'no_reply_needed'; }).length;
+    if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
+    else        { badge.classList.add('hidden'); }
+  } catch (e) { /* silencieux — prochain tick */ }
+}
+setInterval(refreshMsgBadge, 5 * 60 * 1000);
+setTimeout(refreshMsgBadge, 5000); // premier check après le boot
+
 async function msgSend(messageId, bookingId) {
   // Garde stale — ne jamais envoyer un brouillon obsolète
   var msgRec = MSG_DATA.find(function(m) { return m.id === messageId; });
