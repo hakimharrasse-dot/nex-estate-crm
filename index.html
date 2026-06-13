@@ -3323,6 +3323,7 @@ async function launchApp() {
     loadDupIgnored();
     applyRoleUI();
     populateTeamSelects();
+    restoreAllFilters(); // #4 — réapplique les filtres mémorisés (après populate, avant 1er rendu visible)
 
     console.log('[launch] goTo resa');
     if (ROLE !== 'user') goTo('resa');
@@ -3741,12 +3742,63 @@ function mkPgBar(total, pageLen, perPage, curPage, pgFn, perFn, pgBarId) {
     '<select class="r-persel" onchange="'+perFn+'(this.value)">'+perOpts+'</select>'+
     '<span style="font-size:11px;color:var(--td)">/ page</span>'+pgNav+'</div></div>');
 }
+// ============================================================
+// #4 — MÉMOIRE DES FILTRES PAR BLOC (persistance localStorage)
+// Persiste uniquement les SÉLECTIONS de filtres (appart, catégorie, source,
+// type, statut, équipe, collecteur, service, recherche). PAS la période
+// (Mois/Année/Cumulé reste sur le mois courant au lancement, à dessein).
+// Point d'accroche unique : les 5 fonctions *Filter() (tout changement y passe).
+// ============================================================
+var FILTERS_LS_KEY = 'nex_filters_v1';
+function _filtersLoad() { try { return JSON.parse(localStorage.getItem(FILTERS_LS_KEY)) || {}; } catch(e){ return {}; } }
+function _filtersSave(o) { try { localStorage.setItem(FILTERS_LS_KEY, JSON.stringify(o)); } catch(e){} }
+function _fGet(id){ var el=document.getElementById(id); return el?el.value:''; }
+function _fSet(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?'':v); }
+
+function saveBlockFilters(block) {
+  var all = _filtersLoad();
+  if (block==='resa')
+    all.resa = { ms:{ ap:RESA_FILTERS.ap.slice(), src:RESA_FILTERS.src.slice(), type:RESA_FILTERS.type.slice(), st:RESA_FILTERS.st.slice() }, search:R_SEARCH };
+  else if (block==='biz')
+    all.biz = { ms:{ cat:BIZ_FILTERS.cat.slice(), st:BIZ_FILTERS.st.slice(), ap:BIZ_FILTERS.ap.slice(), men:BIZ_FILTERS.men.slice(), pay:BIZ_FILTERS.pay.slice() }, fsearch:_fGet('b-fsearch'), fq:_fGet('b-fq') };
+  else if (block==='taxe')
+    all.taxe = { fap:_fGet('t-fap'), fcol:_fGet('t-fcol'), fst:_fGet('t-fst'), fsearch:_fGet('t-fsearch') };
+  else if (block==='serv')
+    all.serv = { fap:_fGet('s-fap'), fsv:_fGet('s-fsv'), fcol:_fGet('s-fcol'), fst:_fGet('s-fst'), fsearch:_fGet('s-fsearch') };
+  else if (block==='perso')
+    all.perso = { cat:PERSO_FILTERS.cat.slice(), fst:_fGet('p-fst'), fsearch:_fGet('p-fsearch') };
+  _filtersSave(all);
+}
+
+// Restaure l'état des filtres au boot — appelé APRÈS populateTeamSelects()
+// (t-fcol / s-fcol sont peuplés dynamiquement, leur .value doit être posé après).
+function restoreAllFilters() {
+  var all = _filtersLoad();
+  if (all.resa && all.resa.ms) {
+    var m=all.resa.ms;
+    RESA_FILTERS.ap=(m.ap||[]).slice(); RESA_FILTERS.src=(m.src||[]).slice();
+    RESA_FILTERS.type=(m.type||[]).slice(); RESA_FILTERS.st=(m.st||[]).slice();
+    R_SEARCH=all.resa.search||''; _fSet('r-search',R_SEARCH);
+    msRapRenderBtn(); msRsrcRenderBtn(); msRtypeRenderBtn(); msRstRenderBtn();
+  }
+  if (all.biz && all.biz.ms) {
+    var b=all.biz.ms;
+    BIZ_FILTERS.cat=(b.cat||[]).slice(); BIZ_FILTERS.st=(b.st||[]).slice(); BIZ_FILTERS.ap=(b.ap||[]).slice();
+    BIZ_FILTERS.men=(b.men||[]).slice(); BIZ_FILTERS.pay=(b.pay||[]).slice();
+    _fSet('b-fsearch',all.biz.fsearch); _fSet('b-fq',all.biz.fq);
+    msCatRenderBtn(); msStRenderBtn(); msApRenderBtn(); msMenRenderBtn(); msPayRenderBtn();
+  }
+  if (all.taxe)  { _fSet('t-fap',all.taxe.fap); _fSet('t-fcol',all.taxe.fcol); _fSet('t-fst',all.taxe.fst); _fSet('t-fsearch',all.taxe.fsearch); }
+  if (all.serv)  { _fSet('s-fap',all.serv.fap); _fSet('s-fsv',all.serv.fsv); _fSet('s-fcol',all.serv.fcol); _fSet('s-fst',all.serv.fst); _fSet('s-fsearch',all.serv.fsearch); }
+  if (all.perso) { PERSO_FILTERS.cat=(all.perso.cat||[]).slice(); _fSet('p-fst',all.perso.fst); _fSet('p-fsearch',all.perso.fsearch); msPcatRenderBtn(); }
+}
+
 // ── Filter/page/per — Réservations ──
-function resaFilter()  { R_PAGE=1; renderResa(); }
+function resaFilter()  { R_PAGE=1; saveBlockFilters('resa'); renderResa(); }
 function resaPage(p)   { R_PAGE=p; renderResa(); }
 function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
 // ── Filter/page/per — Business ──
-function bizFilter()   { B_PAGE=1; renderBiz(); }
+function bizFilter()   { B_PAGE=1; saveBlockFilters('biz'); renderBiz(); }
 
 // ── Composant multi-select Catégorie ─────────────────────────────────────────
 var MS_CATS_HIDDEN = ['Avance caisse','Règlement terrain'];
@@ -4385,15 +4437,15 @@ function msRapRenderBtn() {
 function bizPage(p)    { B_PAGE=p; renderBiz(); }
 function bizPer(n)     { B_PER=parseInt(n)||20; B_PAGE=1; renderBiz(); }
 // ── Filter/page/per — Taxe ──
-function taxeFilter()  { T_PAGE=1; renderTaxe(); }
+function taxeFilter()  { T_PAGE=1; saveBlockFilters('taxe'); renderTaxe(); }
 function taxePage(p)   { T_PAGE=p; renderTaxe(); }
 function taxePer(n)    { T_PER=parseInt(n)||20; T_PAGE=1; renderTaxe(); }
 // ── Filter/page/per — Serv ──
-function servFilter()  { S_PAGE=1; renderServ(); }
+function servFilter()  { S_PAGE=1; saveBlockFilters('serv'); renderServ(); }
 function servPage(p)   { S_PAGE=p; renderServ(); }
 function servPer(n)    { S_PER=parseInt(n)||20; S_PAGE=1; renderServ(); }
 // ── Filter/page/per — Perso ──
-function persoFilter() { P_PAGE=1; renderPerso(); }
+function persoFilter() { P_PAGE=1; saveBlockFilters('perso'); renderPerso(); }
 function persoPage(p)  { P_PAGE=p; renderPerso(); }
 function persoPer(n)   { P_PER=parseInt(n)||20; P_PAGE=1; renderPerso(); }
 // ── Filter/page/per — Doublons ──
