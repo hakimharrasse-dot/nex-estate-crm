@@ -92,6 +92,12 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .ccpaid{display:flex;justify-content:space-between;padding:5px 0 0;font-size:12px;color:var(--td);border-top:1px dashed var(--br);margin-top:6px;}
 /* Filter bar */
 .fb{background:var(--s);border:1px solid var(--br);border-radius:12px;padding:12px;margin-bottom:12px;}
+/* Barre de filtres collante — suit le défilement (comme la barre de sélection).
+   position:sticky crée TOUJOURS un contexte d'empilement → z-index:210 pour passer
+   au-dessus de l'overlay des déroulants (ms-ov z-209) ; les ms-drop (z-210, enfants)
+   restent au-dessus. La barre de sélection est remontée à z-220 pour rester prioritaire
+   quand les deux barres se croisent (lignes sélectionnées + défilement jusqu'au tableau). */
+.fb-sticky{position:sticky;top:8px;z-index:210;box-shadow:0 2px 12px rgba(0,0,0,.07);}
 .fr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 /* ── Multi-select dropdown (Commit A — Catégorie) ── */
 .ms-wrap{position:relative;display:inline-block;}
@@ -275,7 +281,7 @@ input[type=checkbox].scb{width:15px;height:15px;accent-color:var(--go);cursor:po
 #reset-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;}
 #reset-screen.visible{display:flex;}
 /* Sélection multiple réservations */
-.sel-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;position:sticky;top:8px;z-index:30;box-shadow:0 4px 16px rgba(0,0,0,.18);}
+.sel-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;position:sticky;top:8px;z-index:220;box-shadow:0 4px 16px rgba(0,0,0,.18);}
 .sel-bar.hidden{display:none!important;}
 .sel-cnt{font-size:13px;font-weight:500;color:var(--tx);flex:1;}
 .bdel-sel{background:var(--re);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;opacity:.5;pointer-events:none;}
@@ -434,6 +440,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .mobnav{display:flex;}.hm{display:none;}
   .circ-card{min-width:0;}
   /* Filtres — grille 2 colonnes pleine largeur (tabs/nav/période/recherche sur ligne entière) */
+  /* Sur mobile la barre de filtres est trop haute (~40% de l'écran) pour rester collante → normal */
+  .fb-sticky{position:static;box-shadow:none;}
   .fb .fr{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;}
   .fb .fr>.tabs,.fb .fr>div[id$="-nav"],.fb .fr>select[id$="-per"],.fb .fr>input.fsel{grid-column:1/-1;}
   .fb .fr>*{min-width:0!important;width:100%;max-width:none!important;}
@@ -624,7 +632,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="vh">
     <div><div class="vt" style="background:linear-gradient(135deg,var(--or),var(--go));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Dashboard</div><div class="vsub">Pilotage des KPIs — tous les montants en MAD</div></div>
   </div>
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="d-per" onchange="setPer('d',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
@@ -824,7 +832,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="sl">Revenus nets par appartement</div>
   <div class="rg" id="r-recap"></div>
   <input class="r-search" id="r-search" type="text" placeholder="🔍  Rechercher — réf, voyageur, appart, source, statut..." oninput="R_SEARCH=this.value;resaFilter()">
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="r-per" onchange="setPer('r',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
@@ -879,7 +887,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
   </div>
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="b-per" onchange="setPer('b',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
@@ -951,7 +959,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">Reversé</div><div class="kv" style="color:var(--gr)" id="t-rev">0 MAD</div></div>
   </div>
 
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="t-per" onchange="setPer('t',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
@@ -1002,7 +1010,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="sl">Résumé par service</div>
   <div class="rg" id="s-recap"></div>
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="s-per" onchange="setPer('s',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
@@ -1327,7 +1335,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   </div><!-- /rcp-block -->
 
-  <div class="fb"><div class="fr">
+  <div class="fb fb-sticky"><div class="fr">
     <select class="fsel" id="p-per" onchange="setPer('p',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
