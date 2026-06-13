@@ -802,13 +802,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
     </div>
   </div>
-  <!-- Barre sélection multiple -->
-  <div class="sel-bar hidden" id="r-sel-bar">
-    <div class="sel-cnt" id="r-sel-cnt">0 sélectionnée(s)</div>
-    <button class="bdel-sel" id="r-bdel-sel" onclick="deleteResaSel()">🗑 Supprimer la sélection</button>
-    <button class="ba ba-ghost" onclick="clearResaSel()" style="padding:6px 12px;font-size:12px">✕ Désélectionner tout</button>
-    <button class="ba ba-ghost" id="r-sel-all-filtered" onclick="selectAllFiltered()" style="padding:6px 12px;font-size:12px;display:none">☑ Sélectionner toutes les réservations filtrées</button>
-  </div>
   <div class="kg">
     <div class="kc kc-hero"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
     <div class="kc"><div class="kl">Revenus bruts</div><div class="kv" id="r-brut">0 MAD</div></div>
@@ -847,6 +840,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="ms-wrap"><button class="ms-btn" id="ms-rtype-btn" onclick="msRtypeToggle(event)">Type ▾</button><div class="ms-drop" id="ms-rtype-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-rst-btn" onclick="msRstToggle(event)">Statut ▾</button><div class="ms-drop" id="ms-rst-drop"></div></div>
   </div></div>
+  <!-- Barre sélection multiple — juste au-dessus du tableau (cohérent avec Business/Taxe/Services) -->
+  <div class="sel-bar hidden" id="r-sel-bar">
+    <div class="sel-cnt" id="r-sel-cnt">0 sélectionnée(s)</div>
+    <button class="bdel-sel" id="r-bdel-sel" onclick="deleteResaSel()">🗑 Supprimer la sélection</button>
+    <button class="ba ba-ghost" onclick="clearResaSel()" style="padding:6px 12px;font-size:12px">✕ Désélectionner tout</button>
+    <button class="ba ba-ghost" id="r-sel-all-filtered" onclick="selectAllFiltered()" style="padding:6px 12px;font-size:12px;display:none">☑ Sélectionner toutes les réservations filtrées</button>
+  </div>
   <div id="r-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
     <thead><tr><th style="width:32px"><input type="checkbox" class="rcb" id="r-chk-all" onchange="toggleResaAll(this.checked)" title="Sélectionner la page visible"></th><th>Réf.</th><th>Appart</th><th>Source</th><th>Voyageur</th><th class="hm">Check-in</th><th class="hm">Check-out</th><th>Nuits</th><th>Net</th><th>Taxe</th><th>Type</th><th>Statut</th><th></th></tr></thead>
