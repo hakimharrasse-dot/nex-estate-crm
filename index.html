@@ -629,11 +629,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
       <option value="mois" selected>Mois</option>
-      <option value="bimestre">Bimestre</option>
       <option value="trimestre">Trimestre</option>
       <option value="semestre">Semestre</option>
       <option value="annee">Année</option>
       <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
     </select>
     <div id="d-nav"></div>
     <select class="fsel" id="d-fap" onchange="renderDash()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
@@ -824,22 +824,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="sl">Revenus nets par appartement</div>
   <div class="rg" id="r-recap"></div>
   <input class="r-search" id="r-search" type="text" placeholder="🔍  Rechercher — réf, voyageur, appart, source, statut..." oninput="R_SEARCH=this.value;resaFilter()">
-  <div class="r-presets">
-    <button class="rp" id="rp-today" onclick="setResaPreset('today')">Aujourd'hui</button>
-    <button class="rp" id="rp-7j" onclick="setResaPreset('7j')">7 jours</button>
-    <button class="rp" id="rp-30j" onclick="setResaPreset('30j')">30 jours</button>
-    <button class="rp" id="rp-month" onclick="setResaPreset('month')">Mois en cours</button>
-  </div>
   <div class="fb"><div class="fr">
     <select class="fsel" id="r-per" onchange="setPer('r',this.value)">
       <option value="jour">Jour</option>
       <option value="semaine">Semaine</option>
       <option value="mois" selected>Mois</option>
-      <option value="bimestre">Bimestre</option>
       <option value="trimestre">Trimestre</option>
       <option value="semestre">Semestre</option>
       <option value="annee">Année</option>
       <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
     </select>
     <div id="r-nav"></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-rap-btn" onclick="msRapToggle(event)">Appartement ▾</button><div class="ms-drop" id="ms-rap-drop"></div></div>
@@ -886,13 +880,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
   </div>
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="btj" onclick="setPer('b','jour')">Jour</button>
-      <button class="tab" id="bts" onclick="setPer('b','semaine')">Semaine</button>
-      <button class="tab on" id="btm" onclick="setPer('b','mois')">Mois</button>
-      <button class="tab" id="btcu" onclick="setPer('b','custom')">Période</button>
-      <button class="tab" id="btcum" onclick="setPer('b','cumul')">Cumulé</button>
-    </div>
+    <select class="fsel" id="b-per" onchange="setPer('b',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
+    </select>
     <div id="b-nav"></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-ap-btn" onclick="msApToggle(event)">Appartement ▾</button><div class="ms-drop" id="ms-ap-drop"></div></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-cat-btn" onclick="msCatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-cat-drop"></div></div>
@@ -955,14 +952,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="ttj" onclick="setPer('t','jour')">Jour</button>
-      <button class="tab" id="tts" onclick="setPer('t','semaine')">Semaine</button>
-      <button class="tab ont" id="ttm" onclick="setPer('t','mois')">Mois</button>
-      <button class="tab" id="tta" onclick="setPer('t','annee')">Année</button>
-      <button class="tab" id="ttcu" onclick="setPer('t','custom')">Période</button>
-      <button class="tab" id="ttcum" onclick="setPer('t','cumul')">Cumulé</button>
-    </div>
+    <select class="fsel" id="t-per" onchange="setPer('t',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
+    </select>
     <div id="t-nav"></div>
     <select class="fsel" id="t-fap" onchange="taxeFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="t-fcol" onchange="taxeFilter()"><option value="">Tous collecteurs</option><option>Hakim</option><option>Amal</option><option>Rabiaa</option><option>Touria</option><option>Équipe</option></select>
@@ -1004,14 +1003,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   <div class="sl">Résumé par service</div>
   <div class="rg" id="s-recap"></div>
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="stj" onclick="setPer('s','jour')">Jour</button>
-      <button class="tab" id="sts" onclick="setPer('s','semaine')">Semaine</button>
-      <button class="tab ons" id="stm" onclick="setPer('s','mois')">Mois</button>
-      <button class="tab" id="sta" onclick="setPer('s','annee')">Année</button>
-      <button class="tab" id="stcu" onclick="setPer('s','custom')">Période</button>
-      <button class="tab" id="stcum" onclick="setPer('s','cumul')">Cumulé</button>
-    </div>
+    <select class="fsel" id="s-per" onchange="setPer('s',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
+    </select>
     <div id="s-nav"></div>
     <select class="fsel" id="s-fap" onchange="servFilter()"><option value="">Tous apparts</option><option>Résidence Al Boustane</option><option>Agdal 13</option><option>Touahri 11</option><option>Riad Ahl Sala</option></select>
     <select class="fsel" id="s-fsv" onchange="servFilter()"><option value="">Tous services</option><option>Navette aéroport</option><option>Navette ville</option><option>Ménage supplémentaire</option><option>Changement serviettes/linge</option><option>Arrivée anticipée</option><option>Départ tardif</option><option>Climatisation</option><option>Voyageur supplémentaire</option><option>Petit-déjeuner</option><option>Parking</option><option>Autre service</option></select>
@@ -1327,13 +1328,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div><!-- /rcp-block -->
 
   <div class="fb"><div class="fr">
-    <div class="tabs">
-      <button class="tab" id="ptj" onclick="setPer('p','jour')">Jour</button>
-      <button class="tab" id="pts" onclick="setPer('p','semaine')">Semaine</button>
-      <button class="tab onp" id="ptm" onclick="setPer('p','mois')">Mois</button>
-      <button class="tab" id="pttri" onclick="setPer('p','trimestre')">Trim.</button>
-      <button class="tab" id="pta" onclick="setPer('p','annee')">Année</button>
-    </div>
+    <select class="fsel" id="p-per" onchange="setPer('p',this.value)">
+      <option value="jour">Jour</option>
+      <option value="semaine">Semaine</option>
+      <option value="mois" selected>Mois</option>
+      <option value="trimestre">Trimestre</option>
+      <option value="semestre">Semestre</option>
+      <option value="annee">Année</option>
+      <option value="custom">Période libre</option>
+      <option value="cumul">Tout l'historique</option>
+    </select>
     <div id="p-nav"></div>
     <div class="ms-wrap"><button class="ms-btn" id="ms-pcat-btn" onclick="msPcatToggle(event)">Catégorie ▾</button><div class="ms-drop" id="ms-pcat-drop"></div></div>
     <select class="fsel" id="p-fst" onchange="persoFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
@@ -3671,18 +3675,6 @@ function typeClass(t)  {
   };
   return m[t]||'autre';
 }
-function setResaPreset(p) {
-  R_QUICK=null; R_PAGE=1;
-  document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});
-  var el=document.getElementById('rp-'+p);
-  if(el) el.classList.add('on');
-  var t=today();
-  if(p==='today'){R_QUICK={from:t,to:t};}
-  else if(p==='7j'){var d=new Date();d.setDate(d.getDate()-6);R_QUICK={from:d.toISOString().slice(0,10),to:t};}
-  else if(p==='30j'){var d2=new Date();d2.setDate(d2.getDate()-29);R_QUICK={from:d2.toISOString().slice(0,10),to:t};}
-  else if(p==='month'){R_QUICK={from:t.slice(0,7)+'-01',to:t};}
-  renderResa();
-}
 function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
 
 // ── Pastille de statut cliquable — bascule en 1 clic sans modal (#2 audit UX) ──
@@ -4730,42 +4722,26 @@ function filterResa(rows, k) {
     var cf=CUSTOM_FROM[k]||today(), ct=CUSTOM_TO[k]||today();
     return rows.filter(function(r){var d=dateKey(r);return d>=cf&&d<=ct;});
   }
+  if(p==='cumul') return rows;
   var mk=MO[k].toISOString().slice(0,7);
   return rows.filter(function(r){return (r.mois_kpi||dateKey(r)).startsWith(mk);});
 }
 
 function setPer(k, p) {
-  if(k==='r'){R_QUICK=null;document.querySelectorAll('.rp').forEach(function(b){b.classList.remove('on');});}
   P[k]=p;
   if(p==='custom') {
     if(!CUSTOM_FROM[k]) CUSTOM_FROM[k]=today().slice(0,7)+'-01';
     if(!CUSTOM_TO[k])   CUSTOM_TO[k]=today();
   }
-  // Snap MO[k] au début du bloc calendaire fixe (trimestres T1-T4, semestres S1-S2, bimestres B1-B6)
+  // Snap MO[k] au début du bloc calendaire fixe (trimestres T1-T4, semestres S1-S2)
   if(p==='bimestre'||p==='trimestre'||p==='semestre') {
     var n=p==='bimestre'?2:p==='trimestre'?3:6;
     MO[k].setMonth(Math.floor(MO[k].getMonth()/n)*n);
     YR[k]=MO[k].getFullYear();
   }
-  // Dashboard et Réservations : select déroulant (pas de boutons tabs)
-  if(k==='d'||k==='r') {
-    var selEl=document.getElementById(k==='d'?'d-per':'r-per');
-    if(selEl && selEl.value!==p) selEl.value=p;
-  } else {
-    // Autres sections : boutons tabs classiques
-    var tabMap={b:'bt',t:'tt',s:'st',p:'pt',gn:'gn'};
-    var pre=tabMap[k];
-    if(pre) {
-      var onCls={b:'on',t:'ont',s:'ons',p:'onp',gn:'ong'};
-      var TAB_SFX={jour:'j',semaine:'s',mois:'m',annee:'a',bimestre:'bi',trimestre:'tri',semestre:'sem',custom:'cu',cumul:'cum'};
-      Object.values(TAB_SFX).forEach(function(x){
-        var el=document.getElementById(pre+x); if(el) el.className='tab';
-      });
-      var sfx=TAB_SFX[p];
-      var el=sfx?document.getElementById(pre+sfx):null;
-      if(el) el.className='tab '+onCls[k];
-    }
-  }
+  // Tous les blocs utilisent désormais le même select déroulant {k}-per
+  var selEl=document.getElementById(k+'-per');
+  if(selEl && selEl.value!==p) selEl.value=p;
   renderNav(k);
   renderView(k);
 }
@@ -6306,9 +6282,7 @@ function periodDays(k) {
 // ============================================================
 function renderResa() {
   renderNav('r');
-  var rows = R_QUICK
-    ? DB.resa.filter(function(r){var d=r.date_paiement||r.checkin||'';return d>=R_QUICK.from&&d<=R_QUICK.to;})
-    : filterResa(DB.resa,'r');
+  var rows = filterResa(DB.resa,'r');
   var faArr=RESA_FILTERS.ap,fsrcArr=RESA_FILTERS.src,ftypeArr=RESA_FILTERS.type,fstArr=RESA_FILTERS.st;
   if(faArr.length)     rows=rows.filter(function(r){return faArr.indexOf(r.appart)!==-1;});
   if(fsrcArr.length)   rows=rows.filter(function(r){return fsrcArr.indexOf(r.source)!==-1;});
