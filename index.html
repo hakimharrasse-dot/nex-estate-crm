@@ -1562,9 +1562,17 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
 
+  <!-- Barre sélection multiple — juste au-dessus du tableau (cohérent avec les autres blocs) -->
+  <div class="sel-bar hidden" id="recur-sel-bar">
+    <div class="sel-cnt" id="recur-sel-cnt">0 sélectionnée(s)</div>
+    <button class="bpay-sel" onclick="bulkRecurActive(true)">✅ Activer</button>
+    <button class="batt-sel" onclick="bulkRecurActive(false)">⏸ Désactiver</button>
+    <button class="ba ba-ghost" onclick="clearRecurSel()" style="padding:6px 12px;font-size:12px">✕ Tout désélectionner</button>
+  </div>
   <!-- Table -->
   <div class="tw"><table>
     <thead><tr>
+      <th style="width:32px"><input type="checkbox" id="recur-chk-all" onchange="toggleRecurAll(this.checked)" title="Tout sélectionner"></th>
       <th>Libellé</th>
       <th>Catégorie</th>
       <th>Montant réel</th>
@@ -2464,9 +2472,12 @@ function renderRecurAdmin() {
   if (!list.length) {
     tb.innerHTML = '';
     if (em) em.classList.remove('hidden');
+    window._RECUR_VISIBLE_IDS = [];
+    updateRecurSelBar();
     return;
   }
   if (em) em.classList.add('hidden');
+  window._RECUR_VISIBLE_IDS = list.map(function(r){return r.id;});
 
   var freqLblMap = {mensuelle:'Mens.',trimestrielle:'Trim.',semestrielle:'Sem.',annuelle:'Ann.'};
   var freqDivMap = {mensuelle:1,trimestrielle:3,semestrielle:6,annuelle:12};
@@ -2476,7 +2487,9 @@ function renderRecurAdmin() {
     var freq     = r.frequence || 'mensuelle';
     var freqLbl  = freqLblMap[freq] || freq;
     var lisse    = (r.montant||0) / (freqDivMap[freq]||1);
+    var checked  = RECUR_SEL[r.id]?' checked':'';
     return '<tr style="opacity:'+(r.active?1:.5)+'">'+
+      '<td><input type="checkbox" class="rccb" data-id="'+r.id+'"'+checked+' onchange="toggleRecurSel(\''+r.id+'\',this.checked)"></td>'+
       '<td style="font-weight:500">'+escHtml(r.label)+'</td>'+
       '<td><span class="ch" style="background:var(--s2);color:var(--tm);font-size:12px;padding:2px 8px">'+escHtml(r.cat)+'</span></td>'+
       '<td style="font-weight:600;font-family:\'DM Mono\',monospace;color:var(--re)">'+fmt(r.montant)+'</td>'+
@@ -2506,6 +2519,53 @@ function renderRecurAdmin() {
       '<div><span style="color:var(--td)">Budget annuel théorique</span> <span style="font-weight:700;font-family:\'DM Mono\',monospace;color:var(--or);margin-left:8px">'+fmt(lisseCalc.annuel)+'</span></div>'+
       '</div>';
   }
+
+  // Re-sync master checkbox + barre après re-render
+  var _rAll=document.getElementById('recur-chk-all');
+  if(_rAll){var _vis=window._RECUR_VISIBLE_IDS||[];var _allSel=_vis.length>0&&_vis.every(function(id){return RECUR_SEL[id];});_rAll.checked=_allSel;_rAll.indeterminate=!_allSel&&_vis.some(function(id){return RECUR_SEL[id];});}
+  updateRecurSelBar();
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE — CHARGES RÉCURRENTES (activer/désactiver en masse)
+// ============================================================
+function toggleRecurSel(id, checked) {
+  if(checked) RECUR_SEL[id]=true; else delete RECUR_SEL[id];
+  updateRecurSelBar();
+  var visIds=window._RECUR_VISIBLE_IDS||[];
+  var allChk=document.getElementById('recur-chk-all');
+  if(allChk){var allSel=visIds.length>0&&visIds.every(function(id){return RECUR_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return RECUR_SEL[id];});}
+}
+function toggleRecurAll(checked) {
+  var visIds=window._RECUR_VISIBLE_IDS||[];
+  visIds.forEach(function(id){if(checked) RECUR_SEL[id]=true; else delete RECUR_SEL[id];});
+  document.querySelectorAll('#recur-tb input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updateRecurSelBar();
+}
+function clearRecurSel() {
+  RECUR_SEL={};
+  var allChk=document.getElementById('recur-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#recur-tb input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updateRecurSelBar();
+}
+function updateRecurSelBar() {
+  var ids=Object.keys(RECUR_SEL), n=ids.length;
+  var bar=document.getElementById('recur-sel-bar');
+  var cnt=document.getElementById('recur-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' charge'+(n>1?'s':'')+' sélectionnée'+(n>1?'s':'');
+}
+async function bulkRecurActive(active) {
+  var ids=Object.keys(RECUR_SEL);
+  if(!ids.length) return;
+  if(SUPA){
+    try{var res=await SUPA.from(TABLE.recur).update({active:active}).in('id',ids);if(res.error) throw res.error;}
+    catch(e){showToast('❌ '+(e.message||'Erreur'));console.error(e);return;}
+  }
+  ids.forEach(function(id){var m=DB.recur.find(function(r){return r.id===id;});if(m) m.active=active;});
+  clearRecurSel(); renderRecurAdmin();
+  showToast('✅ '+ids.length+' charge'+(ids.length>1?'s':'')+(active?' activée':' désactivée')+(ids.length>1?'s':''));
 }
 
 // ============================================================
