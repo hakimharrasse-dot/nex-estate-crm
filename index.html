@@ -1332,9 +1332,17 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <select class="fsel" id="p-fst" onchange="persoFilter()"><option value="">Tous statuts</option><option>Payé</option><option>En attente</option></select>
     <input class="fsel" type="text" id="p-fsearch" placeholder="🔍 Description, prestataire…" oninput="persoFilter()" style="min-width:140px;max-width:200px">
   </div></div>
+  <!-- Barre sélection perso — juste au-dessus du tableau (cohérent avec Business/Taxe/Services) -->
+  <div class="sel-bar hidden" id="perso-sel-bar">
+    <div class="sel-cnt" id="perso-sel-cnt">0 sélectionnée(s)</div>
+    <button class="bpay-sel" onclick="bulkPerso('Payé')">✅ Marquer Payé</button>
+    <button class="batt-sel" onclick="bulkPerso('En attente')">⏳ En attente</button>
+    <button class="bdel2-sel" onclick="deletePersoSel()">🗑 Supprimer</button>
+    <button class="ba ba-ghost" onclick="clearPersoSel()" style="padding:6px 12px;font-size:12px">✕ Tout désélectionner</button>
+  </div>
   <div id="p-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th>Date</th><th>Catégorie</th><th class="hm">Description</th><th class="hm">Récurrence</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="pcb" id="perso-chk-all" onchange="togglePersoAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Catégorie</th><th class="hm">Description</th><th class="hm">Récurrence</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="p-tb"></tbody>
   </table><div class="empty hidden" id="p-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">💳</div>Aucune dépense<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost" onclick="openModal('perso')">+ Ajouter une dépense</button></div></div></div>
   <div id="p-cards" class="p-cards"></div>
@@ -3373,6 +3381,8 @@ var PERSO_FILTERS = { cat: [], st: [] }; // multi-select state perso — logique
 var RESA_FILTERS  = { ap: [], src: [], type: [], st: [] }; // multi-select state réservations — logique OR par filtre
 var TAXE_SEL = {};     // {id: true} — sélection multiple taxe
 var SERV_SEL = {};     // {id: true} — sélection multiple services
+var PERSO_SEL = {};    // {id: true} — sélection multiple dépenses perso
+var RECUR_SEL = {};    // {id: true} — sélection multiple charges récurrentes
 
 // ============================================================
 // UTILS
@@ -7459,11 +7469,14 @@ function renderPerso() {
     return;
   }
   em.classList.add('hidden');
+  window._PERSO_VISIBLE_IDS = pageRows.map(function(r){return r.id;});
   if(mobile) {
     if(cardsCont) cardsCont.innerHTML=pageRows.map(function(r){
       var stCls=r.statut==='Payé'?'r-card-paye':'r-card-att';
+      var checked=PERSO_SEL[r.id]?' checked':'';
       return '<div class="r-card '+stCls+'">'+
         '<div class="r-card-row1">'+
+          '<label class="r-card-chk"><input type="checkbox" class="pcb" data-id="'+r.id+'"'+checked+' onchange="togglePersoSel(\''+r.id+'\',this.checked)"></label>'+
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           chip(r.cat,catClass(r.cat))+
           chip(r.statut,stClass(r.statut))+
@@ -7480,7 +7493,9 @@ function renderPerso() {
   } else {
     if(cardsCont) cardsCont.innerHTML='';
     tb.innerHTML=pageRows.map(function(r){
+      var checked=PERSO_SEL[r.id]?' checked':'';
       return '<tr>'+
+        '<td><input type="checkbox" class="pcb" data-id="'+r.id+'"'+checked+' onchange="togglePersoSel(\''+r.id+'\',this.checked)"></td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+(r.don>0?' <span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">💝 +'+( r.don||0).toLocaleString('fr-MA')+' MAD</span>':'')+'</td>'+
@@ -7492,6 +7507,61 @@ function renderPerso() {
     }).join('');
   }
   mkPgBar(totalFiltered,pageRows.length,P_PER,P_PAGE,'persoPage','persoPer','p-pgbar');
+  // Re-sync l'état visuel de la barre + master checkbox après re-render
+  var _pAll=document.getElementById('perso-chk-all');
+  if(_pAll){var _vis=window._PERSO_VISIBLE_IDS||[];var _allSel=_vis.length>0&&_vis.every(function(id){return PERSO_SEL[id];});_pAll.checked=_allSel;_pAll.indeterminate=!_allSel&&_vis.some(function(id){return PERSO_SEL[id];});}
+  updatePersoSelBar();
+}
+
+// ============================================================
+// SÉLECTION MULTIPLE — DÉPENSES PERSO (modèle identique à Business)
+// ============================================================
+function togglePersoSel(id, checked) {
+  if(checked) PERSO_SEL[id]=true; else delete PERSO_SEL[id];
+  updatePersoSelBar();
+  var visIds=window._PERSO_VISIBLE_IDS||[];
+  var allChk=document.getElementById('perso-chk-all');
+  if(allChk){var allSel=visIds.length>0&&visIds.every(function(id){return PERSO_SEL[id];});allChk.checked=allSel;allChk.indeterminate=!allSel&&visIds.some(function(id){return PERSO_SEL[id];});}
+}
+function togglePersoAll(checked) {
+  var visIds=window._PERSO_VISIBLE_IDS||[];
+  visIds.forEach(function(id){if(checked) PERSO_SEL[id]=true; else delete PERSO_SEL[id];});
+  document.querySelectorAll('#p-tb input[type=checkbox], #p-cards input[type=checkbox]').forEach(function(cb){cb.checked=checked;});
+  updatePersoSelBar();
+}
+function clearPersoSel() {
+  PERSO_SEL={};
+  var allChk=document.getElementById('perso-chk-all');
+  if(allChk){allChk.checked=false;allChk.indeterminate=false;}
+  document.querySelectorAll('#p-tb input[type=checkbox], #p-cards input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  updatePersoSelBar();
+}
+function updatePersoSelBar() {
+  var ids=Object.keys(PERSO_SEL), n=ids.length;
+  var bar=document.getElementById('perso-sel-bar');
+  var cnt=document.getElementById('perso-sel-cnt');
+  if(bar) bar.classList.toggle('hidden', n===0);
+  if(cnt) cnt.textContent=n+' dépense'+(n>1?'s':'')+' sélectionnée'+(n>1?'s':'');
+}
+async function bulkPerso(statut) {
+  var ids=Object.keys(PERSO_SEL);
+  if(!ids.length) return;
+  for(var i=0;i<ids.length;i++){
+    var idx=DB.perso.findIndex(function(x){return x.id===ids[i];});
+    if(idx>=0){DB.perso[idx].statut=statut; await saveOne('perso',DB.perso[idx]);}
+  }
+  clearPersoSel(); renderPerso();
+  showToast('✅ '+ids.length+' dépense'+(ids.length>1?'s':'')+' marquée'+(ids.length>1?'s':'')+' "'+statut+'"');
+}
+async function deletePersoSel() {
+  if (ROLE !== 'admin') { showToast('⛔ Suppression réservée aux admins'); return; }
+  var ids=Object.keys(PERSO_SEL);
+  if(!ids.length) return;
+  if(!confirm('Supprimer '+ids.length+' dépense'+(ids.length>1?'s':'')+' perso ? Action irréversible.')) return;
+  if(SUPA){try{var res=await SUPA.from('perso').delete().in('id',ids);if(res.error) throw res.error;}catch(e){setDBStatus(false,'Erreur suppression');console.error(e);return;}}
+  DB.perso=DB.perso.filter(function(r){return !PERSO_SEL[r.id];});
+  clearPersoSel(); renderPerso();
+  showToast('✅ '+ids.length+' dépense'+(ids.length>1?'s':'')+' supprimée'+(ids.length>1?'s':''));
 }
 
 // ============================================================
