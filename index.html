@@ -2448,7 +2448,7 @@ async function confirmGenerateRecur() {
       montant:             r.montant,
       appart:              r.appart || null,
       scope:               r.scope === 'global' ? 'global' : 'property',
-      statut:              'À payer',
+      statut:              'En attente',
       recurring_charge_id: r.id,
       recurring_month:     GEN_MONTH,
     };
@@ -3830,7 +3830,7 @@ function msCatRenderBtn() {
   btn.classList.toggle('ms-on', n > 0);
 }
 // ── Multi-select Statut ──────────────────────────────────────────────────────
-var MS_STS = ['Payé','En attente','À payer'];
+var MS_STS = ['Payé','En attente'];
 function msStBuild() {
   var drop = document.getElementById('ms-st-drop');
   if (!drop) return;
