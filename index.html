@@ -98,6 +98,7 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
    restent au-dessus. La barre de sélection est remontée à z-220 pour rester prioritaire
    quand les deux barres se croisent (lignes sélectionnées + défilement jusqu'au tableau). */
 .fb-sticky{position:sticky;top:8px;z-index:210;box-shadow:0 2px 12px rgba(0,0,0,.07);}
+.fb-toggle{display:none;}/* bouton "Filtres" — visible uniquement sur mobile (voir media query) */
 .fr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 /* ── Multi-select dropdown (Commit A — Catégorie) ── */
 .ms-wrap{position:relative;display:inline-block;}
@@ -440,8 +441,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .mobnav{display:flex;}.hm{display:none;}
   .circ-card{min-width:0;}
   /* Filtres — grille 2 colonnes pleine largeur (tabs/nav/période/recherche sur ligne entière) */
-  /* Sur mobile la barre de filtres est trop haute (~40% de l'écran) pour rester collante → normal */
-  .fb-sticky{position:static;box-shadow:none;}
+  /* Barre de filtres collante AUSSI sur mobile, mais COMPACTE : repliée par défaut
+     (période + mois + bouton "Filtres" visibles ; le reste se déplie au tap). */
+  .fb-toggle{display:flex;align-items:center;justify-content:center;gap:6px;grid-column:1/-1;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:9px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;}
+  .fb-toggle.fb-on{border-color:var(--or);color:var(--or);}
+  .fb-collapsed .fr>.ms-wrap,
+  .fb-collapsed .fr>input.fsel,
+  .fb-collapsed .fr>select.fsel:not([id$="-per"]){display:none;}
   .fb .fr{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;}
   .fb .fr>.tabs,.fb .fr>div[id$="-nav"],.fb .fr>select[id$="-per"],.fb .fr>input.fsel{grid-column:1/-1;}
   .fb .fr>*{min-width:0!important;width:100%;max-width:none!important;}
@@ -3336,6 +3342,7 @@ async function launchApp() {
     applyRoleUI();
     populateTeamSelects();
     restoreAllFilters(); // #4 — réapplique les filtres mémorisés (après populate, avant 1er rendu visible)
+    initFbToggles();     // bouton "Filtres" repliable (barre collante compacte sur mobile)
 
     console.log('[launch] goTo resa');
     if (ROLE !== 'user') goTo('resa');
@@ -3793,12 +3800,49 @@ function restoreAllFilters() {
   if (all.perso) { PERSO_FILTERS.cat=(all.perso.cat||[]).slice(); _fSet('p-fst',all.perso.fst); _fSet('p-fsearch',all.perso.fsearch); msPcatRenderBtn(); }
 }
 
+// ── Barre de filtres collante mobile : bouton "Filtres" repliable ──
+// Sur mobile la barre reste collante mais compacte (repliée). Le bouton injecté
+// déplie/replie les filtres secondaires (desktop : bouton masqué, repli inerte).
+function fbActiveCount(fb) {
+  var n = 0;
+  fb.querySelectorAll('.ms-btn.ms-on').forEach(function(){ n++; });
+  fb.querySelectorAll('select.fsel:not([id$="-per"])').forEach(function(s){ if(s.value) n++; });
+  fb.querySelectorAll('input.fsel').forEach(function(i){ if((i.value||'').trim()) n++; });
+  return n;
+}
+function refreshFbToggles() {
+  document.querySelectorAll('.fb-sticky').forEach(function(fb){
+    var btn = fb.querySelector('.fb-toggle'); if(!btn) return;
+    var collapsed = fb.classList.contains('fb-collapsed');
+    var n = fbActiveCount(fb);
+    btn.innerHTML = '🔧 Filtres' + (n ? ' (' + n + ')' : '') + ' ' + (collapsed ? '▾' : '▴');
+    btn.classList.toggle('fb-on', n > 0);
+  });
+}
+function toggleFb(btn) {
+  var fb = btn.closest('.fb'); if(!fb) return;
+  fb.classList.toggle('fb-collapsed');
+  refreshFbToggles();
+}
+function initFbToggles() {
+  document.querySelectorAll('.fb-sticky').forEach(function(fb){
+    if (fb.querySelector('.fb-toggle')) return;
+    var fr = fb.querySelector('.fr'); if(!fr) return;
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'fb-toggle';
+    btn.onclick = function(){ toggleFb(btn); };
+    fr.appendChild(btn);
+    fb.classList.add('fb-collapsed'); // replié par défaut (effet mobile uniquement)
+  });
+  refreshFbToggles();
+}
+
 // ── Filter/page/per — Réservations ──
-function resaFilter()  { R_PAGE=1; saveBlockFilters('resa'); renderResa(); }
+function resaFilter()  { R_PAGE=1; saveBlockFilters('resa'); renderResa(); refreshFbToggles(); }
 function resaPage(p)   { R_PAGE=p; renderResa(); }
 function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
 // ── Filter/page/per — Business ──
-function bizFilter()   { B_PAGE=1; saveBlockFilters('biz'); renderBiz(); }
+function bizFilter()   { B_PAGE=1; saveBlockFilters('biz'); renderBiz(); refreshFbToggles(); }
 
 // ── Composant multi-select Catégorie ─────────────────────────────────────────
 var MS_CATS_HIDDEN = ['Avance caisse','Règlement terrain'];
@@ -4437,15 +4481,15 @@ function msRapRenderBtn() {
 function bizPage(p)    { B_PAGE=p; renderBiz(); }
 function bizPer(n)     { B_PER=parseInt(n)||20; B_PAGE=1; renderBiz(); }
 // ── Filter/page/per — Taxe ──
-function taxeFilter()  { T_PAGE=1; saveBlockFilters('taxe'); renderTaxe(); }
+function taxeFilter()  { T_PAGE=1; saveBlockFilters('taxe'); renderTaxe(); refreshFbToggles(); }
 function taxePage(p)   { T_PAGE=p; renderTaxe(); }
 function taxePer(n)    { T_PER=parseInt(n)||20; T_PAGE=1; renderTaxe(); }
 // ── Filter/page/per — Serv ──
-function servFilter()  { S_PAGE=1; saveBlockFilters('serv'); renderServ(); }
+function servFilter()  { S_PAGE=1; saveBlockFilters('serv'); renderServ(); refreshFbToggles(); }
 function servPage(p)   { S_PAGE=p; renderServ(); }
 function servPer(n)    { S_PER=parseInt(n)||20; S_PAGE=1; renderServ(); }
 // ── Filter/page/per — Perso ──
-function persoFilter() { P_PAGE=1; saveBlockFilters('perso'); renderPerso(); }
+function persoFilter() { P_PAGE=1; saveBlockFilters('perso'); renderPerso(); refreshFbToggles(); }
 function persoPage(p)  { P_PAGE=p; renderPerso(); }
 function persoPer(n)   { P_PER=parseInt(n)||20; P_PAGE=1; renderPerso(); }
 // ── Filter/page/per — Doublons ──
