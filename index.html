@@ -269,7 +269,7 @@ input[type=checkbox].scb{width:15px;height:15px;accent-color:var(--go);cursor:po
 #reset-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;align-items:center;justify-content:center;}
 #reset-screen.visible{display:flex;}
 /* Sélection multiple réservations */
-.sel-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;}
+.sel-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--s2);border:1px solid var(--br);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;position:sticky;top:8px;z-index:30;box-shadow:0 4px 16px rgba(0,0,0,.18);}
 .sel-bar.hidden{display:none!important;}
 .sel-cnt{font-size:13px;font-weight:500;color:var(--tx);flex:1;}
 .bdel-sel{background:var(--re);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;opacity:.5;pointer-events:none;}
@@ -444,8 +444,9 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   /* Pagination stack */
   .r-pgbar{flex-direction:column;align-items:flex-start;gap:6px;}
   .r-pgbtns{width:100%;justify-content:space-between;}
-  /* Sel-bar stack */
-  .sel-bar{flex-direction:column;align-items:flex-start;gap:8px;}
+  /* Sel-bar mobile — compacte (collante) : compteur sur sa ligne, boutons en rangée qui s'enroule */
+  .sel-bar{gap:6px 8px;padding:8px 12px;}
+  .sel-cnt{flex-basis:100%;font-size:12px;}
   /* En-tête vue */
   .vh{flex-direction:column;gap:10px;}
   .vh>div:last-child{flex-wrap:wrap;}
