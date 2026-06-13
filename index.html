@@ -177,6 +177,12 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .ch-direct{background:var(--grs);color:var(--gr);}
 .ch-vrbo{background:rgba(155,125,232,.12);color:var(--pu);}
 .ch-smoobu-wait{background:rgba(90,159,212,.08);color:var(--bl);border:1px dashed rgba(90,159,212,.35);font-style:italic;}
+/* Pastille de statut cliquable — bascule en 1 clic sans modal (#2 audit UX) */
+.ch-clk{cursor:pointer;-webkit-user-select:none;user-select:none;transition:box-shadow .12s,filter .12s;}
+.ch-clk::after{content:'\21C4';margin-left:5px;font-size:10px;opacity:.5;}
+.ch-clk:hover{filter:brightness(1.07);box-shadow:0 0 0 1.5px currentColor inset;}
+.ch-clk:active{filter:brightness(.93);}
+.ch-clk:focus-visible{outline:2px solid var(--or);outline-offset:1px;}
 /* Pagination réservations */
 .r-pgbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:7px 0 5px;}
 .r-pgbtns{display:flex;align-items:center;gap:6px;}
@@ -3677,6 +3683,45 @@ function setResaPreset(p) {
   renderResa();
 }
 function stClass(s)    { return s==='Payé'?'ok':s==='Annulé'?'ann':'att'; }
+
+// ── Pastille de statut cliquable — bascule en 1 clic sans modal (#2 audit UX) ──
+// Blocs paiement uniquement : statut Payé⇄En attente (business/serv/perso) ou
+// rev Reversé⇄Non reversé (taxe). Réservations exclues volontairement (statut
+// dérivé de date_paiement, réécrit au boot par syncStatutsDB → un toggle manuel
+// y serait perdu). Rendu visuel identique à chip() + interactivité si droit d'écriture.
+function canTogglePill(k) {
+  if (k === 'perso') return ROLE === 'admin';
+  var wm = { business:'write_biz', serv:'write_serv', taxe:'write_taxe' };
+  return canDo(wm[k] || '');
+}
+function statusPill(k, r) {
+  var txt, cls;
+  if (k === 'taxe') { txt = r.rev || 'Non reversé'; cls = txt === 'Reversé' ? 'rev' : 'att'; }
+  else              { txt = r.statut || 'En attente'; cls = stClass(txt); }
+  if (!canTogglePill(k)) return chip(txt, cls);
+  var tip = k === 'taxe' ? 'Cliquer pour basculer Reversé / Non reversé'
+                         : 'Cliquer pour basculer Payé / En attente';
+  var call = "togglePillStatut(event,'" + k + "','" + r.id + "')";
+  return '<span class="ch ch-' + cls + ' ch-clk" role="button" tabindex="0" title="' + tip + '"' +
+    ' onclick="' + call + '"' +
+    ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();' + call + ';}">' + txt + '</span>';
+}
+async function togglePillStatut(ev, k, id) {
+  if (ev) { ev.stopPropagation(); if (ev.preventDefault) ev.preventDefault(); }
+  if (!canTogglePill(k)) { showToast('⛔ Accès refusé'); return; }
+  var idx = (DB[k] || []).findIndex(function(x){ return x.id === id; });
+  if (idx < 0) return;
+  var field = k === 'taxe' ? 'rev' : 'statut';
+  var prev  = DB[k][idx][field] || (k === 'taxe' ? 'Non reversé' : 'En attente');
+  var next  = k === 'taxe' ? (prev === 'Reversé' ? 'Non reversé' : 'Reversé')
+                           : (prev === 'Payé' ? 'En attente' : 'Payé');
+  DB[k][idx][field] = next;
+  var ok = await saveOne(k, DB[k][idx]);
+  if (!ok) DB[k][idx][field] = prev; // rollback mémoire si l'écriture base échoue
+  toastSaveResult(ok);
+  ({ business:renderBiz, serv:renderServ, perso:renderPerso, taxe:renderTaxe }[k] || function(){})();
+}
+
 function isMobile()    { return window.innerWidth < 700; }
 // ── Pagination helper partagé ──
 function mkPgBar(total, pageLen, perPage, curPage, pgFn, perFn, pgBarId) {
@@ -6758,7 +6803,7 @@ function renderBiz() {
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           (r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+
           chip(catLabel(r.cat),catClass(r.cat))+
-          chip(r.statut,stClass(r.statut))+
+          statusPill('business',r)+
         '</div>'+
         (r.fmen||r.paid_by||r.desc?'<div class="r-card-row2">'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'')+
           (r.paid_by?'<span style="font-size:11px;color:var(--bl);background:var(--bls,rgba(91,130,217,.12));border-radius:4px;padding:2px 6px;white-space:nowrap">💳 '+escHtml(r.paid_by)+'</span>':'')+
@@ -6782,7 +6827,7 @@ function renderBiz() {
         (function(){var pb=r.paid_by||(r.cat!=='Ménage'?r.fmen:'')||'Hakim';return '<td class="hm">'+(pb?chip(pb,colClass(pb)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>';})() +
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
-        '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+        '<td>'+statusPill('business',r)+'</td>'+
         '<td>'+actBtns('business',r.id)+'</td>'+
         '</tr>';
     }).join('');
@@ -7279,7 +7324,7 @@ function renderTaxe() {
           '<label class="r-card-chk"><input type="checkbox" class="tcb" data-id="'+r.id+'"'+checked+' onchange="toggleTaxeSel(\''+r.id+'\',this.checked)"></label>'+
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           '<span class="apt">'+aptShort(r.appart||'')+'</span>'+
-          chip(r.rev,r.rev==='Reversé'?'rev':'att')+
+          statusPill('taxe',r)+
         '</div>'+
         '<div class="r-card-row2">'+
           (r.pay==='Booking'
@@ -7306,7 +7351,7 @@ function renderTaxe() {
           ? chip('Via Booking','booking')
           : chip(r.col||'—',colClass(r.col||'Cash'))+' '+chip(r.pay||'Cash','eau'))+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--te)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
-        '<td>'+chip(r.rev,r.rev==='Reversé'?'rev':'att')+'</td>'+
+        '<td>'+statusPill('taxe',r)+'</td>'+
         '<td>'+actBtns('taxe',r.id)+'</td>'+
         '</tr>';
     }).join('');
@@ -7398,7 +7443,7 @@ function renderServ() {
         '</div>'+
         '<div class="r-card-row3">'+
           '<span class="r-card-net" style="color:var(--go)">'+r.montant.toLocaleString('fr-MA')+' MAD</span>'+
-          chip(r.statut,stClass(r.statut))+
+          statusPill('serv',r)+
           '<div class="r-card-acts">'+actBtns('serv',r.id)+'</div>'+
         '</div>'+
       '</div>';
@@ -7417,7 +7462,7 @@ function renderServ() {
           ? chip('Via '+r.pay_source,r.pay_source==='Airbnb'?'airbnb':'booking')
           : chip(r.col||'—',colClass(r.col||'Cash'))+' '+chip(r.pay||'Cash','eau'))+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--go)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
-        '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+        '<td>'+statusPill('serv',r)+'</td>'+
         '<td>'+actBtns('serv',r.id)+'</td>'+
         '</tr>';
     }).join('');
@@ -7540,7 +7585,7 @@ function renderPerso() {
           '<label class="r-card-chk"><input type="checkbox" class="pcb" data-id="'+r.id+'"'+checked+' onchange="togglePersoSel(\''+r.id+'\',this.checked)"></label>'+
           '<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</span>'+
           chip(r.cat,catClass(r.cat))+
-          chip(r.statut,stClass(r.statut))+
+          statusPill('perso',r)+
         '</div>'+
         (r.desc?'<div style="font-size:12px;color:var(--tm);font-style:italic">'+r.desc+'</div>':'')+
         (r.don>0?'<div style="font-size:11px;color:var(--gr)">💝 Don : '+(r.don||0).toLocaleString('fr-MA')+' MAD</div>':'')+
@@ -7562,7 +7607,7 @@ function renderPerso() {
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+(r.don>0?' <span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">💝 +'+( r.don||0).toLocaleString('fr-MA')+' MAD</span>':'')+'</td>'+
         '<td class="hm" style="font-size:12px;color:var(--td)">'+(r.rec||'Ponctuel')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
-        '<td>'+chip(r.statut,stClass(r.statut))+'</td>'+
+        '<td>'+statusPill('perso',r)+'</td>'+
         '<td>'+actBtns('perso',r.id)+'</td>'+
         '</tr>';
     }).join('');
