@@ -880,7 +880,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc kc-hero"><div class="kl" id="b-kl-tot">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div></div>
+    <div class="kc kc-hero"><div class="kl" id="b-kl-tot">Total période</div><div class="kv" style="color:var(--or)" id="b-tot">0 MAD</div><div class="ks" id="b-cnt">0 entrées</div><div class="ks" id="b-split" style="margin-top:3px;font-weight:600"></div></div>
     <div class="kc"><div class="kl">Ménage</div><div class="kv" id="b-men">0 MAD</div></div>
     <div class="kc"><div class="kl">Charges</div><div class="kv" id="b-chg">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="b-att">0 MAD</div></div>
@@ -6590,6 +6590,9 @@ function renderBiz() {
   var att=sum(rows.filter(function(r){return r.statut==='En attente';}), 'montant');
   set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
+  // Découpage du Total par état de paiement (payé = total − en attente) — toujours cohérent avec b-tot
+  var _bPaye=tot-att, _bSplit=document.getElementById('b-split');
+  if(_bSplit) _bSplit.innerHTML='<span style="color:var(--gr)">✅ '+Math.round(_bPaye).toLocaleString('fr-MA')+' payé</span> · <span style="color:var(--re)">⏳ '+Math.round(att).toLocaleString('fr-MA')+' en attente</span>';
   var _bpl = bizPeriodLabel();
   var _bklTot = document.getElementById('b-kl-tot');
   if (_bklTot) _bklTot.textContent = 'Total — ' + _bpl;
