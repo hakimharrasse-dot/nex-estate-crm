@@ -15914,7 +15914,7 @@ function _convSetBody(html){ var b=document.getElementById('conv-body'); if(b) b
 function convClose(){ var ov=document.getElementById('conv-ov'); if(ov) ov.style.display='none'; }
 async function convOpen(i){
   var r=(window._CONV_MATCHES||[])[i]; if(!r) return;
-  window._CONV_CUR={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'', ref:r.ref||'', convText:'', lastGuest:'' };
+  window._CONV_CUR={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'', ref:r.ref||'', checkin:r.checkin||'', checkout:r.checkout||'', adults:(r.adults!=null?r.adults:null), children:(r.children!=null?r.children:null), convText:'', lastGuest:'' };
   var ov=_convModal();
   document.getElementById('conv-title').textContent=r.voyageur||'(sans nom)';
   document.getElementById('conv-sub').textContent=aptShort(r.appart||'')+(r.ref?' · '+r.ref:'');
@@ -15960,7 +15960,7 @@ async function convGenerate(){
   var ta=document.getElementById('conv-reply'), btn=document.getElementById('conv-gen-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||''})});
+    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
     if(d&&d.ai_draft){ if(ta){ ta.value=d.ai_draft; ta.focus(); } }
     else { showToast(d&&d.classification==='no_reply_needed'?'IA : pas de réponse nécessaire':'Pas de brouillon généré'); }
@@ -15989,7 +15989,7 @@ async function convRefine(){
   var btn=document.getElementById('conv-refine-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',source:cur.source||'',appart:cur.appart||''})});
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
     if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('conv-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
     else { showToast('⚠ '+(d.error||'Échec')); }
@@ -16005,7 +16005,7 @@ async function convAdvise(){
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   if(box){ box.style.display='block'; box.textContent='Analyse en cours…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||''})});
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
     if(box){ box.textContent=(r.ok&&d.text)?('🧐 '+d.text):('⚠ '+(d.error||'Conseil indisponible')); }
   }catch(e){ if(box) box.textContent='⚠ Conseil échoué'; }
@@ -16623,7 +16623,7 @@ function manualClientSearch(q){
 }
 function manualClientPick(i){
   var r=(window._MANUAL_MATCHES||[])[i]; if(!r) return;
-  window._MANUAL_CLIENT={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'' };
+  window._MANUAL_CLIENT={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'', checkin:r.checkin||'', checkout:r.checkout||'', adults:(r.adults!=null?r.adults:null), children:(r.children!=null?r.children:null) };
   var inp=document.getElementById('manual-client'); if(inp) inp.value=r.voyageur||r.ref||'';
   var box=document.getElementById('manual-client-res'); if(box) box.innerHTML='';
   var sel=document.getElementById('manual-client-sel'); if(sel){ sel.textContent='✓ Client : '+(r.voyageur||r.ref)+' ('+aptShort(r.appart||'')+') — l\'envoi ira à cette réservation'; sel.style.display='block'; }
@@ -16664,7 +16664,8 @@ async function manualRefine(){
   var src=(document.getElementById('manual-src')||{}).value||'', app=(document.getElementById('manual-appart')||{}).value||'';
   showToast('🔄 Affinage…');
   try{
-    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:clientMsg,source:src,appart:app})});
+    var mc=window._MANUAL_CLIENT||{};
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:clientMsg,source:src,appart:app,checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
     var d=await r.json();
     if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('manual-refine-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
     else showToast('⚠ '+(d.error||'Échec'));
@@ -16677,7 +16678,8 @@ async function manualAdvise(){
   var box=document.getElementById('manual-advice');
   if(box){ box.style.display='block'; box.textContent='Analyse en cours…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,client_context:clientMsg})});
+    var mc=window._MANUAL_CLIENT||{};
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,client_context:clientMsg,checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
     var d=await r.json();
     if(box) box.textContent=(r.ok&&d.text)?('🧐 '+d.text):('⚠ '+(d.error||'Conseil indisponible'));
   }catch(e){ if(box) box.textContent='⚠ Conseil échoué'; }
@@ -16698,7 +16700,9 @@ async function msgManualDraftGenerate() {
     var r = await fetch('/api/smoobu-messages?manualDraft=1', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ message: msg, source: source, appart: appart, instruction: instr }),
+      body:    JSON.stringify({ message: msg, source: source, appart: appart, instruction: instr,
+                 checkin:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkin)||'', checkout:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkout)||'',
+                 adults:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.adults:null), children:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.children:null) }),
     });
     var data;
     try { data = await r.json(); } catch(e) { data = {}; }

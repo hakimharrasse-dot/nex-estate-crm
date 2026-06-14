@@ -114,7 +114,8 @@ async function sendSmoobuMessage(bookingId, text) {
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
   const { appart, voyageur, checkin, checkout, source, message_content, conversation, hakim_instruction,
-          reservation_confirmed, days_until_checkin_ctx, style_examples, apartment_kb } = ctx;
+          reservation_confirmed, days_until_checkin_ctx, style_examples, apartment_kb, adults, children } = ctx;
+  const phase = stayPhase(checkin, checkout);
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
@@ -135,9 +136,12 @@ async function generateFullAnalysis(ctx) {
     '- "remboursement" : demande de remboursement ou annulation\n\n' +
     'Règles contextuelles supplémentaires :\n' +
     '- Si "Réservation confirmée = Oui" → ne jamais écrire "après confirmation de votre réservation" — la réservation EST déjà confirmée\n' +
-    '- Si "Jours avant arrivée ≤ 1" → ne jamais promettre d\'envoyer les infos "24h avant" ni utiliser cette formulation — écrire simplement "je vous envoie les détails d\'accès avant votre arrivée"\n' +
-    '- Si "Jours avant arrivée ≤ 0" → le voyageur arrive aujourd\'hui ou est déjà là — répondre avec urgence\n' +
-    '- Codes d\'accès / instructions d\'arrivée / adresse : si l\'information exacte n\'est pas dans le contexte → écrire UNIQUEMENT "je vous envoie les détails d\'accès avant votre arrivée" — JAMAIS inventer un code, une adresse ou un horaire\n\n' +
+    '- Ne jamais inventer un code, une adresse ou un horaire absent du contexte.\n\n' +
+    'TRÈS IMPORTANT — adapte ta réponse à la PHASE DU SÉJOUR (fournie dans le contexte) :\n' +
+    '- AVANT l\'arrivée / arrive demain / arrive aujourd\'hui : tu peux dire que les détails d\'accès et le code de la serrure seront envoyés le jour de l\'arrivée (après vérification des pièces d\'identité). Ne promets pas un envoi "24h avant".\n' +
+    '- SÉJOUR EN COURS (déjà sur place) ou DÉPART : le voyageur est DÉJÀ dans le logement et possède DÉJÀ ses accès et son code → ne dis JAMAIS qu\'il "recevra" le code, le wifi ou les instructions d\'arrivée. Réponds directement à sa demande réelle du moment (problème, info pratique, prolongation, départ…). S\'il redemande le wifi, redonne-le simplement.\n' +
+    '- Séjour TERMINÉ : le voyageur est reparti — réponds en conséquence (avis, objet oublié, facture…).\n' +
+    '- Tiens compte de la COMPOSITION (adultes / enfants) quand c\'est pertinent (serviettes, capacité, accès piscine réservé aux moins de 14 ans, etc.).\n\n' +
     'Règles pour ai_draft_fr :\n' +
     '- Traduction fidèle de ai_draft en français\n' +
     '- Usage Hakim uniquement — ne jamais envoyer au voyageur' +
@@ -148,8 +152,9 @@ async function generateFullAnalysis(ctx) {
     : '';
 
   const resaLine   = `Réservation confirmée : ${reservation_confirmed === true ? 'Oui' : reservation_confirmed === false ? 'Non' : 'non précisé'}\n`;
-  const daysLine   = (days_until_checkin_ctx !== null && days_until_checkin_ctx !== undefined)
-    ? `Jours avant arrivée : ${days_until_checkin_ctx}\n`
+  const phaseLine  = `PHASE DU SÉJOUR (aujourd'hui = ${new Date().toISOString().slice(0,10)}) : ${phase.label}\n`;
+  const compoLine  = (adults != null || children != null)
+    ? `Composition : ${adults != null ? adults : '?'} adulte(s)${children ? ', ' + children + ' enfant(s)' : (children === 0 ? ', 0 enfant' : '')}\n`
     : '';
 
   // Si le voyageur a écrit plusieurs messages successifs → fournir tout le fil récent,
@@ -164,7 +169,7 @@ async function generateFullAnalysis(ctx) {
     `Check-in : ${checkin   || 'non précisé'}\n` +
     `Check-out : ${checkout || 'non précisé'}\n` +
     `Plateforme : ${source  || 'non précisé'}\n` +
-    resaLine + daysLine +
+    resaLine + phaseLine + compoLine +
     kbBlock(apartment_kb) +
     msgBlock +
     instrNote;
@@ -284,8 +289,14 @@ function styleBlock(examples) {
 
 // ── Assistant : affiner un brouillon (refine) ou conseiller (advise) ──
 async function assistReply(mode, p) {
+  const phase = stayPhase(p.checkin, p.checkout);
+  const phaseLine = (p.checkin || p.checkout)
+    ? `Phase du séjour (aujourd'hui = ${new Date().toISOString().slice(0,10)}) : ${phase.label}` +
+      ((p.adults != null || p.children != null) ? ` · ${p.adults != null ? p.adults : '?'} adulte(s)${p.children ? ', ' + p.children + ' enfant(s)' : ''}` : '') + '\n'
+    : '';
   const ctxLine = (p.clientContext && p.clientContext.trim())
-    ? `Message(s) du voyageur :\n${p.clientContext.trim()}\n\n` : '';
+    ? `Message(s) du voyageur :\n${p.clientContext.trim()}\n\n` + phaseLine + '\n'
+    : phaseLine;
   let system, user;
   if (mode === 'advise') {
     system =
@@ -293,6 +304,7 @@ async function assistReply(mode, p) {
       'On te donne le(s) message(s) du voyageur et le brouillon de réponse de HAKIM. ' +
       'Donne à Hakim un avis court et concret EN FRANÇAIS (3 à 5 puces maximum) : ce qui va, ce qui manque, ' +
       'les infos risquées ou non confirmées (code, horaire, prix, promesse), le ton à ajuster. ' +
+      'Vérifie la COHÉRENCE avec la PHASE DU SÉJOUR (fournie) : signale par ex. si le brouillon dit au voyageur qu\'il "recevra" le code/les accès alors qu\'il est DÉJÀ sur place. ' +
       'NE RÉÉCRIS PAS la réponse — donne uniquement tes notes, en puces courtes commençant par "• ". ' +
       'Si le brouillon est déjà bon, dis-le franchement.';
     user = ctxLine + `Brouillon de Hakim :\n${p.draft}` + (p.instruction ? `\n\nPoint d'attention demandé par Hakim : ${p.instruction}` : '');
@@ -305,6 +317,7 @@ async function assistReply(mode, p) {
       '- N\'invente AUCUNE information (jamais de code, adresse, prix, horaire ou promesse inventés)\n' +
       '- Réponds dans la MÊME langue que le brouillon\n' +
       '- Ton humain et professionnel, sans emojis\n' +
+      '- Respecte la PHASE DU SÉJOUR (fournie) : si le voyageur est DÉJÀ sur place, ne propose jamais de "lui envoyer" le code/le wifi/les accès (il les a déjà) ; s\'il arrive bientôt, le code de serrure est envoyé le jour de l\'arrivée\n' +
       '- Renvoie UNIQUEMENT le texte révisé, rien d\'autre (pas de guillemets, pas d\'explication)' +
       styleBlock(p.styleExamples) + kbBlock(p.apartmentKb);
     user = ctxLine + `Brouillon actuel :\n${p.draft}\n\nConsigne de Hakim : ${p.instruction || '(améliore-le, rends-le plus naturel et professionnel)'}`;
@@ -347,10 +360,13 @@ function kbBlock(kb) {
     if (kb.faq)           lines.push(`Autres infos : ${kb.faq}`);
   }
   // Règle code serrure : TOUJOURS injectée, même sans fiche (politique Hakim).
+  // La formulation dépend de la PHASE (voir règles de phase) : avant l'arrivée = "envoyé le jour
+  // de l'arrivée après vérification des pièces d'identité" ; déjà sur place = il l'a déjà, ne pas en reparler.
   const lockRule =
-    '\n\nRÈGLE ABSOLUE — CODE DE SERRURE / PORTE DIGITALE : ne donne JAMAIS de code de serrure ou de porte ' +
-    'dans ta réponse. Si le voyageur le demande, indique que le code de la serrure lui sera envoyé le JOUR ' +
-    'de son arrivée, après vérification de ses pièces d\'identité. Le mot de passe Wifi, lui, peut être communiqué.';
+    '\n\nRÈGLE ABSOLUE — CODE DE SERRURE / PORTE DIGITALE : ne donne JAMAIS le code de serrure ou de porte ' +
+    'dans ta réponse (le mot de passe Wifi, lui, peut toujours être communiqué). Adapte selon la phase du séjour : ' +
+    'avant l\'arrivée → il sera envoyé le jour de l\'arrivée après vérification des pièces d\'identité ; ' +
+    'séjour déjà en cours → le voyageur l\'a déjà reçu, n\'en reparle pas (sauf s\'il signale un souci).';
   if (!lines.length) return lockRule;
   return '\n\nINFORMATIONS VÉRIFIÉES DE CE LOGEMENT (utilise-les pour répondre précisément aux questions du voyageur ; n\'invente RIEN au-delà de ces infos) :\n' +
     lines.map(function(l){ return '- ' + l; }).join('\n') + lockRule;
@@ -362,7 +378,7 @@ async function getResaContext(smoobuBookingId) {
   try {
     const sid  = encodeURIComponent(String(smoobuBookingId));
     const rows = await sbGet(
-      `resa?smoobu_id=eq.${sid}&select=id,appart,voyageur,source,checkin,checkout&limit=1`
+      `resa?smoobu_id=eq.${sid}&select=id,appart,voyageur,source,checkin,checkout,adults,children&limit=1`
     );
     return rows?.[0] || {};
   } catch {
@@ -558,6 +574,29 @@ function daysUntilCheckin(checkinStr) {
     if (isNaN(d.getTime())) return null;
     return Math.round((d - today) / 86400000);
   } catch { return null; }
+}
+
+// ── Phase du séjour (où en est le voyageur) ──────────────────
+// Retourne { key, label } : avant / veille / arrivee / encours / depart / termine.
+// Permet à l'IA d'adapter sa réponse (déjà sur place ≠ pas encore venu).
+function stayPhase(checkin, checkout) {
+  if (!checkin) return { key:'inconnu', label:'dates non précisées' };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ci = new Date(checkin + 'T00:00:00');
+  if (isNaN(ci.getTime())) return { key:'inconnu', label:'dates non précisées' };
+  const dCi = Math.round((ci - today) / 86400000);
+  if (dCi > 1)  return { key:'avant',  label:'AVANT l\'arrivée (arrive dans ' + dCi + ' jours, le ' + checkin + ')' };
+  if (dCi === 1) return { key:'veille', label:'arrive DEMAIN (' + checkin + ')' };
+  if (dCi === 0) return { key:'arrivee', label:'arrive AUJOURD\'HUI (' + checkin + ')' };
+  // dCi < 0 → déjà arrivé
+  const co = checkout ? new Date(checkout + 'T00:00:00') : null;
+  if (co && !isNaN(co.getTime())) {
+    const dCo = Math.round((co - today) / 86400000);
+    if (dCo > 0)  return { key:'encours', label:'SÉJOUR EN COURS — le voyageur est DÉJÀ sur place (arrivé le ' + checkin + ', départ le ' + checkout + ')' };
+    if (dCo === 0) return { key:'depart',  label:'DÉPART AUJOURD\'HUI (' + checkout + ') — le voyageur est encore/déjà sur place' };
+    return { key:'termine', label:'séjour TERMINÉ (départ le ' + checkout + ')' };
+  }
+  return { key:'encours', label:'SÉJOUR EN COURS — le voyageur est probablement déjà sur place (arrivé le ' + checkin + ')' };
 }
 
 // ── Vérifie si le message Smoobu actuel === celui déjà en DB ──
@@ -976,6 +1015,8 @@ export default async function handler(req, res) {
                     message_content:        messageContent,
                     conversation:           _conv,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
+                  adults:                 resaCtx ? resaCtx.adults : null,
+                  children:               resaCtx ? resaCtx.children : null,
                     reservation_confirmed:  !!(resaCtx?.id),
                     days_until_checkin_ctx: daysUntilCheckin(resaCtx?.checkin || ''),
                   });
@@ -1046,6 +1087,8 @@ export default async function handler(req, res) {
                   message_content:        messageContent,
                   conversation:           _conv,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
+                  adults:                 resaCtx ? resaCtx.adults : null,
+                  children:               resaCtx ? resaCtx.children : null,
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -1106,6 +1149,8 @@ export default async function handler(req, res) {
                   message_content:        messageContent,
                   conversation:           _conv,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
+                  adults:                 resaCtx ? resaCtx.adults : null,
+                  children:               resaCtx ? resaCtx.children : null,
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -1500,7 +1545,7 @@ export default async function handler(req, res) {
   if (req.query?.assist) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { mode, draft, instruction, client_context, source, appart } = body || {};
+      const { mode, draft, instruction, client_context, source, appart, checkin, checkout, adults, children } = body || {};
       if (!draft || !String(draft).trim()) return res.status(400).json({ error: 'draft requis' });
       if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
       const m = (mode === 'advise') ? 'advise' : 'refine';
@@ -1510,6 +1555,10 @@ export default async function handler(req, res) {
         instruction:   String(instruction || '').trim(),
         clientContext: String(client_context || '').trim(),
         source:        source || '', appart: appart || '',
+        checkin:       String(checkin || '').trim(),
+        checkout:      String(checkout || '').trim(),
+        adults:        (adults != null && adults !== '') ? parseInt(adults, 10) : null,
+        children:      (children != null && children !== '') ? parseInt(children, 10) : null,
         styleExamples: styleEx,
         apartmentKb:   (m === 'refine') ? await getApartmentKB(String(appart || '').trim()) : null,
       });
@@ -1527,7 +1576,7 @@ export default async function handler(req, res) {
   if (req.query?.manualDraft) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { message, source, appart, instruction } = body || {};
+      const { message, source, appart, instruction, checkin, checkout, adults, children } = body || {};
 
       if (!message || !String(message).trim()) {
         return res.status(400).json({ error: 'message requis' });
@@ -1539,13 +1588,15 @@ export default async function handler(req, res) {
       const analysis = await generateFullAnalysis({
         appart:                 String(appart      || '').trim(),
         voyageur:               '',
-        checkin:                '',
-        checkout:               '',
+        checkin:                String(checkin  || '').trim(),
+        checkout:               String(checkout || '').trim(),
         source:                 String(source      || '').trim(),
         message_content:        String(message).trim(),
         hakim_instruction:      String(instruction || '').trim() || undefined,
-        reservation_confirmed:  false,
-        days_until_checkin_ctx: null,
+        reservation_confirmed:  !!(checkin),
+        days_until_checkin_ctx: daysUntilCheckin(String(checkin || '').trim()),
+        adults:                 (adults != null && adults !== '') ? parseInt(adults, 10) : null,
+        children:               (children != null && children !== '') ? parseInt(children, 10) : null,
         style_examples:         await getHakimStyleExamples(5),
         apartment_kb:           await getApartmentKB(String(appart || '').trim()),
       });
@@ -1800,6 +1851,8 @@ export default async function handler(req, res) {
           conversation:           isMultiPart ? conversationText : null,
           reservation_confirmed:  resaConfirmedWh,
           days_until_checkin_ctx: daysCheckinWh,
+          adults:                 resaCtx.adults,
+          children:               resaCtx.children,
           apartment_kb:           await getApartmentKB(appart),
           style_examples:         await getHakimStyleExamples(5),
         });
