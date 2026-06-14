@@ -10936,10 +10936,12 @@ function renderLogements() {
           ' · actif depuis ' + escHtml(log.date_debut || '—') +
           (log.date_fin ? ' <span style="color:var(--re)">→ ' + escHtml(log.date_fin) + '</span>' : '') +
           (log.notes ? ' · <em style="color:var(--td)">' + escHtml(log.notes.slice(0,60)) + '</em>' : '') +
+          (_kbFilled(log.kb) ? ' · <span style="color:var(--gr);font-size:11px;font-weight:600">🤖 Fiche IA ✓</span>' : (isAdmin ? ' · <span style="color:var(--td);font-size:11px">🤖 Fiche IA à remplir</span>' : '')) +
         '</div>' +
       '</div>' +
       (isAdmin ?
         '<div class="log-acts">' +
+          '<button class="bedit" onclick="openLogementKB(\'' + log.id + '\')" title="Fiche IA — infos voyageur (wifi, accès, parking…)" style="font-size:13px">🤖</button>' +
           '<button class="bedit" onclick="openLogementModal(\'' + log.id + '\')" title="Modifier">✏️</button>' +
           '<button class="bedit" onclick="toggleLogementArchive(\'' + log.id + '\')" title="' + (arc ? 'Réactiver' : 'Archiver') + '" style="font-size:13px">' + (arc ? '♻️' : '📦') + '</button>' +
         '</div>' : '') +
@@ -10985,6 +10987,54 @@ function openLogementModal(id) {
 function closeLogementModal() {
   var ov = document.getElementById('log-modal-ov');
   if (ov) ov.classList.add('hidden');
+}
+
+// ── Fiche IA (base de connaissances) par logement (#5) ───────
+function _kbFilled(kb){ return !!(kb && typeof kb==='object' && Object.keys(kb).some(function(k){ return String(kb[k]==null?'':kb[k]).trim(); })); }
+function openLogementKB(id){
+  if (ROLE !== 'admin') { showToast('⛔ Admin uniquement'); return; }
+  var log = DB.logements.find(function(l){ return l.id===id; });
+  if (!log) return;
+  var kb = (log.kb && typeof log.kb==='object') ? log.kb : {};
+  var g = function(f){ return escHtml(kb[f]!=null?String(kb[f]):''); };
+  function area(fid,label,ph,rows){ return '<div class="ff"><label class="fl">'+label+'</label><textarea class="fi" id="'+fid+'" rows="'+rows+'" placeholder="'+ph+'" style="resize:vertical">'+g(fid.replace('kb-','').replace(/-/g,'_'))+'</textarea></div>'; }
+  var html =
+    '<div class="mt">🤖 Fiche IA — '+escHtml(log.nom)+'</div>'+
+    '<div style="font-size:12px;color:var(--td);margin:-4px 0 12px;line-height:1.5">Infos utilisées par l’IA pour répondre aux voyageurs. Le wifi est communiqué ; le <b>code de serrure n’est JAMAIS donné par l’IA</b> (envoi manuel après vérification des pièces d’identité).</div>'+
+    '<div class="fg">'+
+      '<div><label class="fl">📶 Wifi — nom du réseau</label><input class="fi" id="kb-wifi_nom" value="'+g('wifi_nom')+'" placeholder="Nex_Touahri11"></div>'+
+      '<div><label class="fl">📶 Wifi — mot de passe</label><input class="fi" id="kb-wifi_code" value="'+g('wifi_code')+'" placeholder="mot de passe wifi"></div>'+
+      '<div><label class="fl">🔑 Heure de check-in</label><input class="fi" id="kb-checkin_heure" value="'+g('checkin_heure')+'" placeholder="À partir de 15h"></div>'+
+      '<div><label class="fl">🚪 Heure de check-out</label><input class="fi" id="kb-checkout" value="'+g('checkout')+'" placeholder="Avant 11h"></div>'+
+      area('kb-adresse_etage','📍 Adresse exacte + étage','Immeuble B2, 3e étage, appartement 11',2)+
+      area('kb-checkin_acces','🧭 Instructions d’accès / arrivée (SANS le code de serrure)','Boîte à clés à gauche de la porte, ascenseur jusqu’au 3e…',3)+
+      area('kb-parking','🅿️ Parking','Parking gratuit en bas de l’immeuble',2)+
+      area('kb-equipements','🛋️ Équipements','Climatisation, machine à laver, Netflix…',2)+
+      area('kb-services','🛎️ Services additionnels & tarifs','Clim 3€/nuit, navette aéroport 15€, ménage 12€, départ tardif 10€ jusqu’à 13h…',3)+
+      area('kb-regles','📜 Règles de la maison','Pas de fête, non-fumeur, calme après 22h…',2)+
+      area('kb-faq','❓ Autres infos / FAQ','Tout ce que les voyageurs demandent souvent…',3)+
+    '</div>'+
+    '<div class="fac">'+
+      '<button class="bcan" onclick="closeLogementModal()">Annuler</button>'+
+      '<button class="bsave bat" onclick="saveLogementKB(\''+id+'\')">Enregistrer la fiche</button>'+
+    '</div>';
+  var ov=document.getElementById('log-modal-ov');
+  ov.innerHTML='<div class="mbox" style="max-width:560px;max-height:90vh;overflow-y:auto">'+html+'</div>';
+  ov.classList.remove('hidden');
+}
+async function saveLogementKB(id){
+  if(!SUPA){ showToast('⛔ Non connecté'); return; }
+  var gv=function(i){ var el=document.getElementById(i); return el?(el.value||'').trim():''; };
+  var fields=['wifi_nom','wifi_code','checkin_heure','checkout','adresse_etage','checkin_acces','parking','equipements','services','regles','faq'];
+  var kb={};
+  fields.forEach(function(f){ var v=gv('kb-'+f); if(v) kb[f]=v; });
+  try{
+    var res=await SUPA.from('logements').update({kb:kb}).eq('id',id);
+    if(res.error) throw res.error;
+    var log=DB.logements.find(function(l){return l.id===id;}); if(log) log.kb=kb;
+    closeLogementModal(); renderLogements();
+    showToast('✅ Fiche IA enregistrée');
+  }catch(e){ alert('Erreur : '+(e.message||e)); }
 }
 
 async function saveLogement(editId) {

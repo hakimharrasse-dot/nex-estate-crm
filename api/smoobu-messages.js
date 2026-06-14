@@ -114,7 +114,7 @@ async function sendSmoobuMessage(bookingId, text) {
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
   const { appart, voyageur, checkin, checkout, source, message_content, conversation, hakim_instruction,
-          reservation_confirmed, days_until_checkin_ctx, style_examples } = ctx;
+          reservation_confirmed, days_until_checkin_ctx, style_examples, apartment_kb } = ctx;
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
@@ -165,6 +165,7 @@ async function generateFullAnalysis(ctx) {
     `Check-out : ${checkout || 'non précisé'}\n` +
     `Plateforme : ${source  || 'non précisé'}\n` +
     resaLine + daysLine +
+    kbBlock(apartment_kb) +
     msgBlock +
     instrNote;
 
@@ -305,7 +306,7 @@ async function assistReply(mode, p) {
       '- Réponds dans la MÊME langue que le brouillon\n' +
       '- Ton humain et professionnel, sans emojis\n' +
       '- Renvoie UNIQUEMENT le texte révisé, rien d\'autre (pas de guillemets, pas d\'explication)' +
-      styleBlock(p.styleExamples);
+      styleBlock(p.styleExamples) + kbBlock(p.apartmentKb);
     user = ctxLine + `Brouillon actuel :\n${p.draft}\n\nConsigne de Hakim : ${p.instruction || '(améliore-le, rends-le plus naturel et professionnel)'}`;
   }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -318,6 +319,41 @@ async function assistReply(mode, p) {
   let out = (data.content?.[0]?.text || '').trim().replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
   if (mode === 'refine') out = out.replace(/^["«»\s]+|["«»\s]+$/g, '').trim();
   return out;
+}
+
+// ── Base de connaissances par logement (fiche IA, #5) ────────
+// Lit la colonne logements.kb (jsonb) par nom d'appartement. Best-effort.
+async function getApartmentKB(appartName) {
+  if (!appartName) return null;
+  try {
+    const rows = await sbGet(`logements?nom=eq.${encodeURIComponent(appartName)}&select=kb&limit=1`);
+    const kb = rows?.[0]?.kb;
+    return (kb && typeof kb === 'object' && Object.keys(kb).length) ? kb : null;
+  } catch { return null; }
+}
+// Construit le bloc d'infos injecté dans le prompt + la règle code serrure (toujours présente).
+function kbBlock(kb) {
+  const lines = [];
+  if (kb) {
+    if (kb.wifi_nom || kb.wifi_code) lines.push(`Wifi — réseau : "${kb.wifi_nom || '—'}", mot de passe : "${kb.wifi_code || '—'}" (tu peux le communiquer)`);
+    if (kb.adresse_etage) lines.push(`Adresse / étage : ${kb.adresse_etage}`);
+    if (kb.checkin_heure) lines.push(`Heure de check-in : ${kb.checkin_heure}`);
+    if (kb.checkout)      lines.push(`Heure de check-out : ${kb.checkout}`);
+    if (kb.checkin_acces) lines.push(`Accès / arrivée : ${kb.checkin_acces}`);
+    if (kb.parking)       lines.push(`Parking : ${kb.parking}`);
+    if (kb.equipements)   lines.push(`Équipements : ${kb.equipements}`);
+    if (kb.services)      lines.push(`Services additionnels & tarifs : ${kb.services}`);
+    if (kb.regles)        lines.push(`Règles de la maison : ${kb.regles}`);
+    if (kb.faq)           lines.push(`Autres infos : ${kb.faq}`);
+  }
+  // Règle code serrure : TOUJOURS injectée, même sans fiche (politique Hakim).
+  const lockRule =
+    '\n\nRÈGLE ABSOLUE — CODE DE SERRURE / PORTE DIGITALE : ne donne JAMAIS de code de serrure ou de porte ' +
+    'dans ta réponse. Si le voyageur le demande, indique que le code de la serrure lui sera envoyé le JOUR ' +
+    'de son arrivée, après vérification de ses pièces d\'identité. Le mot de passe Wifi, lui, peut être communiqué.';
+  if (!lines.length) return lockRule;
+  return '\n\nINFORMATIONS VÉRIFIÉES DE CE LOGEMENT (utilise-les pour répondre précisément aux questions du voyageur ; n\'invente RIEN au-delà de ces infos) :\n' +
+    lines.map(function(l){ return '- ' + l; }).join('\n') + lockRule;
 }
 
 // ── Enrichir depuis la table resa (via smoobu_id) ────────────
@@ -939,6 +975,7 @@ export default async function handler(req, res) {
                     source:                 resaCtx?.source   || '',
                     message_content:        messageContent,
                     conversation:           _conv,
+                  apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                     reservation_confirmed:  !!(resaCtx?.id),
                     days_until_checkin_ctx: daysUntilCheckin(resaCtx?.checkin || ''),
                   });
@@ -1008,6 +1045,7 @@ export default async function handler(req, res) {
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
                   conversation:           _conv,
+                  apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -1067,6 +1105,7 @@ export default async function handler(req, res) {
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
                   conversation:           _conv,
+                  apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -1207,6 +1246,7 @@ export default async function handler(req, res) {
                 source:                 'Booking.com',
                 message_content:        messageContent,
                 conversation:           _convBc,
+                apartment_kb:           await getApartmentKB(resa && resa.appart ? resa.appart : ''),
                 reservation_confirmed:  true,
                 days_until_checkin_ctx: daysUntilCheckin(resa.checkin || ''),
               });
@@ -1471,6 +1511,7 @@ export default async function handler(req, res) {
         clientContext: String(client_context || '').trim(),
         source:        source || '', appart: appart || '',
         styleExamples: styleEx,
+        apartmentKb:   (m === 'refine') ? await getApartmentKB(String(appart || '').trim()) : null,
       });
       return res.status(200).json({ ok: true, mode: m, text: out });
     } catch (err) {
@@ -1506,6 +1547,7 @@ export default async function handler(req, res) {
         reservation_confirmed:  false,
         days_until_checkin_ctx: null,
         style_examples:         await getHakimStyleExamples(5),
+        apartment_kb:           await getApartmentKB(String(appart || '').trim()),
       });
 
       console.log('[manualDraft] OK | lang:', analysis.detected_language, '| classif:', analysis.classification, '| source:', source || '–');
@@ -1758,6 +1800,8 @@ export default async function handler(req, res) {
           conversation:           isMultiPart ? conversationText : null,
           reservation_confirmed:  resaConfirmedWh,
           days_until_checkin_ctx: daysCheckinWh,
+          apartment_kb:           await getApartmentKB(appart),
+          style_examples:         await getHakimStyleExamples(5),
         });
         console.log('[messages] Claude OK — lang:', analysis.detected_language, '| classif:', analysis.classification);
       } catch (claudeErr) {
