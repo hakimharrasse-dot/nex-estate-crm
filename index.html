@@ -15843,8 +15843,9 @@ function _convModal(){
     '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
       '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
       '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
-        '<span style="font-size:10px;color:var(--td);flex:1">💬 Voyageur (Smoobu) + vos réponses CRM · envoi via Smoobu</span>'+
-        '<button id="conv-gen-btn" onclick="convGenerate()" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 13px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer (IA)</button>'+
+        '<span style="font-size:10px;color:var(--td);flex:1;min-width:80px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
+        '<button id="conv-gen-btn" onclick="convGenerate()" title="L\'IA rédige une réponse à partir des messages du client" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer</button>'+
+        '<button id="conv-reword-btn" onclick="convReword()" title="L\'IA reformule VOTRE texte : corrige l\'orthographe et le rend professionnel, sans changer le sens" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✏️ Reformuler</button>'+
         '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
       '</div>'+
     '</div></div>';
@@ -15904,7 +15905,21 @@ async function convGenerate(){
     if(d&&d.ai_draft){ if(ta){ ta.value=d.ai_draft; ta.focus(); } }
     else { showToast(d&&d.classification==='no_reply_needed'?'IA : pas de réponse nécessaire':'Pas de brouillon généré'); }
   }catch(e){ showToast('⚠ Génération échouée'); }
-  if(btn){ btn.disabled=false; btn.textContent='✨ Générer (IA)'; }
+  if(btn){ btn.disabled=false; btn.textContent='✨ Générer'; }
+}
+async function convReword(){
+  var cur=window._CONV_CUR||{};
+  var ta=document.getElementById('conv-reply'); var text=((ta&&ta.value)||'').trim();
+  if(!text){ showToast('Écrivez d\'abord votre réponse à reformuler'); return; }
+  var btn=document.getElementById('conv-reword-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?reword=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,source:cur.source||'',appart:cur.appart||''})});
+    var d=await r.json();
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } showToast('✏️ Reformulé'); }
+    else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
+  }catch(e){ showToast('⚠ Reformulation échouée'); }
+  if(btn){ btn.disabled=false; btn.textContent='✏️ Reformuler'; }
 }
 async function convSend(){
   var cur=window._CONV_CUR; if(!cur||!cur.booking_id){ showToast('Réservation Smoobu introuvable'); return; }

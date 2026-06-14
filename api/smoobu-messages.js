@@ -221,6 +221,45 @@ async function generateFullAnalysis(ctx) {
   }
 }
 
+// ── Reformuler un brouillon de Hakim (orthographe + ton pro) ──
+// Prend le texte écrit par l'hôte et le polit SANS changer le sens ni inventer.
+async function rewordReply(text, ctx) {
+  const c = ctx || {};
+  const systemPrompt =
+    'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Nex-Estate). ' +
+    'On te donne un brouillon de réponse que HAKIM (l\'hôte) veut envoyer à un voyageur. ' +
+    'Reformule-le pour qu\'il soit professionnel, poli, clair et naturel : corrige l\'orthographe et la grammaire, améliore la formulation.\n\n' +
+    'RÈGLES STRICTES :\n' +
+    '- Garde EXACTEMENT le même sens et la même intention que le brouillon\n' +
+    '- N\'ajoute AUCUNE information nouvelle (jamais de code, adresse, horaire, prix ou promesse inventés)\n' +
+    '- Réponds dans la MÊME langue que le brouillon\n' +
+    '- Ton humain et professionnel, sans emojis\n' +
+    '- Renvoie UNIQUEMENT le texte reformulé, rien d\'autre (pas de guillemets, pas d\'explication, pas de préfixe)';
+  const userPrompt =
+    ((c.appart || c.source)
+      ? `Contexte (pour le ton uniquement, ne rien inventer) : logement ${c.appart || '—'}, plateforme ${c.source || '—'}.\n\n`
+      : '') +
+    `Brouillon de Hakim à reformuler :\n${text}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    }),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (reword): ${res.status} ${err}`); }
+  const data = await res.json();
+  const out = (data.content?.[0]?.text || '').trim()
+    .replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '')
+    .replace(/^["«»\s]+|["«»\s]+$/g, '')
+    .trim();
+  return out || text;
+}
+
 // ── Enrichir depuis la table resa (via smoobu_id) ────────────
 // Retourne { id, appart, voyageur, source, checkin, checkout } ou {}
 async function getResaContext(smoobuBookingId) {
@@ -1333,6 +1372,23 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[messages] regenerate error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Reformuler un brouillon de Hakim : POST ?reword=1 ────────
+  // Polit le texte écrit par l'hôte (orthographe + ton pro) sans changer le sens.
+  // Aucune écriture en base, aucun envoi.
+  if (req.query?.reword) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { text, source, appart } = body || {};
+      if (!text || !String(text).trim()) return res.status(400).json({ error: 'text requis' });
+      if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
+      const reworded = await rewordReply(String(text).trim(), { source: source || '', appart: appart || '' });
+      return res.status(200).json({ ok: true, text: reworded });
+    } catch (err) {
+      console.error('[reword] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
