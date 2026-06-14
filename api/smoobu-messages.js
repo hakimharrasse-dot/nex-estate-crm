@@ -114,7 +114,7 @@ async function sendSmoobuMessage(bookingId, text) {
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
   const { appart, voyageur, checkin, checkout, source, message_content, conversation, hakim_instruction,
-          reservation_confirmed, days_until_checkin_ctx } = ctx;
+          reservation_confirmed, days_until_checkin_ctx, style_examples } = ctx;
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
@@ -140,7 +140,8 @@ async function generateFullAnalysis(ctx) {
     '- Codes d\'accès / instructions d\'arrivée / adresse : si l\'information exacte n\'est pas dans le contexte → écrire UNIQUEMENT "je vous envoie les détails d\'accès avant votre arrivée" — JAMAIS inventer un code, une adresse ou un horaire\n\n' +
     'Règles pour ai_draft_fr :\n' +
     '- Traduction fidèle de ai_draft en français\n' +
-    '- Usage Hakim uniquement — ne jamais envoyer au voyageur';
+    '- Usage Hakim uniquement — ne jamais envoyer au voyageur' +
+    styleBlock(style_examples);
 
   const instrNote = hakim_instruction
     ? `\n\nInstruction de Hakim pour cette réponse : ${hakim_instruction}`
@@ -234,7 +235,8 @@ async function rewordReply(text, ctx) {
     '- N\'ajoute AUCUNE information nouvelle (jamais de code, adresse, horaire, prix ou promesse inventés)\n' +
     '- Réponds dans la MÊME langue que le brouillon\n' +
     '- Ton humain et professionnel, sans emojis\n' +
-    '- Renvoie UNIQUEMENT le texte reformulé, rien d\'autre (pas de guillemets, pas d\'explication, pas de préfixe)';
+    '- Renvoie UNIQUEMENT le texte reformulé, rien d\'autre (pas de guillemets, pas d\'explication, pas de préfixe)' +
+    styleBlock(c.styleExamples);
   const userPrompt =
     ((c.appart || c.source)
       ? `Contexte (pour le ton uniquement, ne rien inventer) : logement ${c.appart || '—'}, plateforme ${c.source || '—'}.\n\n`
@@ -258,6 +260,64 @@ async function rewordReply(text, ctx) {
     .replace(/^["«»\s]+|["«»\s]+$/g, '')
     .trim();
   return out || text;
+}
+
+// ── Style de Hakim : ses dernières réponses ENVOYÉES (few-shot) ──
+// Sert à faire imiter son ton par l'IA. Lecture seule, best-effort.
+async function getHakimStyleExamples(limit) {
+  try {
+    const rows = await sbGet(
+      `messages?statut=eq.sent&ai_draft=not.is.null&select=ai_draft,sent_at&order=sent_at.desc.nullslast&limit=${limit || 6}`
+    );
+    return (rows || [])
+      .map(function(r){ return String(r.ai_draft || '').trim(); })
+      .filter(function(s){ return s && s.length >= 10 && s.length <= 600; })
+      .slice(0, limit || 6);
+  } catch { return []; }
+}
+function styleBlock(examples) {
+  if (!examples || !examples.length) return '';
+  return '\n\nSTYLE DE HAKIM (imite ce ton, ces tournures, cette longueur — ce sont ses vraies réponses passées, ne les recopie pas mot pour mot) :\n' +
+    examples.map(function(s, i){ return '— ' + s; }).join('\n');
+}
+
+// ── Assistant : affiner un brouillon (refine) ou conseiller (advise) ──
+async function assistReply(mode, p) {
+  const ctxLine = (p.clientContext && p.clientContext.trim())
+    ? `Message(s) du voyageur :\n${p.clientContext.trim()}\n\n` : '';
+  let system, user;
+  if (mode === 'advise') {
+    system =
+      'Tu es le relecteur de Hakim, hôte de locations courte durée à Rabat/Salé (Nex-Estate). ' +
+      'On te donne le(s) message(s) du voyageur et le brouillon de réponse de HAKIM. ' +
+      'Donne à Hakim un avis court et concret EN FRANÇAIS (3 à 5 puces maximum) : ce qui va, ce qui manque, ' +
+      'les infos risquées ou non confirmées (code, horaire, prix, promesse), le ton à ajuster. ' +
+      'NE RÉÉCRIS PAS la réponse — donne uniquement tes notes, en puces courtes commençant par "• ". ' +
+      'Si le brouillon est déjà bon, dis-le franchement.';
+    user = ctxLine + `Brouillon de Hakim :\n${p.draft}` + (p.instruction ? `\n\nPoint d'attention demandé par Hakim : ${p.instruction}` : '');
+  } else { // refine
+    system =
+      'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat/Salé (Nex-Estate). ' +
+      'On te donne le(s) message(s) du voyageur, le brouillon actuel de Hakim et une consigne de Hakim. ' +
+      'Révise le brouillon selon la consigne.\n\nRÈGLES STRICTES :\n' +
+      '- Garde l\'intention de Hakim\n' +
+      '- N\'invente AUCUNE information (jamais de code, adresse, prix, horaire ou promesse inventés)\n' +
+      '- Réponds dans la MÊME langue que le brouillon\n' +
+      '- Ton humain et professionnel, sans emojis\n' +
+      '- Renvoie UNIQUEMENT le texte révisé, rien d\'autre (pas de guillemets, pas d\'explication)' +
+      styleBlock(p.styleExamples);
+    user = ctxLine + `Brouillon actuel :\n${p.draft}\n\nConsigne de Hakim : ${p.instruction || '(améliore-le, rends-le plus naturel et professionnel)'}`;
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: system, messages: [{ role: 'user', content: user }] }),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (assist ${mode}): ${res.status} ${err}`); }
+  const data = await res.json();
+  let out = (data.content?.[0]?.text || '').trim().replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  if (mode === 'refine') out = out.replace(/^["«»\s]+|["«»\s]+$/g, '').trim();
+  return out;
 }
 
 // ── Enrichir depuis la table resa (via smoobu_id) ────────────
@@ -1385,10 +1445,36 @@ export default async function handler(req, res) {
       const { text, source, appart } = body || {};
       if (!text || !String(text).trim()) return res.status(400).json({ error: 'text requis' });
       if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
-      const reworded = await rewordReply(String(text).trim(), { source: source || '', appart: appart || '' });
+      const styleEx = await getHakimStyleExamples(5);
+      const reworded = await rewordReply(String(text).trim(), { source: source || '', appart: appart || '', styleExamples: styleEx });
       return res.status(200).json({ ok: true, text: reworded });
     } catch (err) {
       console.error('[reword] erreur:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Assistant : POST ?assist=1 (mode=refine | advise) ────────
+  // refine : révise le brouillon selon une consigne de Hakim (+ style appris).
+  // advise : relit le brouillon et conseille SANS réécrire. Aucune écriture base.
+  if (req.query?.assist) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { mode, draft, instruction, client_context, source, appart } = body || {};
+      if (!draft || !String(draft).trim()) return res.status(400).json({ error: 'draft requis' });
+      if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
+      const m = (mode === 'advise') ? 'advise' : 'refine';
+      const styleEx = (m === 'refine') ? await getHakimStyleExamples(5) : [];
+      const out = await assistReply(m, {
+        draft:         String(draft).trim(),
+        instruction:   String(instruction || '').trim(),
+        clientContext: String(client_context || '').trim(),
+        source:        source || '', appart: appart || '',
+        styleExamples: styleEx,
+      });
+      return res.status(200).json({ ok: true, mode: m, text: out });
+    } catch (err) {
+      console.error('[assist] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -1419,6 +1505,7 @@ export default async function handler(req, res) {
         hakim_instruction:      String(instruction || '').trim() || undefined,
         reservation_confirmed:  false,
         days_until_checkin_ctx: null,
+        style_examples:         await getHakimStyleExamples(5),
       });
 
       console.log('[manualDraft] OK | lang:', analysis.detected_language, '| classif:', analysis.classification, '| source:', source || '–');

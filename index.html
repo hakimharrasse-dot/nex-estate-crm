@@ -15849,6 +15849,13 @@ function _convModal(){
         '<button id="conv-reword-btn" onclick="convReword()" title="L\'IA reformule VOTRE texte : corrige l\'orthographe et le rend professionnel, sans changer le sens" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✏️ Reformuler</button>'+
         '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
       '</div>'+
+      '<div style="display:flex;gap:6px;margin-top:7px;align-items:center">'+
+        '<input id="conv-instr" type="text" placeholder="Dis à l\'IA quoi changer (ex : plus court, ajoute le parking)…" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:12px;outline:none;font-family:inherit">'+
+        '<button id="conv-instr-mic" onclick="voiceMic(\'conv-instr\',\'conv-instr-mic\')" title="Dicter la consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>'+
+        '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA révise votre brouillon selon votre consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;white-space:nowrap">🔄 Affiner</button>'+
+        '<button id="conv-advise-btn" onclick="convAdvise()" title="L\'IA relit votre réponse et vous conseille, sans réécrire" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;white-space:nowrap">🧐 Conseil</button>'+
+      '</div>'+
+      '<div id="conv-advice" style="display:none;margin-top:8px;background:rgba(232,200,74,.1);border:1px solid rgba(232,200,74,.35);border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;color:var(--tx);white-space:pre-wrap"></div>'+
     '</div></div>';
   document.body.appendChild(ov);
   return ov;
@@ -15862,6 +15869,8 @@ async function convOpen(i){
   document.getElementById('conv-title').textContent=r.voyageur||'(sans nom)';
   document.getElementById('conv-sub').textContent=aptShort(r.appart||'')+(r.ref?' · '+r.ref:'');
   var rep=document.getElementById('conv-reply'); if(rep) rep.value='';
+  var cin=document.getElementById('conv-instr'); if(cin) cin.value='';
+  var cad=document.getElementById('conv-advice'); if(cad){ cad.style.display='none'; cad.textContent=''; }
   ov.style.display='flex';
   await _convLoad();
 }
@@ -15921,6 +15930,36 @@ async function convReword(){
     else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
   }catch(e){ showToast('⚠ Reformulation échouée'); }
   if(btn){ btn.disabled=false; btn.textContent='✏️ Reformuler'; }
+}
+async function convRefine(){
+  var cur=window._CONV_CUR||{};
+  var ta=document.getElementById('conv-reply'); var draft=((ta&&ta.value)||'').trim();
+  if(!draft){ showToast('Écrivez ou générez d\'abord un brouillon à affiner'); return; }
+  var instr=((document.getElementById('conv-instr')||{}).value||'').trim();
+  var btn=document.getElementById('conv-refine-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',source:cur.source||'',appart:cur.appart||''})});
+    var d=await r.json();
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('conv-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
+    else { showToast('⚠ '+(d.error||'Échec')); }
+  }catch(e){ showToast('⚠ Affinage échoué'); }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Affiner'; }
+}
+async function convAdvise(){
+  var cur=window._CONV_CUR||{};
+  var ta=document.getElementById('conv-reply'); var draft=((ta&&ta.value)||'').trim();
+  if(!draft){ showToast('Écrivez ou générez d\'abord une réponse à faire relire'); return; }
+  var instr=((document.getElementById('conv-instr')||{}).value||'').trim();
+  var box=document.getElementById('conv-advice'); var btn=document.getElementById('conv-advise-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  if(box){ box.style.display='block'; box.textContent='Analyse en cours…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||''})});
+    var d=await r.json();
+    if(box){ box.textContent=(r.ok&&d.text)?('🧐 '+d.text):('⚠ '+(d.error||'Conseil indisponible')); }
+  }catch(e){ if(box) box.textContent='⚠ Conseil échoué'; }
+  if(btn){ btn.disabled=false; btn.textContent='🧐 Conseil'; }
 }
 async function convSend(){
   var cur=window._CONV_CUR; if(!cur||!cur.booking_id){ showToast('Réservation Smoobu introuvable'); return; }
@@ -16567,6 +16606,32 @@ async function manualReword(){
 }
 function manualCopyDraft(){ var ta=document.getElementById('manual-draft-edit'); if(ta) msgManualCopy(ta.value||''); }
 async function manualSendDraft(){ var ta=document.getElementById('manual-draft-edit'); await manualSendToClient(((ta&&ta.value)||'').trim()); }
+async function manualRefine(){
+  var ta=document.getElementById('manual-draft-edit'); var draft=((ta&&ta.value)||'').trim();
+  if(!draft){ showToast('Brouillon vide'); return; }
+  var instr=((document.getElementById('manual-refine-instr')||{}).value||'').trim();
+  var clientMsg=((document.getElementById('manual-msg')||{}).value||'').trim();
+  var src=(document.getElementById('manual-src')||{}).value||'', app=(document.getElementById('manual-appart')||{}).value||'';
+  showToast('🔄 Affinage…');
+  try{
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:clientMsg,source:src,appart:app})});
+    var d=await r.json();
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('manual-refine-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
+    else showToast('⚠ '+(d.error||'Échec'));
+  }catch(e){ showToast('⚠ Affinage échoué'); }
+}
+async function manualAdvise(){
+  var ta=document.getElementById('manual-draft-edit'); var draft=((ta&&ta.value)||'').trim();
+  if(!draft){ showToast('Brouillon vide'); return; }
+  var clientMsg=((document.getElementById('manual-msg')||{}).value||'').trim();
+  var box=document.getElementById('manual-advice');
+  if(box){ box.style.display='block'; box.textContent='Analyse en cours…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'advise',draft:draft,client_context:clientMsg})});
+    var d=await r.json();
+    if(box) box.textContent=(r.ok&&d.text)?('🧐 '+d.text):('⚠ '+(d.error||'Conseil indisponible'));
+  }catch(e){ if(box) box.textContent='⚠ Conseil échoué'; }
+}
 async function msgManualDraftGenerate() {
   var msg    = (document.getElementById('manual-msg')?.value    || '').trim();
   var source = (document.getElementById('manual-src')?.value    || '').trim();
@@ -16617,6 +16682,13 @@ async function msgManualDraftGenerate() {
         html += '<button type="button" class="ba" style="font-size:13px;padding:7px 14px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendDraft()">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
       }
       html += '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">';
+      html += '<input id="manual-refine-instr" type="text" placeholder="Dis à l\'IA quoi changer…" style="flex:1;min-width:140px;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:12px;box-sizing:border-box">';
+      html += '<button type="button" id="manual-refine-mic" onclick="voiceMic(\'manual-refine-instr\',\'manual-refine-mic\')" title="Dicter la consigne" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
+      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualRefine()" title="L\'IA révise le brouillon selon votre consigne">🔄 Affiner</button>';
+      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualAdvise()" title="L\'IA relit et vous conseille sans réécrire">🧐 Conseil</button>';
+      html += '</div>';
+      html += '<div id="manual-advice" style="display:none;margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;white-space:pre-wrap;color:#374151"></div>';
       if (data.ai_draft_fr && data.ai_draft_fr !== data.ai_draft) {
         html += '<details style="margin-top:14px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;user-select:none">▸ Traduction française (usage interne uniquement)</summary>';
         html += '<div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;margin-top:6px;color:#475569;line-height:1.5">' + escHtml(data.ai_draft_fr) + '</div>';
