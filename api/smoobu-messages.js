@@ -70,6 +70,13 @@ async function getSmoobuMessages(bookingId) {
   const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages`, {
     headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
   });
+  // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
+  // PAS les conversations sans réservation). Ce n'est pas une erreur traitable : on
+  // retourne vide → le handler ignore proprement (aucun faux record « erreur »).
+  if (res.status === 404) {
+    console.log('[messages] 404 messages (prospect/inquiry, non exposé par Smoobu) — booking:', bookingId, '| skip');
+    return { messages: [] };
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Smoobu GET messages [${bookingId}]: ${res.status} ${err}`);
@@ -104,7 +111,7 @@ async function sendSmoobuMessage(bookingId, text) {
 // ── Claude API : analyse complète en un seul appel ────────────
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
-  const { appart, voyageur, checkin, checkout, source, message_content, hakim_instruction,
+  const { appart, voyageur, checkin, checkout, source, message_content, conversation, hakim_instruction,
           reservation_confirmed, days_until_checkin_ctx } = ctx;
 
   const systemPrompt =
@@ -142,6 +149,12 @@ async function generateFullAnalysis(ctx) {
     ? `Jours avant arrivée : ${days_until_checkin_ctx}\n`
     : '';
 
+  // Si le voyageur a écrit plusieurs messages successifs → fournir tout le fil récent,
+  // pas seulement le dernier, et demander de répondre à l'ensemble.
+  const msgBlock = (conversation && conversation.trim() && conversation.trim() !== (message_content || '').trim())
+    ? `\nDerniers messages du voyageur (du plus ancien au plus récent — il a écrit en plusieurs fois, réponds à L'ENSEMBLE de ses demandes en une seule réponse) :\n${conversation}`
+    : `\nMessage du voyageur :\n${message_content}`;
+
   const userPrompt =
     `Logement : ${appart    || 'non précisé'}\n` +
     `Voyageur : ${voyageur  || 'non précisé'}\n` +
@@ -149,7 +162,7 @@ async function generateFullAnalysis(ctx) {
     `Check-out : ${checkout || 'non précisé'}\n` +
     `Plateforme : ${source  || 'non précisé'}\n` +
     resaLine + daysLine +
-    `\nMessage du voyageur :\n${message_content}` +
+    msgBlock +
     instrNote;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1440,6 +1453,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'empty_message' });
     }
 
+    // Transcript des derniers messages du voyageur — le client écrit souvent sa demande
+    // en plusieurs messages successifs ("Bonjour" puis la vraie question 1 min après).
+    // L'IA doit répondre à L'ENSEMBLE, pas seulement au dernier fragment.
+    const recentGuestMsgs = allMessages
+      .filter(function(m){ return isGuestMessage(m) && extractMessageText(m).length > 0; })
+      .slice(-5)
+      .map(function(m){ return extractMessageText(m); });
+    const conversationText = recentGuestMsgs.join('\n— — —\n');
+    const isMultiPart = recentGuestMsgs.length > 1;
+    // Ce qu'on stocke/affiche : le fil complet si multi-messages, sinon le message seul
+    const displayContent = isMultiPart ? conversationText : messageContent;
+
     // 2. Déduplication (même message déjà en base)
     const isDup = await checkDuplicate(booking.id, messageContent, smoobuMessageId);
     if (isDup) {
@@ -1482,6 +1507,7 @@ export default async function handler(req, res) {
         analysis = await generateFullAnalysis({
           appart, voyageur: guestName, checkin, checkout, source,
           message_content:        messageContent,
+          conversation:           isMultiPart ? conversationText : null,
           reservation_confirmed:  resaConfirmedWh,
           days_until_checkin_ctx: daysCheckinWh,
         });
@@ -1502,7 +1528,7 @@ export default async function handler(req, res) {
     if (existingPendingIdWh) {
       // Conversation évoluée : mettre à jour le pending existant au lieu de dupliquer
       await sbPatch('messages', `id=eq.${encodeURIComponent(existingPendingIdWh)}`, {
-        message_content:   messageContent,
+        message_content:   displayContent,
         smoobu_message_id: smoobuMessageId              || null,
         detected_language: analysis.detected_language   || null,
         client_summary_fr: analysis.client_summary_fr   || null,
@@ -1525,7 +1551,7 @@ export default async function handler(req, res) {
       voyageur:          guestName           || null,
       source:            source              || null,
       sender:            'guest',
-      message_content:   messageContent,
+      message_content:   displayContent,
       detected_language: analysis.detected_language || null,
       client_summary_fr: analysis.client_summary_fr || null,
       classification:    analysis.classification    || null,
@@ -1551,8 +1577,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'duplicate_db' });
     }
 
-    console.error('[messages] erreur traitement:', err.message, err);
-    await insertErrorRecord(booking.id, err.message, booking);
+    // Pas de record « erreur » visible : ces erreurs (404 prospect, transitoires
+    // Smoobu/Claude) ne sont pas actionnables par l'hôte et polluaient la liste
+    // Messages IA. On loggue côté serveur (Vercel) et on renvoie 500 → Smoobu peut
+    // retenter les erreurs réellement transitoires.
+    console.error('[messages] erreur traitement (booking ' + booking.id + '):', err.message);
     return res.status(500).json({ error: err.message });
   }
 }
