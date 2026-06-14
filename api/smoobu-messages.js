@@ -471,6 +471,53 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages', version: '2.0' });
   }
 
+  // ── Conversation par client : GET ?conversation=BOOKING_ID ───
+  // Retourne le fil complet d'une réservation : messages voyageur (Smoobu, lecture
+  // seule) + réponses envoyées via le CRM (table messages, statut=sent), triés par
+  // date. ⚠️ Smoobu n'expose PAS les réponses hôte tapées directement dans l'appli.
+  if (req.method === 'GET' && req.query?.conversation) {
+    const cid = String(req.query.conversation).trim();
+    if (!cid) return res.status(400).json({ error: 'conversation: booking_id requis' });
+    try {
+      // 1. Messages voyageur depuis Smoobu
+      const msgData = await getSmoobuMessages(cid);
+      const raw = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+      const sorted = sortMessagesChronologically(raw);
+      const guestMsgs = sorted
+        .map(function(m){
+          const d = extractMessageDate(m);
+          return {
+            sender: isGuestMessage(m) ? 'guest' : 'host',
+            text:   extractMessageText(m),
+            at:     d ? d.toISOString() : null,
+          };
+        })
+        .filter(function(x){ return x.text; });
+      // 2. Réponses envoyées via le CRM (host)
+      let crmReplies = [];
+      try {
+        const sentRows = await sbGet(
+          `messages?smoobu_booking_id=eq.${encodeURIComponent(cid)}&statut=eq.sent&select=ai_draft,sent_at,updated_at&order=sent_at.asc`
+        );
+        crmReplies = (sentRows || [])
+          .map(function(r){ return { sender: 'host', text: (r.ai_draft || '').trim(), at: r.sent_at || r.updated_at || null, via_crm: true }; })
+          .filter(function(x){ return x.text; });
+      } catch (e) { console.warn('[messages] conversation: lecture CRM échouée:', e.message); }
+      // 3. Fusion + tri chronologique (les sans-date à la fin, ordre conservé)
+      const all = guestMsgs.concat(crmReplies).sort(function(a, b){
+        if (!a.at && !b.at) return 0;
+        if (!a.at) return 1;
+        if (!b.at) return -1;
+        return new Date(a.at) - new Date(b.at);
+      });
+      return res.status(200).json({ ok: true, booking_id: cid, count: all.length, messages: all });
+    } catch (err) {
+      // 404 Smoobu (prospect/inquiry) déjà transformé en {messages:[]} → pas d'exception ici
+      console.error('[messages] conversation error (booking ' + cid + '):', err.message);
+      return res.status(200).json({ ok: false, booking_id: cid, messages: [], error: 'Conversation indisponible (réservation inconnue de Smoobu)' });
+    }
+  }
+
   // ── Debug booking : GET ?debugBooking=ID ─────────────────
   // Retourne l'état complet de la conversation Smoobu + décision sync
   // pour un booking donné — sans modifier aucune donnée.
