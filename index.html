@@ -15843,7 +15843,8 @@ function _convModal(){
     '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
       '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
       '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
-        '<span style="font-size:10px;color:var(--td);flex:1;min-width:80px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
+        '<span style="font-size:10px;color:var(--td);flex:1;min-width:60px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
+        '<button id="conv-mic-btn" onclick="voiceMic(\'conv-reply\',\'conv-mic-btn\')" title="Dicter à voix haute" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:15px;cursor:pointer;line-height:1">🎤</button>'+
         '<button id="conv-gen-btn" onclick="convGenerate()" title="L\'IA rédige une réponse à partir des messages du client" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer</button>'+
         '<button id="conv-reword-btn" onclick="convReword()" title="L\'IA reformule VOTRE texte : corrige l\'orthographe et le rend professionnel, sans changer le sens" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✏️ Reformuler</button>'+
         '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
@@ -16396,6 +16397,38 @@ function msgToggleMic(messageId) {
   }
 }
 
+// ── Dictée vocale GÉNÉRIQUE (réutilisable sur tout champ) ─────
+// voiceMic(targetId, btnId) : dicte dans le champ targetId, bouton btnId.
+var GEN_VOICE_REC = null, GEN_VOICE_TARGET = null, GEN_VOICE_BTN = null;
+function _genVoiceIdle(){
+  var btn = GEN_VOICE_BTN && document.getElementById(GEN_VOICE_BTN);
+  if(btn){ btn.innerHTML='🎤'; btn.title='Dicter à voix haute'; btn.style.borderColor=''; btn.style.color=''; }
+  GEN_VOICE_REC=null; GEN_VOICE_TARGET=null; GEN_VOICE_BTN=null;
+}
+function voiceMic(targetId, btnId){
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRec){ showToast('⚠ Dictée vocale non supportée — utilisez Chrome ou Safari'); return; }
+  var ta=document.getElementById(targetId), btn=document.getElementById(btnId);
+  if(!ta) return;
+  if(MSG_VOICE_REC){ try{MSG_VOICE_REC.abort();}catch(e){} }           // ne pas cumuler avec la dictée des cartes
+  if(GEN_VOICE_REC && GEN_VOICE_TARGET===targetId){ try{GEN_VOICE_REC.stop();}catch(e){} return; } // re-clic = arrêt
+  if(GEN_VOICE_REC){ try{GEN_VOICE_REC.abort();}catch(e){} _genVoiceIdle(); }
+  var rec=new SpeechRec();
+  rec.lang='fr-FR'; rec.continuous=false; rec.interimResults=true; rec.maxAlternatives=1;
+  var base=(ta.value||'').trim(); if(base) base+=' ';                  // on AJOUTE à l'existant
+  rec.onstart=function(){ GEN_VOICE_REC=rec; GEN_VOICE_TARGET=targetId; GEN_VOICE_BTN=btnId;
+    if(btn){ btn.innerHTML='🔴'; btn.title='Enregistrement… cliquez pour arrêter'; btn.style.borderColor='var(--re)'; btn.style.color='var(--re)'; } };
+  rec.onresult=function(e){ var t=''; for(var i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; ta.value=base+t; };
+  rec.onerror=function(e){
+    if(e.error==='not-allowed'||e.error==='permission-denied') showToast('⚠ Micro refusé — autorisez l\'accès dans le navigateur');
+    else if(e.error==='no-speech') showToast('Aucune voix détectée — réessayez');
+    else if(e.error!=='aborted') showToast('⚠ Erreur micro : '+e.error);
+    _genVoiceIdle();
+  };
+  rec.onend=function(){ var f=GEN_VOICE_TARGET; _genVoiceIdle(); var el=f&&document.getElementById(f); if(el&&el.value.trim()) el.focus(); };
+  try{ rec.start(); }catch(err){ showToast('⚠ Micro : '+err.message); _genVoiceIdle(); }
+}
+
 // ── Module brouillon IA Manuel ───────────────────────────────
 // Génère un brouillon sans réservation Smoobu associée.
 // Usage : WhatsApp, Booking.com, prospects, etc.
@@ -16413,8 +16446,9 @@ function msgManualDraftOpen() {
         '<h3 style="margin:0 0 6px;font-size:16px;font-weight:700">✍ Brouillon IA Manuel</h3>' +
         '<p style="font-size:13px;color:#6b7280;margin:0 0 18px">Colle un message client — l\'IA génère une réponse selon les règles Nex-Estate.<br><strong>Aucun envoi automatique.</strong> Copier-coller manuel uniquement.</p>' +
 
-        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:5px">Message client <span style="color:#ef4444">*</span></label>' +
-        '<textarea id="manual-msg" rows="5" placeholder="Coller ici le message reçu (WhatsApp, email, Booking.com…)" ' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:13px;font-weight:600">Message client <span style="color:#ef4444">*</span></label>' +
+        '<button type="button" id="manual-msg-mic" onclick="voiceMic(\'manual-msg\',\'manual-msg-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button></div>' +
+        '<textarea id="manual-msg" rows="5" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…)" ' +
           'style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5" ' +
           'oninput="document.getElementById(\'manual-gen-btn\').disabled=!this.value.trim()"></textarea>' +
 
@@ -16442,7 +16476,8 @@ function msgManualDraftOpen() {
         '<div id="manual-client-res" style="margin-top:5px"></div>' +
         '<div id="manual-client-sel" style="display:none;margin-top:6px;font-size:12px;color:#16a34a;font-weight:600"></div>' +
 
-        '<label style="font-size:12px;color:#6b7280;display:block;margin:12px 0 4px">Instruction Hakim <span style="font-weight:400">(optionnel)</span></label>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px"><label style="font-size:12px;color:#6b7280">Instruction Hakim <span style="font-weight:400">(optionnel)</span></label>' +
+        '<button type="button" id="manual-instr-mic" onclick="voiceMic(\'manual-instr\',\'manual-instr-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:4px 9px;font-size:13px;cursor:pointer;line-height:1">🎤</button></div>' +
         '<input id="manual-instr" type="text" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
           'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
 
@@ -16517,6 +16552,21 @@ async function manualSendToClient(text){
     else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
   }catch(e){ showToast('⚠ Envoi échoué'); }
 }
+async function manualReword(){
+  var ta=document.getElementById('manual-draft-edit'); var text=((ta&&ta.value)||'').trim();
+  if(!text){ showToast('Brouillon vide'); return; }
+  var src=(document.getElementById('manual-src')||{}).value||'';
+  var app=(document.getElementById('manual-appart')||{}).value||'';
+  showToast('✏️ Reformulation…');
+  try{
+    var r=await fetch('/api/smoobu-messages?reword=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,source:src,appart:app})});
+    var d=await r.json();
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } showToast('✏️ Reformulé'); }
+    else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
+  }catch(e){ showToast('⚠ Reformulation échouée'); }
+}
+function manualCopyDraft(){ var ta=document.getElementById('manual-draft-edit'); if(ta) msgManualCopy(ta.value||''); }
+async function manualSendDraft(){ var ta=document.getElementById('manual-draft-edit'); await manualSendToClient(((ta&&ta.value)||'').trim()); }
 async function msgManualDraftGenerate() {
   var msg    = (document.getElementById('manual-msg')?.value    || '').trim();
   var source = (document.getElementById('manual-src')?.value    || '').trim();
@@ -16557,12 +16607,16 @@ async function msgManualDraftGenerate() {
     if (classif === 'no_reply_needed') {
       html += '<p style="color:#16a34a;font-weight:600;font-size:14px;margin:0">✓ Pas de réponse nécessaire pour ce message.</p>';
     } else if (data.ai_draft) {
-      html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon à envoyer au client :</label>';
-      html += '<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;white-space:pre-wrap;line-height:1.6;margin-bottom:10px">' + escHtml(data.ai_draft) + '</div>';
-      html += '<button class="ba ba-ghost" style="font-size:13px;padding:7px 14px" onclick="msgManualCopy(' + JSON.stringify(data.ai_draft).replace(/</g, '\\u003c') + ')">📋 Copier le brouillon</button>';
+      html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon (modifiable) à envoyer au client :</label>';
+      html += '<textarea id="manual-draft-edit" rows="5" style="width:100%;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px;box-sizing:border-box;resize:vertical;font-family:inherit">' + escHtml(data.ai_draft) + '</textarea>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+      html += '<button type="button" id="manual-draft-mic" onclick="voiceMic(\'manual-draft-edit\',\'manual-draft-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:7px 11px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
+      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualReword()" title="L\'IA reformule votre texte (orthographe + ton pro, même sens)">✏️ Reformuler</button>';
+      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualCopyDraft()">📋 Copier</button>';
       if (window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id) {
-        html += '<button class="ba" style="font-size:13px;padding:7px 14px;margin-left:8px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendToClient(' + JSON.stringify(data.ai_draft).replace(/</g, '\\u003c') + ')">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
+        html += '<button type="button" class="ba" style="font-size:13px;padding:7px 14px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendDraft()">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
       }
+      html += '</div>';
       if (data.ai_draft_fr && data.ai_draft_fr !== data.ai_draft) {
         html += '<details style="margin-top:14px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;user-select:none">▸ Traduction française (usage interne uniquement)</summary>';
         html += '<div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;margin-top:6px;color:#475569;line-height:1.5">' + escHtml(data.ai_draft_fr) + '</div>';
