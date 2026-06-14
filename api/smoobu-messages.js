@@ -102,9 +102,11 @@ async function sendSmoobuMessage(bookingId, text) {
   }
   let body;
   try { body = JSON.parse(rawText); } catch { body = { raw: rawText }; }
-  // Smoobu confirme avec un id dans la réponse (data.id ou id direct)
   const msgId = body?.id ?? body?.data?.id ?? null;
-  const confirmed = msgId !== null && msgId !== undefined;
+  // On est passé le guard !res.ok → réponse 2xx (Smoobu renvoie souvent 201
+  // "Resource created successfully" SANS id) = message bel et bien envoyé.
+  // Ne PAS exiger un id, sinon des envois réussis étaient marqués "échec".
+  const confirmed = true;
   return { httpStatus: res.status, body, rawText, confirmed, msgId };
 }
 
@@ -344,6 +346,18 @@ function analyzeConversation(sortedMessages) {
       return !isGuestMessage(m) && extractMessageText(m).length > 0;
     });
   return { lastGuestIdx, lastHostIdx, hostRepliedAfter };
+}
+
+// ── Transcript des derniers messages du voyageur ─────────────
+// Le client écrit souvent sa demande en plusieurs messages successifs ("Bonjour"
+// puis la vraie question). On fournit les 5 derniers à l'IA pour qu'elle réponde
+// à l'ensemble. Retourne { text, multi } (multi = au moins 2 messages).
+function buildGuestTranscript(allMessages) {
+  const recent = (allMessages || [])
+    .filter(function(m){ return isGuestMessage(m) && extractMessageText(m).length > 0; })
+    .slice(-5)
+    .map(function(m){ return extractMessageText(m); });
+  return { text: recent.join('\n— — —\n'), multi: recent.length > 1 };
 }
 
 // ── Détecter si un message vient du voyageur ─────────────────
@@ -731,6 +745,8 @@ export default async function handler(req, res) {
           const lastMsg         = allMessages[lastGuestIdx];
           const messageContent  = extractMessageText(lastMsg);
           const smoobuMessageId = extractSmoobuMessageId(lastMsg);
+          const _tr             = buildGuestTranscript(allMessages);
+          const _conv           = _tr.multi ? _tr.text : null; // contexte IA multi-messages
           const resaCtx         = await getResaContext(bookingId);
           const trivial         = isTrivialMessage(messageContent);
           const resaConfirmed   = !!(resaCtx.id);
@@ -776,6 +792,7 @@ export default async function handler(req, res) {
                     checkout:               resaCtx?.checkout || '',
                     source:                 resaCtx?.source   || '',
                     message_content:        messageContent,
+                    conversation:           _conv,
                     reservation_confirmed:  !!(resaCtx?.id),
                     days_until_checkin_ctx: daysUntilCheckin(resaCtx?.checkin || ''),
                   });
@@ -844,6 +861,7 @@ export default async function handler(req, res) {
                   checkout:               resaCtx.checkout || '',
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
+                  conversation:           _conv,
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -902,6 +920,7 @@ export default async function handler(req, res) {
                   checkout:               resaCtx.checkout || '',
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
+                  conversation:           _conv,
                   reservation_confirmed:  resaConfirmed,
                   days_until_checkin_ctx: daysCheckin,
                 });
@@ -1013,6 +1032,8 @@ export default async function handler(req, res) {
           const messageContent = extractMessageText(lastMsg);
           const smoobuMsgId    = extractSmoobuMessageId(lastMsg);
           if (!messageContent) { bcom_skipped++; continue; }
+          const _trBc   = buildGuestTranscript(allMessages);
+          const _convBc = _trBc.multi ? _trBc.text : null; // contexte IA multi-messages
 
           // Cas B : pending existant, même message → skip (pas de stale pour scan direct)
           if (existingPending.length > 0 && isSameMessage(existingPending[0], smoobuMsgId, messageContent)) {
@@ -1039,6 +1060,7 @@ export default async function handler(req, res) {
                 checkout:               resa.checkout || '',
                 source:                 'Booking.com',
                 message_content:        messageContent,
+                conversation:           _convBc,
                 reservation_confirmed:  true,
                 days_until_checkin_ctx: daysUntilCheckin(resa.checkin || ''),
               });
@@ -1453,15 +1475,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, skipped: 'empty_message' });
     }
 
-    // Transcript des derniers messages du voyageur — le client écrit souvent sa demande
-    // en plusieurs messages successifs ("Bonjour" puis la vraie question 1 min après).
-    // L'IA doit répondre à L'ENSEMBLE, pas seulement au dernier fragment.
-    const recentGuestMsgs = allMessages
-      .filter(function(m){ return isGuestMessage(m) && extractMessageText(m).length > 0; })
-      .slice(-5)
-      .map(function(m){ return extractMessageText(m); });
-    const conversationText = recentGuestMsgs.join('\n— — —\n');
-    const isMultiPart = recentGuestMsgs.length > 1;
+    // Transcript des derniers messages voyageur (le client écrit souvent en plusieurs
+    // messages successifs) → l'IA répond à L'ENSEMBLE, pas au dernier fragment seul.
+    const whTr = buildGuestTranscript(allMessages);
+    const conversationText = whTr.text;
+    const isMultiPart = whTr.multi;
     // Ce qu'on stocke/affiche : le fil complet si multi-messages, sinon le message seul
     const displayContent = isMultiPart ? conversationText : messageContent;
 
