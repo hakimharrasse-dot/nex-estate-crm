@@ -15888,10 +15888,14 @@ function _convModal(){
   ov.innerHTML='<div style="width:min(560px,96vw);max-height:84vh;background:var(--s);border:1px solid var(--br);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--br)">'+
       '<div style="min-width:0"><div id="conv-title" style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="conv-sub" style="font-size:12px;color:var(--td)"></div></div>'+
-      '<button onclick="convClose()" style="background:none;border:none;color:var(--tm);font-size:20px;cursor:pointer;line-height:1">✕</button></div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+        '<button id="conv-lang-btn" onclick="convToggleLang()" title="Basculer original / français" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;display:none">🌐 Voir l’original</button>'+
+        '<button onclick="convClose()" style="background:none;border:none;color:var(--tm);font-size:20px;cursor:pointer;line-height:1">✕</button>'+
+      '</div></div>'+
     '<div id="conv-body" style="overflow-y:auto;padding:14px 16px;flex:1"></div>'+
     '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
-      '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
+      '<div id="conv-lang-info" style="display:none;font-size:11px;color:var(--bl);margin-bottom:6px"></div>'+
+      '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client (en français)…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
       '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
         '<span style="font-size:10px;color:var(--td);flex:1;min-width:60px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
         '<button id="conv-mic-btn" onclick="voiceMic(\'conv-reply\',\'conv-mic-btn\')" title="Dicter à voix haute" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:15px;cursor:pointer;line-height:1">🎤</button>'+
@@ -15935,24 +15939,62 @@ async function _convLoad(){
     cur.convText=guest.slice(-5).join('\n— — —\n');
     cur.lastGuest=guest.length?guest[guest.length-1]:'';
     if(!msgs.length){
-      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message client pour le moment.<div style="font-size:11px;margin-top:6px">Smoobu n\'expose pas les réponses tapées directement dans l\'appli. Répondez ci-dessous pour garder une trace dans le CRM.</div></div>');
+      cur.msgs=[];
+      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message client pour le moment.<div style="font-size:11px;margin-top:6px">Smoobu n\'expose pas les réponses tapées directement dans l\'appli. Répondez ci-dessous (en français) pour garder une trace dans le CRM.</div></div>');
+      _convUpdateLangBar();
       return;
     }
-    _convSetBody(msgs.map(function(m){
-      var isGuest=m.sender==='guest';
-      var t=m.at?new Date(m.at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-      return '<div style="display:flex;'+(isGuest?'justify-content:flex-start':'justify-content:flex-end')+';margin-bottom:9px">'+
-        '<div style="max-width:80%;padding:9px 12px;border-radius:13px;font-size:13px;line-height:1.45;'+
-        (isGuest?'background:var(--s2);border-bottom-left-radius:3px':'background:rgba(91,130,217,.16);border-bottom-right-radius:3px')+'">'+
-        '<div style="font-size:10px;color:var(--td);margin-bottom:3px">'+(isGuest?'🧳 Voyageur':'🏠 Vous'+(m.via_crm?' (via CRM)':''))+(t?' · '+t:'')+'</div>'+
-        escHtml(m.text).replace(/\n/g,'<br>')+'</div></div>';
-    }).join(''));
-    var b=document.getElementById('conv-body'); if(b) b.scrollTop=b.scrollHeight;
+    // Traduction en français (style Airbnb) — affichage par défaut en français
+    _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">🌐 Traduction en français…</div>');
+    var fr=msgs.map(function(m){return m.text;}), detected='';
+    try{
+      var tr=await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:msgs.map(function(m){return m.text;})})});
+      var td=await tr.json();
+      if(td&&td.translations&&td.translations.length===msgs.length) fr=td.translations;
+      detected=(td&&td.detected)||'';
+    }catch(e){}
+    cur.clientLang=detected;
+    cur.msgs=msgs.map(function(m,i){ return {sender:m.sender, at:m.at, via_crm:m.via_crm, original:m.text, fr:fr[i]||m.text}; });
+    if(cur.showOriginal==null) cur.showOriginal=false;
+    _convRenderMsgs();
+    _convUpdateLangBar();
   }catch(e){
     _convSetBody('<div style="padding:22px;text-align:center;color:var(--re);font-size:13px">Erreur de chargement de la conversation.</div>');
   }
 }
 function convReload(){ _convLoad(); }
+function _convRenderMsgs(){
+  var cur=window._CONV_CUR; if(!cur||!cur.msgs) return;
+  var showOrig=cur.showOriginal;
+  _convSetBody(cur.msgs.map(function(m){
+    var isGuest=m.sender==='guest';
+    var t=m.at?new Date(m.at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    var txt=showOrig?m.original:m.fr;
+    var translatedTag=(!showOrig && m.fr!==m.original)?' · <span style="opacity:.6">traduit</span>':'';
+    return '<div style="display:flex;'+(isGuest?'justify-content:flex-start':'justify-content:flex-end')+';margin-bottom:9px">'+
+      '<div style="max-width:80%;padding:9px 12px;border-radius:13px;font-size:13px;line-height:1.45;'+
+      (isGuest?'background:var(--s2);border-bottom-left-radius:3px':'background:rgba(91,130,217,.16);border-bottom-right-radius:3px')+'">'+
+      '<div style="font-size:10px;color:var(--td);margin-bottom:3px">'+(isGuest?'🧳 Voyageur':'🏠 Vous'+(m.via_crm?' (via CRM)':''))+(t?' · '+t:'')+translatedTag+'</div>'+
+      escHtml(txt).replace(/\n/g,'<br>')+'</div></div>';
+  }).join(''));
+  var b=document.getElementById('conv-body'); if(b) b.scrollTop=b.scrollHeight;
+}
+function convToggleLang(){
+  var cur=window._CONV_CUR; if(!cur) return;
+  cur.showOriginal=!cur.showOriginal;
+  _convRenderMsgs(); _convUpdateLangBar();
+}
+function _convUpdateLangBar(){
+  var cur=window._CONV_CUR||{};
+  var btn=document.getElementById('conv-lang-btn');
+  if(btn){ btn.style.display=(cur.msgs&&cur.msgs.length)?'':'none'; btn.textContent=cur.showOriginal?'🌐 Voir en français':'🌐 Voir l’original'; }
+  var info=document.getElementById('conv-lang-info');
+  if(info){
+    var lang=cur.clientLang||'';
+    if(lang && !/fran[çc]ais|^fr$|inconnue/i.test(lang)){ info.textContent='🌍 Client : '+lang+' — votre réponse sera traduite en '+lang+' à l’envoi.'; info.style.display=''; }
+    else { info.style.display='none'; }
+  }
+}
 async function convGenerate(){
   var cur=window._CONV_CUR; if(!cur) return;
   var base=cur.convText||cur.lastGuest||'';
@@ -15962,7 +16004,8 @@ async function convGenerate(){
   try{
     var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
-    if(d&&d.ai_draft){ if(ta){ ta.value=d.ai_draft; ta.focus(); } }
+    var draftFr=(d&&(d.ai_draft_fr||d.ai_draft))||'';  // Hakim travaille en français
+    if(draftFr){ if(ta){ ta.value=draftFr; ta.focus(); } }
     else { showToast(d&&d.classification==='no_reply_needed'?'IA : pas de réponse nécessaire':'Pas de brouillon généré'); }
   }catch(e){ showToast('⚠ Génération échouée'); }
   if(btn){ btn.disabled=false; btn.textContent='✨ Générer'; }
@@ -16015,13 +16058,26 @@ async function convSend(){
   var cur=window._CONV_CUR; if(!cur||!cur.booking_id){ showToast('Réservation Smoobu introuvable'); return; }
   var ta=document.getElementById('conv-reply'); var text=((ta&&ta.value)||'').trim();
   if(!text){ showToast('Réponse vide'); return; }
-  if(!confirm('Envoyer cette réponse à '+(cur.voyageur||'ce client')+' via Smoobu ?\n\n'+text)) return;
   var btn=document.getElementById('conv-send-btn');
+  var lang=cur.clientLang||'', sendText=text;
+  // Traduire ton français vers la langue du client avant l'envoi (style Airbnb)
+  if(lang && !/fran[çc]ais|^fr$|inconnue/i.test(lang)){
+    if(btn){ btn.disabled=true; btn.textContent='⏳ Traduction…'; }
+    try{
+      var tr=await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,to:lang})});
+      var td=await tr.json(); if(td&&td.text) sendText=td.text;
+    }catch(e){}
+    if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
+  }
+  var confirmMsg=(sendText!==text)
+    ? 'Envoyer à '+(cur.voyageur||'ce client')+' (traduit en '+lang+') :\n\n'+sendText+'\n\n— — —\nVotre texte FR : '+text
+    : 'Envoyer cette réponse à '+(cur.voyageur||'ce client')+' via Smoobu ?\n\n'+sendText;
+  if(!confirm(confirmMsg)) return;
   if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:text,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
+    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:sendText,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
     var d=await r.json();
-    if(r.ok&&d.sent){ showToast('✅ Message envoyé'); if(ta) ta.value=''; convReload(); }
+    if(r.ok&&d.sent){ showToast('✅ Message envoyé'+(sendText!==text?' (traduit en '+lang+')':'')); if(ta) ta.value=''; convReload(); }
     else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
   }catch(e){ showToast('⚠ Envoi échoué'); }
   if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }

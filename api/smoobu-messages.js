@@ -334,6 +334,53 @@ async function assistReply(mode, p) {
   return out;
 }
 
+// ── Traduction (messagerie style Airbnb) ─────────────────────
+// claudeJSON : appel Claude renvoyant un JSON (helper interne).
+async function _claudeText(system, user, maxTokens) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens || 1024, system: system, messages: [{ role: 'user', content: user }] }),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (translate): ${res.status} ${err}`); }
+  const data = await res.json();
+  return (data.content?.[0]?.text || '').trim();
+}
+// Traduit un lot de messages vers le français + détecte la langue source dominante.
+async function translateBatchToFrench(texts) {
+  const arr = (texts || []).map(function(t){ return String(t || ''); });
+  if (!arr.length) return { detected: 'fr', translations: [] };
+  const system =
+    'Tu traduis des messages de voyageurs vers le FRANÇAIS pour l\'hôte Hakim (locations courte durée). ' +
+    'Traduis FIDÈLEMENT chaque message (garde le sens, le ton, les chiffres). Si un message est déjà en français, renvoie-le tel quel. ' +
+    'Détecte aussi la langue source dominante. Réponds UNIQUEMENT avec un objet JSON valide sur une seule ligne, sans markdown : ' +
+    '{"detected":"<langue source en français, ex: anglais, chinois, arabe, français>","translations":["...","..."]} — le tableau translations dans le MÊME ORDRE et la MÊME taille que l\'entrée.';
+  const user = JSON.stringify(arr);
+  let raw = await _claudeText(system, user, 2048);
+  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  try {
+    const j = JSON.parse(raw);
+    const tr = Array.isArray(j.translations) ? j.translations : [];
+    // garantir la même taille
+    const out = arr.map(function(orig, i){ return (tr[i] != null && String(tr[i]).trim()) ? String(tr[i]) : orig; });
+    return { detected: String(j.detected || '').trim() || 'inconnue', translations: out };
+  } catch { return { detected: 'inconnue', translations: arr }; }
+}
+// Traduit le texte de Hakim (français) vers la langue du client.
+async function translateToLang(text, langLabel) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  const lang = String(langLabel || '').trim();
+  if (!lang || /fran[çc]ais|french|^fr$/i.test(lang)) return t; // déjà la bonne langue
+  const system =
+    'Tu traduis le message de l\'hôte (Hakim) vers la langue cible indiquée, pour l\'envoyer au voyageur. ' +
+    'Traduis fidèlement, garde le ton humain et professionnel, n\'ajoute rien. ' +
+    'Renvoie UNIQUEMENT la traduction, rien d\'autre (pas de guillemets, pas d\'explication).';
+  const user = 'Langue cible : ' + lang + '\n\nMessage à traduire :\n' + t;
+  let out = await _claudeText(system, user, 1024);
+  return out.replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').replace(/^["«»\s]+|["«»\s]+$/g, '').trim() || t;
+}
+
 // ── Base de connaissances par logement (fiche IA, #5) ────────
 // Lit la colonne logements.kb (jsonb) par nom d'appartement. Best-effort.
 async function getApartmentKB(appartName) {
@@ -1565,6 +1612,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, mode: m, text: out });
     } catch (err) {
       console.error('[assist] erreur:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Traduction (messagerie style Airbnb) : POST ?translate=1 ─
+  // { texts:[...] } -> traduit le lot vers le français + détecte la langue source.
+  // { text:"...", to:"anglais" } -> traduit le texte de Hakim vers la langue du client.
+  if (req.query?.translate) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
+      if (Array.isArray(body?.texts)) {
+        const r = await translateBatchToFrench(body.texts);
+        return res.status(200).json({ ok: true, detected: r.detected, translations: r.translations });
+      }
+      if (body?.text) {
+        const out = await translateToLang(String(body.text), String(body.to || ''));
+        return res.status(200).json({ ok: true, text: out });
+      }
+      return res.status(400).json({ error: 'texts[] ou text requis' });
+    } catch (err) {
+      console.error('[translate] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
