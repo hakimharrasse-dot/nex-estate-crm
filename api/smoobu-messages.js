@@ -1443,6 +1443,46 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Envoi direct vers une réservation : POST ?sendDirect=1 ───
+  // Envoie une réponse hôte à un booking (depuis la vue Conversation ou IA Manuelle
+  // avec client ciblé) et l'enregistre (statut=sent) → elle apparaît dans le fil.
+  // JAMAIS automatique : déclenché par un clic explicite de Hakim côté CRM.
+  if (req.query?.sendDirect) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { booking_id, text, voyageur, appart, source } = body || {};
+      if (!booking_id || !String(booking_id).trim()) return res.status(400).json({ error: 'booking_id requis' });
+      if (!text || !String(text).trim())             return res.status(400).json({ error: 'text requis' });
+
+      const smoobuResult = await sendSmoobuMessage(String(booking_id).trim(), String(text).trim());
+      const now = new Date().toISOString();
+      // Enregistre la réponse hôte pour qu'elle s'affiche dans la conversation
+      try {
+        await sbInsert('messages', {
+          id:                  uid(),
+          smoobu_booking_id:   String(booking_id).trim(),
+          sender:              'host',
+          message_content:     '(réponse envoyée depuis le CRM)',
+          ai_draft:            String(text).trim(),
+          voyageur:            voyageur || null,
+          appart:              appart   || null,
+          source:              source   || null,
+          statut:              'sent',
+          sent_at:             now,
+          smoobu_api_response: JSON.stringify(smoobuResult.body),
+          created_at:          now,
+          updated_at:          now,
+        });
+      } catch (insErr) { console.warn('[messages] sendDirect: insert record échoué:', insErr.message); }
+
+      console.log('[messages] sendDirect OK — booking:', booking_id, '| http:', smoobuResult.httpStatus);
+      return res.status(200).json({ ok: true, sent: true, booking_id, smoobu_http: smoobuResult.httpStatus });
+    } catch (err) {
+      console.error('[messages] sendDirect error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // ── Mode webhook : réception newMessage depuis Smoobu ─────
   let payload;
   try {

@@ -15840,7 +15840,14 @@ function _convModal(){
       '<div style="min-width:0"><div id="conv-title" style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="conv-sub" style="font-size:12px;color:var(--td)"></div></div>'+
       '<button onclick="convClose()" style="background:none;border:none;color:var(--tm);font-size:20px;cursor:pointer;line-height:1">✕</button></div>'+
     '<div id="conv-body" style="overflow-y:auto;padding:14px 16px;flex:1"></div>'+
-    '<div style="padding:8px 16px;border-top:1px solid var(--br);font-size:11px;color:var(--td)">💬 Messages voyageur (Smoobu) + vos réponses envoyées via le CRM</div></div>';
+    '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
+      '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
+        '<span style="font-size:10px;color:var(--td);flex:1">💬 Voyageur (Smoobu) + vos réponses CRM · envoi via Smoobu</span>'+
+        '<button id="conv-gen-btn" onclick="convGenerate()" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 13px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer (IA)</button>'+
+        '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
+      '</div>'+
+    '</div></div>';
   document.body.appendChild(ov);
   return ov;
 }
@@ -15848,17 +15855,26 @@ function _convSetBody(html){ var b=document.getElementById('conv-body'); if(b) b
 function convClose(){ var ov=document.getElementById('conv-ov'); if(ov) ov.style.display='none'; }
 async function convOpen(i){
   var r=(window._CONV_MATCHES||[])[i]; if(!r) return;
+  window._CONV_CUR={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'', ref:r.ref||'', convText:'', lastGuest:'' };
   var ov=_convModal();
   document.getElementById('conv-title').textContent=r.voyageur||'(sans nom)';
   document.getElementById('conv-sub').textContent=aptShort(r.appart||'')+(r.ref?' · '+r.ref:'');
-  _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">Chargement de la conversation…</div>');
+  var rep=document.getElementById('conv-reply'); if(rep) rep.value='';
   ov.style.display='flex';
+  await _convLoad();
+}
+async function _convLoad(){
+  var cur=window._CONV_CUR; if(!cur) return;
+  _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">Chargement de la conversation…</div>');
   try{
-    var resp=await fetch('/api/smoobu-messages?conversation='+encodeURIComponent(String(r.smoobu_id)));
+    var resp=await fetch('/api/smoobu-messages?conversation='+encodeURIComponent(cur.booking_id));
     var data=await resp.json();
     var msgs=(data&&data.messages)||[];
+    var guest=msgs.filter(function(m){return m.sender==='guest';}).map(function(m){return m.text;});
+    cur.convText=guest.slice(-5).join('\n— — —\n');
+    cur.lastGuest=guest.length?guest[guest.length-1]:'';
     if(!msgs.length){
-      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message disponible.<div style="font-size:11px;margin-top:6px">Smoobu n\'expose pas les conversations de prospects, ni les réponses tapées directement dans l\'appli Airbnb/Smoobu.</div></div>');
+      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message client pour le moment.<div style="font-size:11px;margin-top:6px">Smoobu n\'expose pas les réponses tapées directement dans l\'appli. Répondez ci-dessous pour garder une trace dans le CRM.</div></div>');
       return;
     }
     _convSetBody(msgs.map(function(m){
@@ -15870,9 +15886,40 @@ async function convOpen(i){
         '<div style="font-size:10px;color:var(--td);margin-bottom:3px">'+(isGuest?'🧳 Voyageur':'🏠 Vous'+(m.via_crm?' (via CRM)':''))+(t?' · '+t:'')+'</div>'+
         escHtml(m.text).replace(/\n/g,'<br>')+'</div></div>';
     }).join(''));
+    var b=document.getElementById('conv-body'); if(b) b.scrollTop=b.scrollHeight;
   }catch(e){
     _convSetBody('<div style="padding:22px;text-align:center;color:var(--re);font-size:13px">Erreur de chargement de la conversation.</div>');
   }
+}
+function convReload(){ _convLoad(); }
+async function convGenerate(){
+  var cur=window._CONV_CUR; if(!cur) return;
+  var base=cur.convText||cur.lastGuest||'';
+  if(!base){ showToast('Aucun message client à analyser'); return; }
+  var ta=document.getElementById('conv-reply'), btn=document.getElementById('conv-gen-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||''})});
+    var d=await r.json();
+    if(d&&d.ai_draft){ if(ta){ ta.value=d.ai_draft; ta.focus(); } }
+    else { showToast(d&&d.classification==='no_reply_needed'?'IA : pas de réponse nécessaire':'Pas de brouillon généré'); }
+  }catch(e){ showToast('⚠ Génération échouée'); }
+  if(btn){ btn.disabled=false; btn.textContent='✨ Générer (IA)'; }
+}
+async function convSend(){
+  var cur=window._CONV_CUR; if(!cur||!cur.booking_id){ showToast('Réservation Smoobu introuvable'); return; }
+  var ta=document.getElementById('conv-reply'); var text=((ta&&ta.value)||'').trim();
+  if(!text){ showToast('Réponse vide'); return; }
+  if(!confirm('Envoyer cette réponse à '+(cur.voyageur||'ce client')+' via Smoobu ?\n\n'+text)) return;
+  var btn=document.getElementById('conv-send-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
+  try{
+    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:text,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
+    var d=await r.json();
+    if(r.ok&&d.sent){ showToast('✅ Message envoyé'); if(ta) ta.value=''; convReload(); }
+    else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
+  }catch(e){ showToast('⚠ Envoi échoué'); }
+  if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
 }
 
 async function renderMessages() {
@@ -16374,6 +16421,12 @@ function msgManualDraftOpen() {
           '</div>' +
         '</div>' +
 
+        '<label style="font-size:12px;color:#6b7280;display:block;margin:12px 0 4px">Client / réservation <span style="font-weight:400">(optionnel — pour envoyer directement)</span></label>' +
+        '<input id="manual-client" type="text" autocomplete="off" placeholder="Nom du client ou réf. (réservation Smoobu)" oninput="manualClientSearch(this.value)" ' +
+          'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
+        '<div id="manual-client-res" style="margin-top:5px"></div>' +
+        '<div id="manual-client-sel" style="display:none;margin-top:6px;font-size:12px;color:#16a34a;font-weight:600"></div>' +
+
         '<label style="font-size:12px;color:#6b7280;display:block;margin:12px 0 4px">Instruction Hakim <span style="font-weight:400">(optionnel)</span></label>' +
         '<input id="manual-instr" type="text" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
           'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
@@ -16399,6 +16452,11 @@ function msgManualDraftOpen() {
   if (insEl)  insEl.value  = '';
   if (resEl)  { resEl.style.display = 'none'; resEl.innerHTML = ''; }
   if (genBtn) { genBtn.disabled = true; genBtn.innerHTML = '🤖 Générer le brouillon'; }
+  window._MANUAL_CLIENT = null;
+  var mcEl=document.getElementById('manual-client'), mcRes=document.getElementById('manual-client-res'), mcSel=document.getElementById('manual-client-sel');
+  if (mcEl) mcEl.value='';
+  if (mcRes) mcRes.innerHTML='';
+  if (mcSel) { mcSel.style.display='none'; mcSel.textContent=''; }
   ov.style.display = 'flex';
   if (msgEl) setTimeout(function() { msgEl.focus(); }, 50);
 }
@@ -16408,6 +16466,42 @@ function msgManualDraftClose() {
   if (ov) ov.style.display = 'none';
 }
 
+function manualClientSearch(q){
+  var box=document.getElementById('manual-client-res'); if(!box) return;
+  window._MANUAL_CLIENT=null;
+  var sel=document.getElementById('manual-client-sel'); if(sel){ sel.style.display='none'; }
+  var nq=_convNorm((q||'').trim());
+  if(nq.length<2){ box.innerHTML=''; return; }
+  var matches=(DB.resa||[]).filter(function(r){ return r.smoobu_id && _convNorm([r.voyageur,r.ref,r.appart].join(' ')).indexOf(nq)>=0; });
+  var seen={}; matches.sort(function(a,b){ return (b.checkin||'').localeCompare(a.checkin||''); });
+  matches=matches.filter(function(r){ if(seen[r.smoobu_id])return false; seen[r.smoobu_id]=1; return true; }).slice(0,5);
+  window._MANUAL_MATCHES=matches;
+  if(!matches.length){ box.innerHTML='<div style="font-size:12px;color:#9ca3af;padding:4px 2px">Aucune réservation Smoobu trouvée</div>'; return; }
+  box.innerHTML=matches.map(function(r,i){
+    return '<div onclick="manualClientPick('+i+')" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:4px;cursor:pointer;font-size:13px">'+
+      '<strong>'+escHtml(r.voyageur||'(sans nom)')+'</strong> <span style="color:#9ca3af;font-size:12px">· '+escHtml(aptShort(r.appart||''))+' · '+escHtml(r.ref||'')+'</span></div>';
+  }).join('');
+}
+function manualClientPick(i){
+  var r=(window._MANUAL_MATCHES||[])[i]; if(!r) return;
+  window._MANUAL_CLIENT={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'' };
+  var inp=document.getElementById('manual-client'); if(inp) inp.value=r.voyageur||r.ref||'';
+  var box=document.getElementById('manual-client-res'); if(box) box.innerHTML='';
+  var sel=document.getElementById('manual-client-sel'); if(sel){ sel.textContent='✓ Client : '+(r.voyageur||r.ref)+' ('+aptShort(r.appart||'')+') — l\'envoi ira à cette réservation'; sel.style.display='block'; }
+  var srcEl=document.getElementById('manual-src'); if(srcEl&&r.source){ for(var k=0;k<srcEl.options.length;k++){ if(srcEl.options[k].value===r.source){ srcEl.value=r.source; break; } } }
+  var appEl=document.getElementById('manual-appart'); if(appEl&&r.appart) appEl.value=r.appart;
+}
+async function manualSendToClient(text){
+  var c=window._MANUAL_CLIENT; if(!c||!c.booking_id){ showToast('Aucun client sélectionné'); return; }
+  if(!text||!text.trim()){ showToast('Brouillon vide'); return; }
+  if(!confirm('Envoyer ce message à '+(c.voyageur||'ce client')+' via Smoobu ?\n\n'+text)) return;
+  try{
+    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:c.booking_id,text:text.trim(),voyageur:c.voyageur,appart:c.appart,source:c.source})});
+    var d=await r.json();
+    if(r.ok&&d.sent){ showToast('✅ Message envoyé à '+(c.voyageur||'client')); }
+    else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
+  }catch(e){ showToast('⚠ Envoi échoué'); }
+}
 async function msgManualDraftGenerate() {
   var msg    = (document.getElementById('manual-msg')?.value    || '').trim();
   var source = (document.getElementById('manual-src')?.value    || '').trim();
@@ -16451,6 +16545,9 @@ async function msgManualDraftGenerate() {
       html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon à envoyer au client :</label>';
       html += '<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;white-space:pre-wrap;line-height:1.6;margin-bottom:10px">' + escHtml(data.ai_draft) + '</div>';
       html += '<button class="ba ba-ghost" style="font-size:13px;padding:7px 14px" onclick="msgManualCopy(' + JSON.stringify(data.ai_draft).replace(/</g, '\\u003c') + ')">📋 Copier le brouillon</button>';
+      if (window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id) {
+        html += '<button class="ba" style="font-size:13px;padding:7px 14px;margin-left:8px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendToClient(' + JSON.stringify(data.ai_draft).replace(/</g, '\\u003c') + ')">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
+      }
       if (data.ai_draft_fr && data.ai_draft_fr !== data.ai_draft) {
         html += '<details style="margin-top:14px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;user-select:none">▸ Traduction française (usage interne uniquement)</summary>';
         html += '<div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;margin-top:6px;color:#475569;line-height:1.5">' + escHtml(data.ai_draft_fr) + '</div>';
