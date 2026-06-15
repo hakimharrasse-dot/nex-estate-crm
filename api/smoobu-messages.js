@@ -144,11 +144,15 @@ async function generateFullAnalysis(ctx) {
     '- Tiens compte de la COMPOSITION (adultes / enfants) quand c\'est pertinent (serviettes, capacité, accès piscine réservé aux moins de 14 ans, etc.).\n\n' +
     'Règles pour ai_draft_fr :\n' +
     '- Traduction fidèle de ai_draft en français\n' +
-    '- Usage Hakim uniquement — ne jamais envoyer au voyageur' +
+    '- Usage Hakim uniquement — ne jamais envoyer au voyageur\n\n' +
+    'INSTRUCTION DE HAKIM (si fournie) — applique-la de façon ADDITIVE et CHIRURGICALE :\n' +
+    '- Si Hakim demande plusieurs choses (ex : « envoie le lien ET dis-lui qu\'il a déjà reçu un guide »), inclus TOUTES ses demandes — n\'en omets aucune.\n' +
+    '- Une demande d\'AJOUT (« ajoute… », « dis aussi… », « en plus… ») ne REMPLACE jamais le reste : garde le contenu utile de ta réponse (liens, infos, coordonnées) ET ajoute ce qu\'il demande.\n' +
+    '- N\'enlève une information (ex : un lien) QUE si Hakim te le demande explicitement. Ne « développe » pas au point de supprimer ce qu\'il voulait envoyer.' +
     styleBlock(style_examples);
 
   const instrNote = hakim_instruction
-    ? `\n\nInstruction de Hakim pour cette réponse : ${hakim_instruction}`
+    ? `\n\nInstruction de Hakim pour cette réponse (à appliquer de façon additive — inclure TOUTES ses demandes sans supprimer le reste) : ${hakim_instruction}`
     : '';
 
   const resaLine   = `Réservation confirmée : ${reservation_confirmed === true ? 'Oui' : reservation_confirmed === false ? 'Non' : 'non précisé'}\n`;
@@ -314,6 +318,7 @@ async function assistReply(mode, p) {
       'On te donne le(s) message(s) du voyageur, le brouillon actuel de Hakim et une consigne de Hakim. ' +
       'Révise le brouillon selon la consigne.\n\nRÈGLES STRICTES :\n' +
       '- Garde l\'intention de Hakim\n' +
+      '- Applique la consigne de façon ADDITIVE et CHIRURGICALE : conserve tout le contenu déjà correct du brouillon (liens, infos, coordonnées, salutations) ; une demande d\'AJOUT n\'enlève rien d\'autre. N\'enlève une info (ex : un lien) QUE si Hakim le demande explicitement.\n' +
       '- N\'invente AUCUNE information (jamais de code, adresse, prix, horaire ou promesse inventés)\n' +
       '- Réponds dans la MÊME langue que le brouillon\n' +
       '- Ton humain et professionnel, sans emojis\n' +
