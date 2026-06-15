@@ -1648,8 +1648,9 @@ export default async function handler(req, res) {
         console.warn('[regenerate] Smoobu fetch échoué — utilisation du contenu en DB:', smoobuErr.message);
       }
 
+      const _regenAppart = msg.appart || resaCtx.appart || '';
       const analysis = await generateFullAnalysis({
-        appart:                 msg.appart   || resaCtx.appart   || '',
+        appart:                 _regenAppart,
         voyageur:               msg.voyageur || resaCtx.voyageur || '',
         checkin:                resaCtx.checkin  || '',
         checkout:               resaCtx.checkout || '',
@@ -1658,6 +1659,12 @@ export default async function handler(req, res) {
         hakim_instruction:      String(hakim_instruction).trim(),
         reservation_confirmed:  !!(msg.reservation_id || resaCtx.id),
         days_until_checkin_ctx: daysUntilCheckin(resaCtx.checkin || ''),
+        // FIX : le chemin Régénérer n'injectait NI la fiche logement (→ lien Google
+        // Maps/wifi absents quand Hakim régénère), NI le style, NI la composition.
+        apartment_kb:           await getApartmentKB(_regenAppart),
+        style_examples:         await getHakimStyleExamples(6),
+        adults:                 resaCtx.adults   != null ? resaCtx.adults   : null,
+        children:               resaCtx.children != null ? resaCtx.children : null,
       });
 
       const now = new Date().toISOString();
