@@ -119,7 +119,8 @@ async function generateFullAnalysis(ctx) {
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
-    'Analyse le message du voyageur et réponds UNIQUEMENT avec un objet JSON valide sur une seule ligne (sans markdown, sans ``` , sans explication, juste le JSON brut).\n\n' +
+    'Analyse le message du voyageur et réponds UNIQUEMENT avec un objet JSON valide sur une seule ligne (sans markdown, sans ``` , sans explication, juste le JSON brut). ' +
+    'IMPÉRATIF : même si l\'instruction de Hakim est formulée comme une question ou une conversation (« est-ce que tu as… », « peux-tu… »), tu ne réponds JAMAIS de façon conversationnelle et tu n\'ajoutes AUCUNE note, AUCUN commentaire, AUCUN texte avant ou après le JSON. Ta réponse entière = le seul objet JSON.\n\n' +
     'Format exact :\n' +
     '{"detected_language":"code ISO 2 lettres","client_summary_fr":"résumé bref en français (1-2 phrases max, ce que dit le client)","classification":"simple","ai_draft":"réponse dans la langue du voyageur","ai_draft_fr":"traduction française fidèle de ai_draft"}\n\n' +
     'Règles pour ai_draft :\n' +
@@ -201,14 +202,11 @@ async function generateFullAnalysis(ctx) {
   const data = await res.json();
   const rawText = (data.content?.[0]?.text || '').trim();
 
-  // Nettoyer d'éventuels blocs markdown que Claude pourrait ajouter
-  const cleaned = rawText
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/, '')
-    .trim();
-
-  try {
-    const parsed = JSON.parse(cleaned);
+  // Extraction ROBUSTE du JSON : Claude ajoute parfois une note/explication autour
+  // (surtout quand l'instruction de Hakim est formulée comme une question). On tente
+  // le parse direct, puis on isole le premier objet {...} présent dans la réponse.
+  const parsed = extractJsonObject(rawText);
+  if (parsed) {
     const allowed = ['no_reply_needed', 'simple', 'sensible', 'conflit', 'remboursement'];
     const classif = allowed.includes(parsed.classification) ? parsed.classification : 'simple';
     return {
@@ -219,17 +217,31 @@ async function generateFullAnalysis(ctx) {
       ai_draft:    classif === 'no_reply_needed' ? null : (String(parsed.ai_draft   || '').trim() || null),
       ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || null),
     };
-  } catch (parseErr) {
-    // Fallback si JSON invalide : retourner le texte brut comme ai_draft uniquement
-    console.warn('[messages] Claude JSON parse failed:', parseErr.message, '| raw:', cleaned.slice(0, 200));
-    return {
-      detected_language: null,
-      client_summary_fr: null,
-      classification:    'simple',
-      ai_draft:          rawText || null,
-      ai_draft_fr:       null,
-    };
   }
+  // Échec total : ne JAMAIS renvoyer le JSON/texte brut dans le champ (anti-charabia).
+  // Brouillon vide → l'UI invite à régénérer.
+  console.warn('[messages] Claude JSON parse failed | raw:', rawText.slice(0, 300));
+  return {
+    detected_language: null,
+    client_summary_fr: null,
+    classification:    'simple',
+    ai_draft:          null,
+    ai_draft_fr:       null,
+  };
+}
+
+// Isole et parse le premier objet JSON {...} d'une réponse Claude, même si du texte
+// (note, markdown, explication) l'entoure. Renvoie l'objet ou null.
+function extractJsonObject(rawText) {
+  const txt = String(rawText || '');
+  const cleaned = txt.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  try { return JSON.parse(cleaned); } catch (e) {}
+  const first = cleaned.indexOf('{');
+  const last  = cleaned.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    try { return JSON.parse(cleaned.slice(first, last + 1)); } catch (e) {}
+  }
+  return null;
 }
 
 // ── Reformuler un brouillon de Hakim (orthographe + ton pro) ──

@@ -15738,6 +15738,8 @@ async function finDoApply(items) {
 // ============================================================
 var MSG_DATA = [];
 var MSG_SHOW_NO_REPLY = false; // masquer les no_reply_needed par défaut
+var MSG_FR_CACHE = {};        // {id: {orig, fr}} — message voyageur traduit en FR (cache)
+var MSG_MSG_ORIG = {};        // {id: true} — la carte affiche l'original (sinon FR)
 var MSG_VOICE_REC    = null;  // instance SpeechRecognition active
 var MSG_VOICE_REC_ID = null;  // messageId en cours d'enregistrement
 
@@ -16130,6 +16132,59 @@ async function convSend(){
   if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
 }
 
+// Traduit en français les messages voyageur affichés (batch + cache MSG_FR_CACHE).
+async function msgEnsureFrTranslations(list){
+  var need = [], texts = [];
+  (list||[]).forEach(function(m){
+    var msg = (m.message_content||'').trim();
+    if(!msg) return;
+    var c = MSG_FR_CACHE[m.id];
+    if(c && c.orig===msg) return; // déjà traduit
+    need.push(m); texts.push(msg);
+  });
+  if(!need.length) return;
+  try{
+    var r = await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts})});
+    var d = await r.json();
+    var tr = (d&&d.translations)||[];
+    need.forEach(function(m,i){
+      var orig=(m.message_content||'').trim();
+      MSG_FR_CACHE[m.id]={orig:orig, fr:(tr[i]!=null&&String(tr[i]).trim())?String(tr[i]):orig};
+    });
+  }catch(e){
+    need.forEach(function(m){ var orig=(m.message_content||'').trim(); MSG_FR_CACHE[m.id]={orig:orig,fr:orig}; });
+  }
+}
+// Texte du message à afficher (FR par défaut, original si bascule) + indicateur traduit.
+function msgMsgText(m){
+  var orig=(m.message_content||'').trim();
+  var c=MSG_FR_CACHE[m.id];
+  if(!c) return {shown:orig, translated:false};
+  var showOrig=!!MSG_MSG_ORIG[m.id];
+  return {shown: showOrig?c.orig:c.fr, translated:(c.fr!==c.orig)};
+}
+function msgToggleMsgLang(id){
+  MSG_MSG_ORIG[id]=!MSG_MSG_ORIG[id];
+  var m=MSG_DATA.find(function(x){return x.id===id;}); if(!m) return;
+  var box=document.getElementById('msgmsg-'+id);
+  var btn=document.getElementById('msgmsg-btn-'+id);
+  var t=msgMsgText(m);
+  if(box) box.innerHTML=escHtml(t.shown).replace(/\n/g,'<br>');
+  if(btn) btn.textContent=MSG_MSG_ORIG[id]?'🌐 Voir en français':'🌐 Voir l’original';
+}
+// Bloc HTML "message voyageur" : FR par défaut + bouton bascule original (1 seule case).
+function msgMsgBlock(m){
+  var t=msgMsgText(m);
+  var h='<div style="margin-bottom:12px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">';
+  h+='<span style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em">Message du voyageur'+(t.translated&&!MSG_MSG_ORIG[m.id]?' <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--tm)">· traduit</span>':'')+'</span>';
+  if(t.translated) h+='<button id="msgmsg-btn-'+m.id+'" class="ba ba-ghost" style="font-size:11px;padding:3px 9px;white-space:nowrap" onclick="msgToggleMsgLang(\''+m.id+'\')">'+(MSG_MSG_ORIG[m.id]?'🌐 Voir en français':'🌐 Voir l’original')+'</button>';
+  h+='</div>';
+  h+='<div id="msgmsg-'+m.id+'" style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">'+escHtml(t.shown).replace(/\n/g,'<br>')+'</div>';
+  h+='</div>';
+  return h;
+}
+
 async function renderMessages() {
   if (!SUPA) return;
   var el     = document.getElementById('msg-list');
@@ -16185,6 +16240,9 @@ async function renderMessages() {
     return;
   }
 
+  // Traduire les messages voyageur en français (affichage par défaut, batch + cache)
+  await msgEnsureFrTranslations(displayData);
+
   var html = '';
   displayData.forEach(function(m) {
     var isError = m.statut === 'error';
@@ -16215,7 +16273,8 @@ async function renderMessages() {
       html += '<span style="background:rgba(200,119,58,.15);color:var(--or);border:1px solid rgba(200,119,58,.3);border-radius:5px;font-size:10px;font-weight:700;padding:1px 6px" title="Aucune réservation confirmée dans le CRM — message prospect ou avant réservation">Prospect</span>';
     }
     html += '</div>';
-    var _apercu = (m.client_summary_fr || m.message_content || '').replace(/\s+/g, ' ').trim();
+    // Aperçu 1-ligne = message du voyageur en français (cache), sinon brut — plus de résumé
+    var _apercu = (((MSG_FR_CACHE[m.id] || {}).fr) || m.message_content || '').replace(/\s+/g, ' ').trim();
     html += '<div style="font-size:12px;color:var(--tm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(_apercu) + '</div>';
     html += '</div>';
     html += '<div style="flex-shrink:0;text-align:right">';
@@ -16257,11 +16316,8 @@ async function renderMessages() {
       if (m.classification === 'no_reply_needed') {
         // ── Carte "Sans réponse" — message trivial, pas de draft ──
 
-        // Message original (toujours visible, langue non importante)
-        html += '<div style="margin-bottom:12px">';
-        html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
-        html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
-        html += '</div>';
+        // Message voyageur (français par défaut + bascule original)
+        html += msgMsgBlock(m);
 
         // Bloc "Aucune réponse nécessaire"
         html += '<div style="margin-bottom:12px;background:rgba(120,120,120,.06);border:1px solid rgba(120,120,120,.2);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">';
@@ -16279,30 +16335,15 @@ async function renderMessages() {
       } else {
         // ── Carte normale — réponse IA requise ──
 
-        // ── 1. Résumé en français (priorité) ──────────────────
-        if (m.client_summary_fr) {
-          html += '<div style="margin-bottom:12px;background:rgba(90,159,212,.08);border:1px solid rgba(90,159,212,.3);border-radius:8px;padding:10px 12px">';
-          html += '<div style="font-size:10px;font-weight:700;color:var(--bl);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Résumé en français</div>';
-          html += '<div style="font-size:13px;color:var(--tx);line-height:1.5">' + escHtml(m.client_summary_fr) + '</div>';
-          html += '</div>';
-        }
-
-        // ── 2. Message original (inline si FR/AR, toggle sinon) ──
-        var isFrOrAr = m.detected_language === 'fr' || m.detected_language === 'ar' || !m.detected_language;
-        html += '<div style="margin-bottom:12px">';
-        if (isFrOrAr) {
-          html += '<div style="font-size:10px;font-weight:700;color:var(--te);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Message voyageur</div>';
-          html += '<div style="background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
-        } else {
-          html += '<button id="orig-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgToggleOriginal(\'' + m.id + '\')">▼ Voir message original</button>';
-          html += '<div id="orig-' + m.id + '" style="display:none;margin-top:8px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);white-space:pre-wrap;line-height:1.5">' + escHtml(m.message_content || '') + '</div>';
-        }
-        html += '</div>';
+        // ── 1. Message du voyageur (français par défaut + bascule original) ──
+        html += msgMsgBlock(m);
 
         // ── 3. Votre réponse (en FRANÇAIS, éditable) ──────────
         // Hakim travaille toujours en français ; la traduction vers la langue du
         // client se fait à l'envoi (cf. msgSend). Champ éditable = ai_draft_fr.
         var _draftFr = m.ai_draft_fr || m.ai_draft || '';
+        // Garde-fou : ancien charabia JSON brut stocké avant le fix → vider (Hakim régénère)
+        if (/```|"detected_language"\s*:|"ai_draft_fr"\s*:/.test(_draftFr)) _draftFr = '';
         var _cliLang = (m.detected_language && m.detected_language !== 'fr') ? m.detected_language : '';
         html += '<div style="margin-bottom:10px">';
         html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">';
@@ -16310,16 +16351,7 @@ async function renderMessages() {
         html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Rédigez votre réponse en français…" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(_draftFr) + '</textarea>';
         html += '</div>';
 
-        // ── 4. Aperçu dans la langue du client (lecture seule, repliable) ──
-        if (m.ai_draft && _cliLang) {
-          html += '<div style="margin-bottom:10px">';
-          html += '<button id="prev-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgTogglePreview(\'' + m.id + '\')">▼ Aperçu dans la langue du client (' + escHtml(String(_cliLang).toUpperCase()) + ')</button>';
-          html += '<div id="prev-' + m.id + '" style="display:none;margin-top:8px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft) + '</div>';
-          html += '<div style="font-size:10px;color:var(--td);margin-top:4px">Indicatif — recalculé à l\'envoi depuis votre texte FR.</div>';
-          html += '</div>';
-        }
-
-        // ── 4b. Langue d'envoi (seulement si client non francophone) ──
+        // ── 4. Langue d'envoi (seulement si client non francophone) ──
         if (_cliLang) {
           html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
           html += '<span style="font-size:11px;color:var(--tm)">🌍 Langue d\'envoi :</span>';
