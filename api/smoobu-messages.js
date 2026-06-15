@@ -397,6 +397,7 @@ function kbBlock(kb) {
   if (kb) {
     if (kb.wifi_nom || kb.wifi_code) lines.push(`Wifi — réseau : "${kb.wifi_nom || '—'}", mot de passe : "${kb.wifi_code || '—'}" (tu peux le communiquer)`);
     if (kb.adresse_etage) lines.push(`Adresse / étage : ${kb.adresse_etage}`);
+    if (kb.gmaps) lines.push(`Lien Google Maps du logement (donne CE lien exact si on demande la localisation, ne le modifie pas) : ${kb.gmaps}`);
     if (kb.checkin_heure) lines.push(`Heure de check-in : ${kb.checkin_heure}`);
     if (kb.checkout)      lines.push(`Heure de check-out : ${kb.checkout}`);
     if (kb.checkin_acces) lines.push(`Accès / arrivée : ${kb.checkin_acces}`);
@@ -413,7 +414,12 @@ function kbBlock(kb) {
     '\n\nRÈGLE ABSOLUE — CODE DE SERRURE / PORTE DIGITALE : ne donne JAMAIS le code de serrure ou de porte ' +
     'dans ta réponse (le mot de passe Wifi, lui, peut toujours être communiqué). Adapte selon la phase du séjour : ' +
     'avant l\'arrivée → il sera envoyé le jour de l\'arrivée après vérification des pièces d\'identité ; ' +
-    'séjour déjà en cours → le voyageur l\'a déjà reçu, n\'en reparle pas (sauf s\'il signale un souci).';
+    'séjour déjà en cours → le voyageur l\'a déjà reçu, n\'en reparle pas (sauf s\'il signale un souci).' +
+    '\n\nRÈGLE ABSOLUE — LIENS / ADRESSE / URL : n\'invente JAMAIS de lien Google Maps, d\'adresse ou d\'URL. ' +
+    'N\'utilise QUE les liens et adresses listés ci-dessus dans les informations vérifiées. ' +
+    'Si le voyageur demande la localisation et qu\'aucun lien Google Maps n\'est fourni ci-dessus, ' +
+    'réponds simplement que tu le lui envoies (ex. « je vous envoie la localisation tout de suite ») ' +
+    'sans jamais fabriquer une URL maps.app.goo.gl ou autre.';
   if (!lines.length) return lockRule;
   return '\n\nINFORMATIONS VÉRIFIÉES DE CE LOGEMENT (utilise-les pour répondre précisément aux questions du voyageur ; n\'invente RIEN au-delà de ces infos) :\n' +
     lines.map(function(l){ return '- ' + l; }).join('\n') + lockRule;
@@ -469,6 +475,41 @@ function extractSmoobuMessageId(msg) {
   return str || null;
 }
 
+// ── Fuseau du compte Smoobu → UTC réel ───────────────────────
+// Smoobu renvoie ses dates dans le fuseau configuré du compte (Europe/Paris),
+// SANS suffixe de fuseau (ex: "2026-06-15 11:53:38"). Sur Vercel (UTC), `new Date()`
+// les interprète à tort comme de l'UTC → décalage de +1h (hiver) / +2h (été) qui
+// faisait remonter les réponses CRM (vrai UTC) au-dessus des messages voyageur.
+// On interprète donc la date naïve en Europe/Paris et on renvoie l'instant UTC réel.
+function parisOffsetMin(utcMs) {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const p = dtf.formatToParts(new Date(utcMs)).reduce(function(a, x){ a[x.type] = x.value; return a; }, {});
+    const asIfUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+    return Math.round((asIfUTC - utcMs) / 60000); // +60 (hiver) ou +120 (été)
+  } catch (e) { return 120; } // fallback CEST
+}
+function smoobuDateToUTC(raw) {
+  const str = String(raw || '').trim();
+  if (!str) return null;
+  // Déjà un fuseau explicite (Z ou +hh:mm) → ne pas re-décaler.
+  if (/[zZ]$|[+\-]\d{2}:?\d{2}$/.test(str)) {
+    const d0 = new Date(str);
+    return isNaN(d0.getTime()) ? null : d0;
+  }
+  const m = str.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) {
+    const d1 = new Date(str);
+    return isNaN(d1.getTime()) ? null : d1;
+  }
+  const guessUTC = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  return new Date(guessUTC - parisOffsetMin(guessUTC) * 60000);
+}
+
 // ── Extraire la date d'un message Smoobu ─────────────────────
 // Smoobu peut utiliser différents noms de champ selon la version API
 function extractMessageDate(msg) {
@@ -476,8 +517,7 @@ function extractMessageDate(msg) {
             || msg.date || msg.timestamp || msg.updatedAt || '';
   if (!raw) return null;
   try {
-    const d = new Date(raw);
-    return isNaN(d.getTime()) ? null : d;
+    return smoobuDateToUTC(raw);
   } catch { return null; }
 }
 
@@ -700,21 +740,9 @@ export default async function handler(req, res) {
     const cid = String(req.query.conversation).trim();
     if (!cid) return res.status(400).json({ error: 'conversation: booking_id requis' });
     try {
-      // 1. Messages voyageur depuis Smoobu
-      const msgData = await getSmoobuMessages(cid);
-      const raw = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
-      const sorted = sortMessagesChronologically(raw);
-      const guestMsgs = sorted
-        .map(function(m){
-          const d = extractMessageDate(m);
-          return {
-            sender: isGuestMessage(m) ? 'guest' : 'host',
-            text:   extractMessageText(m),
-            at:     d ? d.toISOString() : null,
-          };
-        })
-        .filter(function(x){ return x.text; });
-      // 2. Réponses envoyées via le CRM (host)
+      // 1. Réponses envoyées via le CRM (host) — TOUJOURS lues depuis NOTRE base.
+      //    Elles ne dépendent pas de l'API Smoobu : même si Smoobu est en panne,
+      //    Hakim doit toujours voir ce qu'il a déjà envoyé.
       let crmReplies = [];
       try {
         const sentRows = await sbGet(
@@ -724,6 +752,30 @@ export default async function handler(req, res) {
           .map(function(r){ return { sender: 'host', text: (r.ai_draft || '').trim(), at: r.sent_at || r.updated_at || null, via_crm: true }; })
           .filter(function(x){ return x.text; });
       } catch (e) { console.warn('[messages] conversation: lecture CRM échouée:', e.message); }
+
+      // 2. Messages voyageur depuis Smoobu — best-effort : un échec/404 NE doit PAS
+      //    effacer les réponses CRM. On isole l'appel dans son propre try.
+      let guestMsgs = [];
+      let smoobuOk = true;
+      try {
+        const msgData = await getSmoobuMessages(cid);
+        const raw = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+        const sorted = sortMessagesChronologically(raw);
+        guestMsgs = sorted
+          .map(function(m){
+            const d = extractMessageDate(m);
+            return {
+              sender: isGuestMessage(m) ? 'guest' : 'host',
+              text:   extractMessageText(m),
+              at:     d ? d.toISOString() : null,
+            };
+          })
+          .filter(function(x){ return x.text; });
+      } catch (e) {
+        smoobuOk = false;
+        console.warn('[messages] conversation: Smoobu indisponible (booking ' + cid + '):', e.message);
+      }
+
       // 3. Fusion + tri chronologique (les sans-date à la fin, ordre conservé)
       const all = guestMsgs.concat(crmReplies).sort(function(a, b){
         if (!a.at && !b.at) return 0;
@@ -731,11 +783,63 @@ export default async function handler(req, res) {
         if (!b.at) return -1;
         return new Date(a.at) - new Date(b.at);
       });
-      return res.status(200).json({ ok: true, booking_id: cid, count: all.length, messages: all });
+      return res.status(200).json({ ok: true, booking_id: cid, count: all.length, smoobu_ok: smoobuOk, messages: all });
     } catch (err) {
-      // 404 Smoobu (prospect/inquiry) déjà transformé en {messages:[]} → pas d'exception ici
       console.error('[messages] conversation error (booking ' + cid + '):', err.message);
-      return res.status(200).json({ ok: false, booking_id: cid, messages: [], error: 'Conversation indisponible (réservation inconnue de Smoobu)' });
+      return res.status(200).json({ ok: false, booking_id: cid, messages: [], error: 'Conversation indisponible' });
+    }
+  }
+
+  // ── Conversations récentes : GET ?recentConversations=1 ──────
+  // Liste les dernières réservations ayant eu une activité (message voyageur
+  // OU réponse CRM), groupées par booking, pour retrouver un fil sans chercher
+  // le nom à la main. Lecture seule, 100% depuis NOTRE base (pas l'API Smoobu).
+  if (req.method === 'GET' && req.query?.recentConversations) {
+    try {
+      const rows = await sbGet(
+        'messages?smoobu_booking_id=not.is.null' +
+        '&select=smoobu_booking_id,voyageur,appart,source,sender,message_content,ai_draft,detected_language,client_summary_fr,created_at,sent_at,statut' +
+        '&order=created_at.desc&limit=150'
+      );
+      const byBooking = {};
+      (rows || []).forEach(function(r){
+        const k = String(r.smoobu_booking_id);
+        const ts = r.sent_at || r.created_at || null;
+        const cur = byBooking[k];
+        // On garde la ligne la plus récente comme "tête" de conversation.
+        if (!cur || (ts && (!cur._ts || new Date(ts) > new Date(cur._ts)))) {
+          const isHost = r.sender === 'host';
+          byBooking[k] = {
+            booking_id: k,
+            voyageur:   r.voyageur || (cur && cur.voyageur) || null,
+            appart:     r.appart   || (cur && cur.appart)   || null,
+            source:     r.source   || (cur && cur.source)   || null,
+            detected_language: r.detected_language || (cur && cur.detected_language) || null,
+            last_at:    ts,
+            last_by:    isHost ? 'host' : 'guest',
+            last_text:  (isHost ? (r.ai_draft || '') : (r.client_summary_fr || r.message_content || '')).replace(/\s+/g, ' ').trim().slice(0, 90),
+            _ts:        ts,
+          };
+        } else if (cur) {
+          // Compléter les champs manquants depuis d'autres lignes du même booking.
+          if (!cur.voyageur && r.voyageur) cur.voyageur = r.voyageur;
+          if (!cur.appart   && r.appart)   cur.appart   = r.appart;
+          if (!cur.source   && r.source)   cur.source   = r.source;
+          if (!cur.detected_language && r.detected_language) cur.detected_language = r.detected_language;
+        }
+      });
+      const list = Object.keys(byBooking).map(function(k){ const o = byBooking[k]; delete o._ts; return o; })
+        .sort(function(a, b){
+          if (!a.last_at && !b.last_at) return 0;
+          if (!a.last_at) return 1;
+          if (!b.last_at) return -1;
+          return new Date(b.last_at) - new Date(a.last_at);
+        })
+        .slice(0, 20);
+      return res.status(200).json({ ok: true, count: list.length, conversations: list });
+    } catch (err) {
+      console.error('[messages] recentConversations error:', err.message);
+      return res.status(200).json({ ok: false, conversations: [], error: err.message });
     }
   }
 

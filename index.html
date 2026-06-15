@@ -451,6 +451,13 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .r-card-chk{display:flex;align-items:center;padding:4px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
+  /* Modal Conversation (Messages IA) — bottom-sheet pleine largeur + boutons qui passent
+     à la ligne (évite « Envoyer » coupé) + inputs 16px anti-zoom iOS. */
+  #conv-ov{align-items:flex-end!important;padding:0!important;}
+  #conv-ov .conv-box{width:100%!important;max-width:100%!important;max-height:92dvh!important;border-radius:16px 16px 0 0!important;}
+  #conv-ov .conv-btnrow{flex-wrap:wrap!important;}
+  #conv-ov .conv-btnrow>button{flex:1 1 auto;}
+  #conv-ov #conv-reply,#conv-ov #conv-instr{font-size:16px!important;}
   .fg{grid-template-columns:1fr;}.kg{grid-template-columns:1fr 1fr;}
   .mobnav{display:flex;}.hm{display:none;}
   .circ-card{min-width:0;}
@@ -1647,6 +1654,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       placeholder="🔍 Rechercher la conversation d'un client (nom, réf…)"
       style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:10px;padding:11px 14px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none">
     <div id="conv-results" style="margin-top:8px"></div>
+    <div id="conv-recent" style="margin-top:10px"></div>
   </div>
   <div class="empty hidden" id="msg-empty" style="padding:40px 0">
     <div style="font-size:32px;opacity:.4;margin-bottom:10px">💬</div>
@@ -11007,6 +11015,7 @@ function openLogementKB(id){
       '<div><label class="fl">🔑 Heure de check-in</label><input class="fi" id="kb-checkin_heure" value="'+g('checkin_heure')+'" placeholder="À partir de 15h"></div>'+
       '<div><label class="fl">🚪 Heure de check-out</label><input class="fi" id="kb-checkout" value="'+g('checkout')+'" placeholder="Avant 11h"></div>'+
       area('kb-adresse_etage','📍 Adresse exacte + étage','Immeuble B2, 3e étage, appartement 11',2)+
+      '<div><label class="fl">🗺️ Lien Google Maps</label><input class="fi" id="kb-gmaps" value="'+g('gmaps')+'" placeholder="https://maps.app.goo.gl/…"></div>'+
       area('kb-checkin_acces','🧭 Instructions d’accès / arrivée (SANS le code de serrure)','Boîte à clés à gauche de la porte, ascenseur jusqu’au 3e…',3)+
       area('kb-parking','🅿️ Parking','Parking gratuit en bas de l’immeuble',2)+
       area('kb-equipements','🛋️ Équipements','Climatisation, machine à laver, Netflix…',2)+
@@ -11025,7 +11034,7 @@ function openLogementKB(id){
 async function saveLogementKB(id){
   if(!SUPA){ showToast('⛔ Non connecté'); return; }
   var gv=function(i){ var el=document.getElementById(i); return el?(el.value||'').trim():''; };
-  var fields=['wifi_nom','wifi_code','checkin_heure','checkout','adresse_etage','checkin_acces','parking','equipements','services','regles','faq'];
+  var fields=['wifi_nom','wifi_code','checkin_heure','checkout','adresse_etage','gmaps','checkin_acces','parking','equipements','services','regles','faq'];
   var kb={};
   fields.forEach(function(f){ var v=gv('kb-'+f); if(v) kb[f]=v; });
   try{
@@ -15855,10 +15864,48 @@ function _convNorm(s){
   return String(s||'').toLowerCase().replace(/[àâä]/g,'a').replace(/[éèêë]/g,'e')
     .replace(/[îï]/g,'i').replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c').replace(/[ñ]/g,'n');
 }
+// ── Conversations récentes (Point 1a) — liste les derniers fils sans chercher le nom ──
+async function renderRecentConvos(){
+  var box=document.getElementById('conv-recent'); if(!box) return;
+  try{
+    var resp=await fetch('/api/smoobu-messages?recentConversations=1');
+    var data=await resp.json();
+    var list=(data&&data.conversations)||[];
+    if(!list.length){ box.innerHTML=''; return; }
+    window._RECENT_CONVOS=list;
+    var rows=list.map(function(c,i){
+      var who=c.last_by==='host'?'Vous : ':'';
+      var t=c.last_at?new Date(c.last_at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+      return '<div onclick="convOpenRecent('+i+')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--br);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--s)">'+
+        '<div style="min-width:0;flex:1"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(c.voyageur||'(sans nom)')+(c.appart?' <span style="font-weight:400;color:var(--td)">· '+escHtml(aptShort(c.appart))+'</span>':'')+'</div>'+
+        '<div style="font-size:11px;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(who+(c.last_text||''))+'</div></div>'+
+        '<span style="font-size:10px;color:var(--td);white-space:nowrap">'+t+'</span></div>';
+    }).join('');
+    box.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin:2px 2px 7px">💬 Conversations récentes</div>'+rows;
+  }catch(e){ box.innerHTML=''; }
+}
+function convOpenRecent(i){
+  var c=(window._RECENT_CONVOS||[])[i]; if(!c) return;
+  convOpenBooking(c.booking_id, c);
+}
+// Ouvre le fil d'un booking : enrichit depuis DB.resa si la résa existe, sinon
+// construit un contexte minimal depuis l'entrée récente.
+function convOpenBooking(bookingId, fallback){
+  var r=(DB.resa||[]).filter(function(x){ return String(x.smoobu_id||'')===String(bookingId); })
+    .sort(function(a,b){ return (b.checkin||'').localeCompare(a.checkin||''); })[0];
+  if(!r){
+    r={ smoobu_id:String(bookingId), voyageur:(fallback&&fallback.voyageur)||'', appart:(fallback&&fallback.appart)||'',
+        source:(fallback&&fallback.source)||'', ref:'', checkin:'', checkout:'', adults:null, children:null };
+  }
+  window._CONV_MATCHES=[r];
+  convOpen(0);
+}
 function convSearch(q){
   var box=document.getElementById('conv-results'); if(!box) return;
+  var recent=document.getElementById('conv-recent');
   var nq=_convNorm((q||'').trim());
-  if(nq.length<2){ box.innerHTML=''; return; }
+  if(nq.length<2){ box.innerHTML=''; if(recent) recent.style.display=''; return; }
+  if(recent) recent.style.display='none';
   var matches=(DB.resa||[]).filter(function(r){
     if(!r.smoobu_id) return false; // pas de conversation Smoobu sans booking
     return _convNorm([r.voyageur,r.ref,r.appart].join(' ')).indexOf(nq)>=0;
@@ -15885,7 +15932,7 @@ function _convModal(){
   ov=document.createElement('div'); ov.id='conv-ov';
   ov.style.cssText='display:none;position:fixed;inset:0;z-index:940;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:16px';
   ov.onclick=function(e){ if(e.target===ov) convClose(); };
-  ov.innerHTML='<div style="width:min(560px,96vw);max-height:84vh;background:var(--s);border:1px solid var(--br);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)">'+
+  ov.innerHTML='<div class="conv-box" style="width:min(560px,96vw);max-height:84vh;background:var(--s);border:1px solid var(--br);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--br)">'+
       '<div style="min-width:0"><div id="conv-title" style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="conv-sub" style="font-size:12px;color:var(--td)"></div></div>'+
       '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
@@ -15896,14 +15943,14 @@ function _convModal(){
     '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
       '<div id="conv-lang-info" style="display:none;font-size:11px;color:var(--bl);margin-bottom:6px"></div>'+
       '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client (en français)…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
-      '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
+      '<div class="conv-btnrow" style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
         '<span style="font-size:10px;color:var(--td);flex:1;min-width:60px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
         '<button id="conv-mic-btn" onclick="voiceMic(\'conv-reply\',\'conv-mic-btn\')" title="Dicter à voix haute" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:15px;cursor:pointer;line-height:1">🎤</button>'+
         '<button id="conv-gen-btn" onclick="convGenerate()" title="L\'IA rédige une réponse à partir des messages du client" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer</button>'+
         '<button id="conv-reword-btn" onclick="convReword()" title="L\'IA reformule VOTRE texte : corrige l\'orthographe et le rend professionnel, sans changer le sens" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✏️ Reformuler</button>'+
         '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
       '</div>'+
-      '<div style="display:flex;gap:6px;margin-top:7px;align-items:center">'+
+      '<div class="conv-btnrow" style="display:flex;gap:6px;margin-top:7px;align-items:center">'+
         '<input id="conv-instr" type="text" placeholder="Dis à l\'IA quoi changer (ex : plus court, ajoute le parking)…" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:12px;outline:none;font-family:inherit">'+
         '<button id="conv-instr-mic" onclick="voiceMic(\'conv-instr\',\'conv-instr-mic\')" title="Dicter la consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>'+
         '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA révise votre brouillon selon votre consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;white-space:nowrap">🔄 Affiner</button>'+
@@ -16090,6 +16137,8 @@ async function renderMessages() {
   var nrnBar = document.getElementById('msg-nrn-bar');
   if (!el) return;
 
+  renderRecentConvos(); // Point 1a — liste des fils récents (indépendant du chargement pending)
+
   el.innerHTML = '<div style="color:var(--tm);font-size:13px;padding:30px 0;text-align:center">⏳ Chargement…</div>';
   if (em)     em.classList.add('hidden');
   if (nrnBar) nrnBar.style.display = 'none';
@@ -16250,20 +16299,37 @@ async function renderMessages() {
         }
         html += '</div>';
 
-        // ── 3. Réponse proposée (dans la langue du client) ────
+        // ── 3. Votre réponse (en FRANÇAIS, éditable) ──────────
+        // Hakim travaille toujours en français ; la traduction vers la langue du
+        // client se fait à l'envoi (cf. msgSend). Champ éditable = ai_draft_fr.
+        var _draftFr = m.ai_draft_fr || m.ai_draft || '';
+        var _cliLang = (m.detected_language && m.detected_language !== 'fr') ? m.detected_language : '';
         html += '<div style="margin-bottom:10px">';
         html += '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">';
-        html += 'Réponse proposée <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(dans la langue du client)</span></div>';
-        html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Brouillon IA non disponible — rédigez votre réponse ici avant d\'envoyer." style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(m.ai_draft || '') + '</textarea>';
+        html += '✍️ Votre réponse <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(en français — modifiez ici)</span></div>';
+        html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Rédigez votre réponse en français…" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(_draftFr) + '</textarea>';
         html += '</div>';
 
-        // ── 4. Traduction française de la réponse (Hakim only) ──
-        var hasDraftFr = !!m.ai_draft_fr;
-        html += '<div id="draft-fr-section-' + m.id + '" style="margin-bottom:12px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;' + (hasDraftFr ? '' : 'display:none') + '">';
-        html += '<div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">';
-        html += 'Traduction française de la réponse <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--tm)">(ne sera pas envoyée)</span></div>';
-        html += '<div id="draft-fr-' + m.id + '" style="font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft_fr || '') + '</div>';
-        html += '</div>';
+        // ── 4. Aperçu dans la langue du client (lecture seule, repliable) ──
+        if (m.ai_draft && _cliLang) {
+          html += '<div style="margin-bottom:10px">';
+          html += '<button id="prev-btn-' + m.id + '" class="ba ba-ghost" style="font-size:11px;padding:4px 10px" onclick="msgTogglePreview(\'' + m.id + '\')">▼ Aperçu dans la langue du client (' + escHtml(String(_cliLang).toUpperCase()) + ')</button>';
+          html += '<div id="prev-' + m.id + '" style="display:none;margin-top:8px;background:rgba(76,175,125,.06);border:1px solid rgba(76,175,125,.22);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);line-height:1.5;white-space:pre-wrap">' + escHtml(m.ai_draft) + '</div>';
+          html += '<div style="font-size:10px;color:var(--td);margin-top:4px">Indicatif — recalculé à l\'envoi depuis votre texte FR.</div>';
+          html += '</div>';
+        }
+
+        // ── 4b. Langue d'envoi (seulement si client non francophone) ──
+        if (_cliLang) {
+          html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+          html += '<span style="font-size:11px;color:var(--tm)">🌍 Langue d\'envoi :</span>';
+          html += '<select id="sendlang-' + m.id + '" class="fse" style="padding:5px 8px;font-size:12px;border-radius:6px">';
+          html += '<option value="' + escHtml(_cliLang) + '" selected>Langue du client (' + escHtml(String(_cliLang).toUpperCase()) + ')</option>';
+          html += '<option value="fr">Français</option>';
+          html += '</select>';
+          html += '<span style="font-size:10px;color:var(--td)">Votre texte FR sera traduit automatiquement.</span>';
+          html += '</div>';
+        }
 
         // ── 5 & 6. Instruction Hakim + Regénérer ──────────────
         html += '<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px">';
@@ -16370,13 +16436,36 @@ async function msgSend(messageId, bookingId) {
   var ta      = document.getElementById('draft-' + messageId);
   if (!ta) return;
 
-  var text = ta.value.trim();
+  var frText = ta.value.trim();
   // C3 : guard texte vide — double protection (backend bloque aussi)
-  if (!text) {
-    showToast('⚠ Brouillon vide — rédigez une réponse avant d\'envoyer.');
+  if (!frText) {
+    showToast('⚠ Brouillon vide — rédigez une réponse en français avant d\'envoyer.');
     return;
   }
-  if (!confirm('Envoyer ce message au voyageur via Smoobu ?')) return;
+
+  // Langue d'envoi : Hakim écrit en FR, on traduit vers la langue du client si choisi.
+  var langEl   = document.getElementById('sendlang-' + messageId);
+  var sendLang = langEl ? (langEl.value || 'fr') : 'fr';
+  var sendText = frText;
+
+  if (sendLang && !/^fr$/i.test(sendLang)) {
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳ Traduction…'; }
+    try {
+      var tr = await fetch('/api/smoobu-messages?translate=1', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text: frText, to: sendLang }),
+      });
+      var td = await tr.json();
+      if (td && td.text) sendText = td.text;
+    } catch (e) { /* fallback : envoi du FR si la traduction échoue */ }
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '✅ Valider &amp; Envoyer'; }
+  }
+
+  var confirmMsg = (sendText !== frText)
+    ? 'Envoyer cette réponse au voyageur (traduite en ' + sendLang + ') :\n\n' + sendText + '\n\n— — —\nVotre texte FR : ' + frText
+    : 'Envoyer ce message au voyageur via Smoobu ?\n\n' + sendText;
+  if (!confirm(confirmMsg)) return;
 
   // C3 : désactiver le bouton immédiatement — protection anti double-clic
   if (sendBtn) {
@@ -16389,7 +16478,7 @@ async function msgSend(messageId, bookingId) {
     var resp = await fetch('/api/smoobu-messages?send=1', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ message_id: messageId, text: text }),
+      body:    JSON.stringify({ message_id: messageId, text: sendText }),
     });
     var data;
     try { data = await resp.json(); } catch(e) { data = { error: 'Réponse invalide' }; }
@@ -16446,6 +16535,15 @@ async function msgResolve(messageId) {
     if (card) card.style.opacity = '1';
     showToast('⚠ Erreur : ' + e.message);
   }
+}
+
+function msgTogglePreview(messageId) {
+  var el  = document.getElementById('prev-' + messageId);
+  var btn = document.getElementById('prev-btn-' + messageId);
+  if (!el) return;
+  var open = el.style.display === 'none';
+  el.style.display = open ? 'block' : 'none';
+  if (btn) btn.textContent = btn.textContent.replace(open ? '▼' : '▲', open ? '▲' : '▼');
 }
 
 function msgToggleOriginal(messageId) {
