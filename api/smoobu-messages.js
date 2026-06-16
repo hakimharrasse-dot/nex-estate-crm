@@ -414,6 +414,7 @@ async function getApartmentKB(appartName) {
 function kbBlock(kb) {
   const lines = [];
   if (kb) {
+    if (kb.titre) lines.push(`Titre de l'annonce (marketing) : ${kb.titre}`);
     if (kb.wifi_nom || kb.wifi_code) lines.push(`Wifi — réseau : "${kb.wifi_nom || '—'}", mot de passe : "${kb.wifi_code || '—'}" (tu peux le communiquer)`);
     if (kb.adresse_etage) lines.push(`Adresse / étage : ${kb.adresse_etage}`);
     if (kb.gmaps) lines.push(`Lien Google Maps du logement (donne CE lien exact si on demande la localisation, ne le modifie pas) : ${kb.gmaps}`);
