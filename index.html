@@ -451,10 +451,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .r-card-chk{display:flex;align-items:center;padding:4px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
-  /* Modal Conversation (Messages IA) — bottom-sheet pleine largeur + boutons qui passent
-     à la ligne (évite « Envoyer » coupé) + inputs 16px anti-zoom iOS. */
-  #conv-ov{align-items:flex-end!important;padding:0!important;}
-  #conv-ov .conv-box{width:100%!important;max-width:100%!important;max-height:92dvh!important;border-radius:16px 16px 0 0!important;}
+  /* Modal Conversation (Messages IA) — PLEIN ÉCRAN sur mobile (layout type WhatsApp :
+     entête fixe en haut · fil de messages scrollable au milieu · zone de réponse fixe en bas).
+     Boutons qui passent à la ligne (évite « Envoyer » coupé) + inputs 16px anti-zoom iOS. */
+  #conv-ov{align-items:stretch!important;justify-content:stretch!important;padding:0!important;}
+  #conv-ov .conv-box{width:100%!important;max-width:100%!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;}
   #conv-ov .conv-btnrow{flex-wrap:wrap!important;}
   #conv-ov .conv-btnrow>button{flex:1 1 auto;}
   #conv-ov #conv-reply,#conv-ov #conv-instr{font-size:16px!important;}
@@ -16038,20 +16039,37 @@ function _convUpdateLangBar(){
     else { info.style.display='none'; }
   }
 }
-async function convGenerate(){
+async function convGenerate(instruction){
   var cur=window._CONV_CUR; if(!cur) return;
   var base=cur.convText||cur.lastGuest||'';
   if(!base){ showToast('Aucun message client à analyser'); return; }
-  var ta=document.getElementById('conv-reply'), btn=document.getElementById('conv-gen-btn');
+  var instr=(instruction||'').trim();
+  var ta=document.getElementById('conv-reply'), btn=document.getElementById('conv-refine-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  if(ta) ta.placeholder='⏳ L\'IA prépare une réponse…';
   try{
-    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
+    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children,instruction:instr||undefined})});
     var d=await r.json();
     var draftFr=(d&&(d.ai_draft_fr||d.ai_draft))||'';  // Hakim travaille en français
-    if(draftFr){ if(ta){ ta.value=draftFr; ta.focus(); } }
-    else { showToast(d&&d.classification==='no_reply_needed'?'IA : pas de réponse nécessaire':'Pas de brouillon généré'); }
-  }catch(e){ showToast('⚠ Génération échouée'); }
-  if(btn){ btn.disabled=false; btn.textContent='✨ Générer'; }
+    if(draftFr){
+      if(ta){ ta.value=draftFr; ta.focus(); }
+      var ii=document.getElementById('conv-instr'); if(ii) ii.value='';  // consigne consommée
+      showToast('✅ Brouillon prêt');
+    }
+    // Aucune réponse nécessaire SEULEMENT si Hakim n'a donné aucune consigne (sinon il veut un message)
+    else if(d&&d.classification==='no_reply_needed' && !instr){
+      if(ta) ta.placeholder='L\'IA juge qu\'aucune réponse n\'est nécessaire ici. Écrivez votre message, ou donnez une consigne ci-dessous puis 🔄 Régénérer.';
+      showToast('IA : aucune réponse nécessaire');
+    }
+    else {
+      if(ta) ta.placeholder='Pas de brouillon généré. Écrivez votre réponse, ou donnez une consigne ci-dessous puis 🔄 Régénérer.';
+      showToast('⚠ '+((d&&d.error)||'Pas de brouillon généré'));
+    }
+  }catch(e){
+    if(ta) ta.placeholder='⚠ Génération échouée — réessayez, ou écrivez votre réponse directement.';
+    showToast('⚠ Génération échouée');
+  }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Régénérer'; }
 }
 async function convReword(){
   var cur=window._CONV_CUR||{};
@@ -16071,8 +16089,10 @@ async function convRefine(){
   var cur=window._CONV_CUR||{};
   var ta=document.getElementById('conv-reply'); var draft=((ta&&ta.value)||'').trim();
   var instr=((document.getElementById('conv-instr')||{}).value||'').trim();
-  // Aucune réponse en cours ET aucune consigne → simplement (re)générer depuis le message du client.
-  if(!draft && !instr){ return convGenerate(); }
+  // Pas de brouillon en cours → (re)générer depuis le message du client, en appliquant
+  // la consigne de Hakim s'il en a donné une (ex : « dis : merci, je vais voir sur WhatsApp »).
+  // L'endpoint assist exige un brouillon existant ; ici on passe par la génération.
+  if(!draft){ return convGenerate(instr); }
   var btn=document.getElementById('conv-refine-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   try{

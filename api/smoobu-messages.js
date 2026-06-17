@@ -149,7 +149,8 @@ async function generateFullAnalysis(ctx) {
     'INSTRUCTION DE HAKIM (si fournie) — applique-la de façon ADDITIVE et CHIRURGICALE :\n' +
     '- Si Hakim demande plusieurs choses (ex : « envoie le lien ET dis-lui qu\'il a déjà reçu un guide »), inclus TOUTES ses demandes — n\'en omets aucune.\n' +
     '- Une demande d\'AJOUT (« ajoute… », « dis aussi… », « en plus… ») ne REMPLACE jamais le reste : garde le contenu utile de ta réponse (liens, infos, coordonnées) ET ajoute ce qu\'il demande.\n' +
-    '- N\'enlève une information (ex : un lien) QUE si Hakim te le demande explicitement. Ne « développe » pas au point de supprimer ce qu\'il voulait envoyer.' +
+    '- N\'enlève une information (ex : un lien) QUE si Hakim te le demande explicitement. Ne « développe » pas au point de supprimer ce qu\'il voulait envoyer.\n' +
+    '- IMPÉRATIF : si une instruction de Hakim est fournie dans le message ci-dessous, tu DOIS rédiger ai_draft et ai_draft_fr en appliquant cette instruction. Dans ce cas la classification ne peut JAMAIS être "no_reply_needed" (Hakim te demande explicitement d\'écrire un message au voyageur) — produis toujours un brouillon, même si le dernier message du voyageur était un simple « merci » ou « ok ».' +
     globalPlaybook() +
     hakimStyleGuide() +
     styleBlock(style_examples);
@@ -210,7 +211,10 @@ async function generateFullAnalysis(ctx) {
   const parsed = extractJsonObject(rawText);
   if (parsed) {
     const allowed = ['no_reply_needed', 'simple', 'sensible', 'conflit', 'remboursement'];
-    const classif = allowed.includes(parsed.classification) ? parsed.classification : 'simple';
+    let classif = allowed.includes(parsed.classification) ? parsed.classification : 'simple';
+    // Si Hakim a donné une consigne explicite, il veut un message : ne jamais étouffer le
+    // brouillon sous "no_reply_needed" (sinon Régénérer avec consigne ne renvoie rien).
+    if (hakim_instruction && classif === 'no_reply_needed') classif = 'simple';
     return {
       detected_language: String(parsed.detected_language || '').slice(0, 10).trim() || null,
       client_summary_fr: String(parsed.client_summary_fr || '').trim()              || null,
