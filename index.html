@@ -15932,21 +15932,17 @@ function _convModal(){
     '<div id="conv-body" style="overflow-y:auto;padding:14px 16px;flex:1"></div>'+
     '<div style="border-top:1px solid var(--br);padding:10px 14px">'+
       '<div id="conv-lang-info" style="display:none;font-size:11px;color:var(--bl);margin-bottom:6px"></div>'+
-      '<textarea id="conv-reply" rows="2" placeholder="Écrire une réponse au client (en français)…" style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
+      '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">✍️ Réponse au client (en français)</div>'+
+      '<textarea id="conv-reply" rows="3" placeholder="La réponse de l\'IA apparaît ici… modifiez-la directement, ou donnez vos consignes ci-dessous pour la régénérer." style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
       '<div class="conv-btnrow" style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
-        '<span style="font-size:10px;color:var(--td);flex:1;min-width:60px">💬 Voyageur (Smoobu) + vos réponses CRM</span>'+
         '<button id="conv-mic-btn" onclick="voiceMic(\'conv-reply\',\'conv-mic-btn\')" title="Dicter à voix haute" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:15px;cursor:pointer;line-height:1">🎤</button>'+
-        '<button id="conv-gen-btn" onclick="convGenerate()" title="L\'IA rédige une réponse à partir des messages du client" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✨ Générer</button>'+
-        '<button id="conv-reword-btn" onclick="convReword()" title="L\'IA reformule VOTRE texte : corrige l\'orthographe et le rend professionnel, sans changer le sens" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap">✏️ Reformuler</button>'+
-        '<button id="conv-send-btn" onclick="convSend()" style="background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📤 Envoyer</button>'+
+        '<button id="conv-send-btn" onclick="convSend()" style="flex:1;background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">📤 Envoyer au client</button>'+
       '</div>'+
-      '<div class="conv-btnrow" style="display:flex;gap:6px;margin-top:7px;align-items:center">'+
-        '<input id="conv-instr" type="text" placeholder="Dis à l\'IA quoi changer (ex : plus court, ajoute le parking)…" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:12px;outline:none;font-family:inherit">'+
+      '<div class="conv-btnrow" style="display:flex;gap:6px;margin-top:9px;align-items:center">'+
+        '<input id="conv-instr" type="text" placeholder="Vos consignes (ex : plus court · enlève…, ajoute…, dis que…)" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:12px;outline:none;font-family:inherit">'+
         '<button id="conv-instr-mic" onclick="voiceMic(\'conv-instr\',\'conv-instr-mic\')" title="Dicter la consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>'+
-        '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA révise votre brouillon selon votre consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;white-space:nowrap">🔄 Affiner</button>'+
-        '<button id="conv-advise-btn" onclick="convAdvise()" title="L\'IA relit votre réponse et vous conseille, sans réécrire" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;white-space:nowrap">🧐 Conseil</button>'+
+        '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA régénère la réponse selon vos consignes" style="background:var(--pu);border:1px solid var(--pu);color:#fff;border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">🔄 Régénérer</button>'+
       '</div>'+
-      '<div id="conv-advice" style="display:none;margin-top:8px;background:rgba(232,200,74,.1);border:1px solid rgba(232,200,74,.35);border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;color:var(--tx);white-space:pre-wrap"></div>'+
     '</div></div>';
   document.body.appendChild(ov);
   return ov;
@@ -15995,6 +15991,16 @@ async function _convLoad(){
     if(cur.showOriginal==null) cur.showOriginal=false;
     _convRenderMsgs();
     _convUpdateLangBar();
+    // Génération AUTO du brouillon à l'ouverture : si le dernier message est du
+    // voyageur (non répondu) et que la case est vide, l'IA prépare une réponse.
+    // Une seule fois (flag), pour ne pas régénérer après un envoi (convReload).
+    var _last=cur.msgs[cur.msgs.length-1];
+    var _rep=document.getElementById('conv-reply');
+    if(!cur.autoGenDone && _last && _last.sender==='guest' && _rep && !_rep.value.trim()){
+      cur.autoGenDone=true;
+      _rep.placeholder='⏳ L\'IA prépare une réponse…';
+      convGenerate();
+    }
   }catch(e){
     _convSetBody('<div style="padding:22px;text-align:center;color:var(--re);font-size:13px">Erreur de chargement de la conversation.</div>');
   }
@@ -16064,17 +16070,18 @@ async function convReword(){
 async function convRefine(){
   var cur=window._CONV_CUR||{};
   var ta=document.getElementById('conv-reply'); var draft=((ta&&ta.value)||'').trim();
-  if(!draft){ showToast('Écrivez ou générez d\'abord un brouillon à affiner'); return; }
   var instr=((document.getElementById('conv-instr')||{}).value||'').trim();
+  // Aucune réponse en cours ET aucune consigne → simplement (re)générer depuis le message du client.
+  if(!draft && !instr){ return convGenerate(); }
   var btn=document.getElementById('conv-refine-btn');
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   try{
     var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('conv-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('conv-instr'); if(ii) ii.value=''; showToast('🔄 Régénéré'); }
     else { showToast('⚠ '+(d.error||'Échec')); }
-  }catch(e){ showToast('⚠ Affinage échoué'); }
-  if(btn){ btn.disabled=false; btn.textContent='🔄 Affiner'; }
+  }catch(e){ showToast('⚠ Régénération échouée'); }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Régénérer'; }
 }
 async function convAdvise(){
   var cur=window._CONV_CUR||{};
