@@ -464,7 +464,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   #conv-ov .conv-btnrow{flex-wrap:wrap!important;}
   #conv-ov .conv-btnrow>button{flex:1 1 auto;}
   /* Les micros restent petits (ne s'étirent pas comme les autres boutons) */
-  #conv-ov #conv-mic-btn,#conv-ov #conv-instr-mic{flex:0 0 auto!important;}
+  #conv-ov #conv-instr-mic{flex:0 0 auto!important;}
   #conv-ov #conv-reply,#conv-ov #conv-instr{font-size:16px!important;}
   /* Filet anti-débordement horizontal de la vue Messages IA (liste + recherche) */
   #vw-messages{overflow-x:hidden;}
@@ -15945,14 +15945,14 @@ function _convModal(){
       '<div id="conv-lang-info" style="display:none;font-size:11px;color:var(--bl);margin-bottom:6px"></div>'+
       '<div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">✍️ Réponse au client (en français)</div>'+
       '<textarea id="conv-reply" rows="3" placeholder="La réponse de l\'IA apparaît ici… modifiez-la directement, ou donnez vos consignes ci-dessous pour la régénérer." style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none"></textarea>'+
-      '<div class="conv-btnrow" style="display:flex;gap:8px;margin-top:7px;align-items:center">'+
-        '<button id="conv-mic-btn" onclick="voiceMic(\'conv-reply\',\'conv-mic-btn\')" title="Dicter à voix haute" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:15px;cursor:pointer;line-height:1">🎤</button>'+
-        '<button id="conv-send-btn" onclick="convSend()" style="flex:1;background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">📤 Envoyer au client</button>'+
-      '</div>'+
-      '<div class="conv-btnrow" style="display:flex;gap:6px;margin-top:9px;align-items:center">'+
-        '<input id="conv-instr" type="text" placeholder="Vos consignes (ex : plus court · enlève…, ajoute…, dis que…)" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:8px 11px;font-size:12px;outline:none;font-family:inherit">'+
-        '<button id="conv-instr-mic" onclick="voiceMic(\'conv-instr\',\'conv-instr-mic\')" title="Dicter la consigne" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>'+
-        '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA régénère la réponse selon vos consignes" style="background:var(--pu);border:1px solid var(--pu);color:#fff;border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">🔄 Régénérer</button>'+
+      '<button id="conv-send-btn" onclick="convSend()" style="width:100%;margin-top:7px;background:var(--bl);border:1px solid var(--bl);color:#fff;border-radius:8px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer">📤 Envoyer au client</button>'+
+      '<div style="margin-top:12px">'+
+        '<div style="font-size:10px;font-weight:700;color:var(--pu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">🗣️ Vos consignes à l\'IA</div>'+
+        '<div class="conv-btnrow" style="display:flex;gap:7px;align-items:stretch">'+
+          '<input id="conv-instr" type="text" placeholder="ex : plus court · enlève…, ajoute…, dis que…" style="flex:1;min-width:0;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:11px 12px;font-size:13px;outline:none;font-family:inherit">'+
+          '<button id="conv-instr-mic" onclick="voiceMic(\'conv-instr\',\'conv-instr-mic\')" title="Dicter la consigne à voix haute" style="flex:0 0 auto;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:9px 13px;font-size:17px;cursor:pointer;line-height:1">🎤</button>'+
+        '</div>'+
+        '<button id="conv-refine-btn" onclick="convRefine()" title="L\'IA régénère la réponse selon vos consignes" style="width:100%;margin-top:7px;background:var(--pu);border:1px solid var(--pu);color:#fff;border-radius:8px;padding:10px 13px;font-size:13px;font-weight:700;cursor:pointer">🔄 Régénérer la réponse</button>'+
       '</div>'+
     '</div></div>';
   document.body.appendChild(ov);
