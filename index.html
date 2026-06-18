@@ -16791,8 +16791,12 @@ function msgManualDraftOpen() {
           '<strong>2) Écrire un message vous-même</strong> — laissez le champ « message reçu » vide et donnez juste une consigne en bas (ex : « dis-lui que le ménage passe à 14h »).<br>' +
           '<strong>Aucun envoi automatique.</strong></p>' +
 
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:13px;font-weight:600">Message reçu du client <span style="font-weight:400;color:#9ca3af">(optionnel)</span></label>' +
-        '<button type="button" id="manual-msg-mic" onclick="voiceMic(\'manual-msg\',\'manual-msg-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px"><label style="font-size:13px;font-weight:600;min-width:0">Message reçu du client <span style="font-weight:400;color:#9ca3af">(optionnel)</span></label>' +
+        '<div style="display:flex;gap:6px;flex:0 0 auto">' +
+          '<button type="button" id="manual-photo-btn" onclick="document.getElementById(\'manual-photo-input\').click()" title="Lire une photo reçue (l\'IA la décrit en français)" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;line-height:1;white-space:nowrap">📷 Photo</button>' +
+          '<button type="button" id="manual-msg-mic" onclick="voiceMic(\'manual-msg\',\'manual-msg-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>' +
+        '</div></div>' +
+        '<input type="file" id="manual-photo-input" accept="image/*" style="display:none" onchange="msgManualPhoto(this)">' +
         '<textarea id="manual-msg" rows="5" oninput="convAutoGrow(this,300)" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…). Laissez vide pour écrire un message à partir d\'une consigne." ' +
           'style="width:100%;min-height:108px;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:none;overflow-y:hidden;box-sizing:border-box;font-family:inherit;line-height:1.5"></textarea>' +
 
@@ -16939,6 +16943,58 @@ async function manualAdvise(){
     if(box) box.textContent=(r.ok&&d.text)?('🧐 '+d.text):('⚠ '+(d.error||'Conseil indisponible'));
   }catch(e){ if(box) box.textContent='⚠ Conseil échoué'; }
 }
+// Construit l'affichage du résultat IA Manuelle (badge classification + brouillon
+// éditable + actions). `topHtml` = bloc optionnel affiché en tête (ex : description photo).
+function manualBuildResultHtml(data, topHtml) {
+  var classifColor = { no_reply_needed: '#16a34a', simple: '#2563eb', sensible: '#d97706', conflit: '#dc2626', remboursement: '#7c3aed' };
+  var classif = data.classification || 'simple';
+  var badgeColor = classifColor[classif] || '#6b7280';
+  var html = topHtml || '';
+  // Avertissement visible pour les cas délicats (à relire avant d'envoyer).
+  if (['sensible','conflit','remboursement'].indexOf(classif) >= 0) {
+    var warnLabel = { sensible:'Message délicat', conflit:'Situation tendue / conflit', remboursement:'Demande de remboursement / annulation' }[classif];
+    html += '<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:#b91c1c;line-height:1.45">🚩 <strong>'+escHtml(warnLabel)+'</strong> — relis bien le brouillon avant d\'envoyer ; au moindre doute, gère-le toi-même.</div>';
+  }
+  if (data.client_summary_fr) {
+    html += '<p style="font-size:12px;color:#6b7280;margin:0 0 10px"><strong>Résumé :</strong> ' + escHtml(data.client_summary_fr) + '</p>';
+  }
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+  html += '<span style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:' + badgeColor + '">' + escHtml(classif) + '</span>';
+  if (data.detected_language) {
+    html += '<span style="font-size:12px;color:#6b7280">Langue : <strong>' + escHtml(data.detected_language.toUpperCase()) + '</strong></span>';
+  }
+  html += '</div>';
+
+  if (classif === 'no_reply_needed') {
+    html += '<p style="color:#16a34a;font-weight:600;font-size:14px;margin:0">✓ Pas de réponse nécessaire pour ce message.</p>';
+  } else if (data.ai_draft) {
+    html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon (modifiable) à envoyer au client :</label>';
+    html += '<textarea id="manual-draft-edit" rows="5" oninput="convAutoGrow(this,320)" style="width:100%;min-height:108px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit">' + escHtml(data.ai_draft) + '</textarea>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+    html += '<button type="button" id="manual-draft-mic" onclick="voiceMic(\'manual-draft-edit\',\'manual-draft-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:7px 11px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
+    html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualReword()" title="L\'IA reformule votre texte (orthographe + ton pro, même sens)">✏️ Reformuler</button>';
+    html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualCopyDraft()">📋 Copier</button>';
+    if (window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id) {
+      html += '<button type="button" class="ba" style="font-size:13px;padding:7px 14px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendDraft()">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
+    }
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">';
+    html += '<textarea id="manual-refine-instr" rows="1" oninput="convAutoGrow(this,160)" placeholder="Dis à l\'IA quoi changer…" style="flex:1;min-width:140px;border:1.5px solid #d1d5db;border-radius:7px;padding:8px 10px;font-size:12px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit;line-height:1.4"></textarea>';
+    html += '<button type="button" id="manual-refine-mic" onclick="voiceMic(\'manual-refine-instr\',\'manual-refine-mic\')" title="Dicter la consigne" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
+    html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualRefine()" title="L\'IA révise le brouillon selon votre consigne">🔄 Affiner</button>';
+    html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualAdvise()" title="L\'IA relit et vous conseille sans réécrire">🧐 Conseil</button>';
+    html += '</div>';
+    html += '<div id="manual-advice" style="display:none;margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;white-space:pre-wrap;color:#374151"></div>';
+    if (data.ai_draft_fr && data.ai_draft_fr !== data.ai_draft) {
+      html += '<details style="margin-top:14px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;user-select:none">▸ Traduction française (usage interne uniquement)</summary>';
+      html += '<div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;margin-top:6px;color:#475569;line-height:1.5">' + escHtml(data.ai_draft_fr) + '</div>';
+      html += '</details>';
+    }
+  } else {
+    html += '<p style="color:#6b7280;font-size:13px">⚠ Aucun brouillon généré pour ce message.</p>';
+  }
+  return html;
+}
 async function msgManualDraftGenerate() {
   var msg    = (document.getElementById('manual-msg')?.value    || '').trim();
   var source = (document.getElementById('manual-src')?.value    || '').trim();
@@ -16964,51 +17020,7 @@ async function msgManualDraftGenerate() {
     try { data = await r.json(); } catch(e) { data = {}; }
     if (!r.ok) throw new Error(data.error || 'Erreur serveur HTTP ' + r.status);
 
-    var classifColor = { no_reply_needed: '#16a34a', simple: '#2563eb', sensible: '#d97706', conflit: '#dc2626', remboursement: '#7c3aed' };
-    var classif = data.classification || 'simple';
-    var badgeColor = classifColor[classif] || '#6b7280';
-    var html = '';
-
-    if (data.client_summary_fr) {
-      html += '<p style="font-size:12px;color:#6b7280;margin:0 0 10px"><strong>Résumé :</strong> ' + escHtml(data.client_summary_fr) + '</p>';
-    }
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
-    html += '<span style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:' + badgeColor + '">' + escHtml(classif) + '</span>';
-    if (data.detected_language) {
-      html += '<span style="font-size:12px;color:#6b7280">Langue : <strong>' + escHtml(data.detected_language.toUpperCase()) + '</strong></span>';
-    }
-    html += '</div>';
-
-    if (classif === 'no_reply_needed') {
-      html += '<p style="color:#16a34a;font-weight:600;font-size:14px;margin:0">✓ Pas de réponse nécessaire pour ce message.</p>';
-    } else if (data.ai_draft) {
-      html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon (modifiable) à envoyer au client :</label>';
-      html += '<textarea id="manual-draft-edit" rows="5" oninput="convAutoGrow(this,320)" style="width:100%;min-height:108px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit">' + escHtml(data.ai_draft) + '</textarea>';
-      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
-      html += '<button type="button" id="manual-draft-mic" onclick="voiceMic(\'manual-draft-edit\',\'manual-draft-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:7px 11px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
-      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualReword()" title="L\'IA reformule votre texte (orthographe + ton pro, même sens)">✏️ Reformuler</button>';
-      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualCopyDraft()">📋 Copier</button>';
-      if (window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id) {
-        html += '<button type="button" class="ba" style="font-size:13px;padding:7px 14px;background:var(--bl);color:#fff;border-color:var(--bl)" onclick="manualSendDraft()">📤 Envoyer à ' + escHtml(window._MANUAL_CLIENT.voyageur || 'ce client') + '</button>';
-      }
-      html += '</div>';
-      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">';
-      html += '<textarea id="manual-refine-instr" rows="1" oninput="convAutoGrow(this,160)" placeholder="Dis à l\'IA quoi changer…" style="flex:1;min-width:140px;border:1.5px solid #d1d5db;border-radius:7px;padding:8px 10px;font-size:12px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit;line-height:1.4"></textarea>';
-      html += '<button type="button" id="manual-refine-mic" onclick="voiceMic(\'manual-refine-instr\',\'manual-refine-mic\')" title="Dicter la consigne" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
-      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualRefine()" title="L\'IA révise le brouillon selon votre consigne">🔄 Affiner</button>';
-      html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualAdvise()" title="L\'IA relit et vous conseille sans réécrire">🧐 Conseil</button>';
-      html += '</div>';
-      html += '<div id="manual-advice" style="display:none;margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;white-space:pre-wrap;color:#374151"></div>';
-      if (data.ai_draft_fr && data.ai_draft_fr !== data.ai_draft) {
-        html += '<details style="margin-top:14px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;user-select:none">▸ Traduction française (usage interne uniquement)</summary>';
-        html += '<div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;margin-top:6px;color:#475569;line-height:1.5">' + escHtml(data.ai_draft_fr) + '</div>';
-        html += '</details>';
-      }
-    } else {
-      html += '<p style="color:#6b7280;font-size:13px">⚠ Aucun brouillon généré pour ce message.</p>';
-    }
-
-    if (res) { res.innerHTML = html; res.style.display = 'block';
+    if (res) { res.innerHTML = manualBuildResultHtml(data); res.style.display = 'block';
       var _de=document.getElementById('manual-draft-edit'); if(_de) convAutoGrow(_de,320); }
 
   } catch(e) {
@@ -17020,6 +17032,60 @@ async function msgManualDraftGenerate() {
   }
 
   if (btn) { btn.disabled = false; btn.innerHTML = '🤖 Générer le brouillon'; }
+}
+
+// ── Lire une PHOTO reçue (IA Manuelle) — l'IA la décrit en français + propose une réponse ──
+async function msgManualPhoto(input){
+  var file = input && input.files && input.files[0];
+  if(input) input.value='';                 // reset → permet de re-choisir la même photo
+  if(!file) return;
+  if(!/^image\//.test(file.type||'')){ showToast('Choisissez une image'); return; }
+  var res=document.getElementById('manual-result');
+  var btn=document.getElementById('manual-photo-btn');
+  if(res){ res.style.display='block'; res.innerHTML='<div style="color:#6b7280;font-size:13px;padding:10px 0">🖼️ Lecture de la photo en cours…</div>'; }
+  if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
+  try{
+    var resized=await _resizeImageToDataURL(file,1568,0.85);
+    var b64=resized.dataUrl.split(',')[1];
+    var src=(document.getElementById('manual-src')||{}).value||'';
+    var app=(document.getElementById('manual-appart')||{}).value||'';
+    var instr=(document.getElementById('manual-instr')||{}).value||'';
+    var msg=(document.getElementById('manual-msg')||{}).value||'';
+    var mc=window._MANUAL_CLIENT||{};
+    var r=await fetch('/api/smoobu-messages?analyzeImage=1',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image_base64:b64,media_type:'image/jpeg',message:msg,source:src,appart:app,instruction:instr,
+        checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
+    var data; try{ data=await r.json(); }catch(e){ data={}; }
+    if(!r.ok) throw new Error(data.error||'Erreur serveur HTTP '+r.status);
+    var top='<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px">'+
+      '<img src="'+resized.dataUrl+'" style="width:66px;height:66px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;flex:0 0 auto">'+
+      '<div style="min-width:0"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:3px">🖼️ Ce que montre la photo</div>'+
+      '<div style="font-size:13px;color:#374151;line-height:1.45">'+escHtml(data.description_fr||'(description indisponible)')+'</div></div></div>';
+    if(res){ res.innerHTML=manualBuildResultHtml(data,top); res.style.display='block';
+      var _de=document.getElementById('manual-draft-edit'); if(_de) convAutoGrow(_de,320); }
+  }catch(e){
+    if(res){ res.innerHTML='<p style="color:#dc2626;font-size:13px;margin:0">⚠ '+escHtml(e.message)+'</p>'; res.style.display='block'; }
+    showToast('⚠ '+e.message);
+  }
+  if(btn){ btn.disabled=false; btn.textContent='📷 Photo'; }
+}
+// Redimensionne l'image (max maxDim px sur le grand côté) + compresse JPEG → dataURL léger
+function _resizeImageToDataURL(file,maxDim,quality){
+  return new Promise(function(resolve,reject){
+    var img=new Image(); var url=URL.createObjectURL(file);
+    img.onload=function(){
+      var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+      var scale=Math.min(1,maxDim/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+      var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+      cv.getContext('2d').drawImage(img,0,0,cw,ch);
+      URL.revokeObjectURL(url);
+      try{ resolve({dataUrl:cv.toDataURL('image/jpeg',quality),w:cw,h:ch}); }
+      catch(e){ reject(new Error('Image illisible (format non supporté ?)')); }
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error('Image illisible')); };
+    img.src=url;
+  });
 }
 
 function msgManualCopy(text) {

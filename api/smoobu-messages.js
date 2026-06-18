@@ -250,6 +250,72 @@ function extractJsonObject(rawText) {
   return null;
 }
 
+// ── Claude Vision : analyse d'une IMAGE envoyée par un voyageur ────
+// Décrit l'image en français + propose un brouillon de réponse. Retourne :
+// { description_fr, detected_language, classification, ai_draft, ai_draft_fr }
+async function analyzeImageMessage(ctx) {
+  const { appart, source, message_content, hakim_instruction, image_base64, media_type,
+          checkin, checkout, adults, children, style_examples, apartment_kb } = ctx;
+  const phase = stayPhase(checkin, checkout);
+
+  const systemPrompt =
+    'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
+    'On te donne une IMAGE envoyée par un voyageur (parfois accompagnée d\'un texte). Analyse-la et réponds ' +
+    'UNIQUEMENT avec un objet JSON valide sur une seule ligne (pas de markdown, pas de ```, aucun texte avant/après).\n' +
+    'Format exact :\n' +
+    '{"description_fr":"ce que montre l\'image, factuel et bref (1-2 phrases), + ce que le voyageur semble vouloir ou signaler","detected_language":"code ISO 2 lettres du texte visible dans l\'image, sinon fr","classification":"simple","ai_draft":"brouillon de réponse dans la langue du voyageur","ai_draft_fr":"traduction française de ai_draft"}\n\n' +
+    'Règles :\n' +
+    '- Décris factuellement (ex : photo d\'un dégât/fuite, capture d\'écran d\'une réservation ou d\'un paiement, pièce d\'identité, plan d\'accès, message d\'erreur).\n' +
+    '- CONFIDENTIALITÉ : si c\'est une pièce d\'identité ou un document officiel, ne retranscris JAMAIS les numéros (CIN, passeport, carte) ni les données sensibles — indique seulement que le document a bien été reçu.\n' +
+    '- Classification : "no_reply_needed" si aucune réponse utile (ai_draft et ai_draft_fr = ""), sinon "simple" / "sensible" / "conflit" / "remboursement".\n' +
+    '- Si une instruction de Hakim est fournie, applique-la et NE classe jamais "no_reply_needed" (produis un brouillon).\n' +
+    '- Ne jamais inventer une information (code, adresse, horaire, montant) absente du contexte.' +
+    globalPlaybook() + hakimStyleGuide() + styleBlock(style_examples);
+
+  const userText =
+    `Logement : ${appart || 'non précisé'}\n` +
+    `Plateforme : ${source || 'non précisé'}\n` +
+    `PHASE DU SÉJOUR (aujourd'hui = ${new Date().toISOString().slice(0,10)}) : ${phase.label}\n` +
+    ((adults != null || children != null) ? `Composition : ${adults != null ? adults : '?'} adulte(s)${children ? ', ' + children + ' enfant(s)' : ''}\n` : '') +
+    kbBlock(apartment_kb) +
+    (message_content ? `\nTexte envoyé avec la photo (voyageur) :\n${message_content}\n` : '') +
+    (hakim_instruction ? `\nInstruction de Hakim (à appliquer) : ${hakim_instruction}\n` : '') +
+    '\nDécris l\'image ci-jointe et propose une réponse si pertinent.';
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: media_type, data: image_base64 } },
+        { type: 'text',  text: userText },
+      ] }],
+    }),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (image): ${res.status} ${err}`); }
+
+  const data = await res.json();
+  const rawText = (data.content?.[0]?.text || '').trim();
+  const parsed = extractJsonObject(rawText);
+  if (parsed) {
+    const allowed = ['no_reply_needed', 'simple', 'sensible', 'conflit', 'remboursement'];
+    let classif = allowed.includes(parsed.classification) ? parsed.classification : 'simple';
+    if (hakim_instruction && classif === 'no_reply_needed') classif = 'simple';
+    return {
+      description_fr:    String(parsed.description_fr || '').trim() || null,
+      detected_language: String(parsed.detected_language || '').slice(0, 10).trim() || null,
+      classification:    classif,
+      ai_draft:    classif === 'no_reply_needed' ? null : (String(parsed.ai_draft    || '').trim() || null),
+      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || null),
+    };
+  }
+  // Échec parse JSON : au moins renvoyer le texte comme description (jamais de charabia structuré).
+  return { description_fr: rawText.slice(0, 500) || null, detected_language: null, classification: 'simple', ai_draft: null, ai_draft_fr: null };
+}
+
 // ── Reformuler un brouillon de Hakim (orthographe + ton pro) ──
 // Prend le texte écrit par l'hôte et le polit SANS changer le sens ni inventer.
 async function rewordReply(text, ctx) {
@@ -1865,6 +1931,52 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[manualDraft] erreur:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── Lecture d'une PHOTO (Claude Vision) : POST ?analyzeImage=1 ─
+  // Décrit l'image en français + propose un brouillon. Aucune écriture en base.
+  if (req.query?.analyzeImage) {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { image_base64, media_type, message, source, appart, instruction, checkin, checkout, adults, children } = body || {};
+
+      if (!image_base64 || !String(image_base64).trim()) {
+        return res.status(400).json({ error: 'image requise' });
+      }
+      if (!CLAUDE_KEY) {
+        return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
+      }
+      const mt = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(media_type) ? media_type : 'image/jpeg';
+
+      const analysis = await analyzeImageMessage({
+        appart:            String(appart || '').trim(),
+        source:            String(source || '').trim(),
+        message_content:   String(message || '').trim(),
+        hakim_instruction: String(instruction || '').trim() || undefined,
+        image_base64:      String(image_base64),
+        media_type:        mt,
+        checkin:           String(checkin  || '').trim(),
+        checkout:          String(checkout || '').trim(),
+        adults:            (adults != null && adults !== '') ? parseInt(adults, 10) : null,
+        children:          (children != null && children !== '') ? parseInt(children, 10) : null,
+        style_examples:    await getHakimStyleExamples(5),
+        apartment_kb:      await getApartmentKB(String(appart || '').trim()),
+      });
+
+      console.log('[analyzeImage] OK | classif:', analysis.classification, '| lang:', analysis.detected_language);
+      return res.status(200).json({
+        ok:                true,
+        description_fr:    analysis.description_fr,
+        classification:    analysis.classification,
+        detected_language: analysis.detected_language,
+        ai_draft:          analysis.ai_draft    || '',
+        ai_draft_fr:       analysis.ai_draft_fr || '',
+      });
+
+    } catch (err) {
+      console.error('[analyzeImage] erreur:', err.message);
       return res.status(500).json({ error: err.message });
     }
   }
