@@ -1825,8 +1825,12 @@ export default async function handler(req, res) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { message, source, appart, instruction, checkin, checkout, adults, children } = body || {};
 
-      if (!message || !String(message).trim()) {
-        return res.status(400).json({ error: 'message requis' });
+      const hasMsg   = message     && String(message).trim();
+      const hasInstr = instruction && String(instruction).trim();
+      // On accepte un message reçu OU une simple consigne (message proactif que l'hôte
+      // veut écrire lui-même, sans message client à analyser).
+      if (!hasMsg && !hasInstr) {
+        return res.status(400).json({ error: 'message ou instruction requis' });
       }
       if (!CLAUDE_KEY) {
         return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
@@ -1838,7 +1842,8 @@ export default async function handler(req, res) {
         checkin:                String(checkin  || '').trim(),
         checkout:               String(checkout || '').trim(),
         source:                 String(source      || '').trim(),
-        message_content:        String(message).trim(),
+        message_content:        hasMsg ? String(message).trim()
+                                       : '[Aucun message reçu du client. Rédige le message que l\'hôte souhaite ENVOYER au client, en appliquant exactement la consigne ci-dessous.]',
         hakim_instruction:      String(instruction || '').trim() || undefined,
         reservation_confirmed:  !!(checkin),
         days_until_checkin_ctx: daysUntilCheckin(String(checkin || '').trim()),

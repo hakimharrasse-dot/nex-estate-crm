@@ -16786,13 +16786,15 @@ function msgManualDraftOpen() {
       '<div style="background:#fff;border-radius:12px;width:100%;max-width:600px;padding:24px;max-height:90vh;overflow-y:auto;position:relative;box-sizing:border-box">' +
         '<button onclick="msgManualDraftClose()" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1">✕</button>' +
         '<h3 style="margin:0 0 6px;font-size:16px;font-weight:700">✍ Brouillon IA Manuel</h3>' +
-        '<p style="font-size:13px;color:#6b7280;margin:0 0 18px">Colle un message client — l\'IA génère une réponse selon les règles Nex-Estate.<br><strong>Aucun envoi automatique.</strong> Copier-coller manuel uniquement.</p>' +
+        '<p style="font-size:13px;color:#6b7280;margin:0 0 16px;line-height:1.5">Deux usages :<br>' +
+          '<strong>1) Répondre à un client</strong> — collez ou dictez le message reçu, l\'IA rédige la réponse.<br>' +
+          '<strong>2) Écrire un message vous-même</strong> — laissez le champ « message reçu » vide et donnez juste une consigne en bas (ex : « dis-lui que le ménage passe à 14h »).<br>' +
+          '<strong>Aucun envoi automatique.</strong></p>' +
 
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:13px;font-weight:600">Message client <span style="color:#ef4444">*</span></label>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:13px;font-weight:600">Message reçu du client <span style="font-weight:400;color:#9ca3af">(optionnel)</span></label>' +
         '<button type="button" id="manual-msg-mic" onclick="voiceMic(\'manual-msg\',\'manual-msg-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button></div>' +
-        '<textarea id="manual-msg" rows="5" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…)" ' +
-          'style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5" ' +
-          'oninput="document.getElementById(\'manual-gen-btn\').disabled=!this.value.trim()"></textarea>' +
+        '<textarea id="manual-msg" rows="5" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…). Laissez vide pour écrire un message à partir d\'une consigne." ' +
+          'style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5"></textarea>' +
 
         '<div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">' +
           '<div style="flex:1;min-width:140px">' +
@@ -16823,7 +16825,7 @@ function msgManualDraftOpen() {
         '<input id="manual-instr" type="text" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
           'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
 
-        '<button id="manual-gen-btn" class="ba" disabled onclick="msgManualDraftGenerate()" ' +
+        '<button id="manual-gen-btn" class="ba" onclick="msgManualDraftGenerate()" ' +
           'style="margin-top:18px;width:100%;background:var(--pu);color:#fff;border-color:var(--pu);font-weight:600;padding:11px;font-size:14px">🤖 Générer le brouillon</button>' +
 
         '<div id="manual-result" style="display:none;margin-top:20px;border-top:1.5px solid #e5e7eb;padding-top:16px"></div>' +
@@ -16843,7 +16845,7 @@ function msgManualDraftOpen() {
   if (appEl)  appEl.value  = '';
   if (insEl)  insEl.value  = '';
   if (resEl)  { resEl.style.display = 'none'; resEl.innerHTML = ''; }
-  if (genBtn) { genBtn.disabled = true; genBtn.innerHTML = '🤖 Générer le brouillon'; }
+  if (genBtn) { genBtn.disabled = false; genBtn.innerHTML = '🤖 Générer le brouillon'; }
   window._MANUAL_CLIENT = null;
   var mcEl=document.getElementById('manual-client'), mcRes=document.getElementById('manual-client-res'), mcSel=document.getElementById('manual-client-sel');
   if (mcEl) mcEl.value='';
@@ -16942,7 +16944,8 @@ async function msgManualDraftGenerate() {
   var source = (document.getElementById('manual-src')?.value    || '').trim();
   var appart = (document.getElementById('manual-appart')?.value || '').trim();
   var instr  = (document.getElementById('manual-instr')?.value  || '').trim();
-  if (!msg) return;
+  // On peut générer à partir du message reçu OU d'une simple consigne (message proactif).
+  if (!msg && !instr) { showToast('Collez le message reçu du client, ou écrivez une consigne en bas'); return; }
 
   var btn = document.getElementById('manual-gen-btn');
   var res = document.getElementById('manual-result');
