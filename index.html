@@ -450,7 +450,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .r-card-acts{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding-top:2px;border-top:1px solid var(--br);}
 .r-card-chk{display:flex;align-items:center;padding:4px;}
 @media(max-width:700px){
-  .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
+  .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;min-width:0;}
   /* Anti-débordement horizontal : un seul élément trop large (long lien, message IA…)
      élargissait toute la page → le modal Conversation (position:fixed, attaché au body)
      s'élargissait avec et coupait ses boutons. `overflow-x:clip` contient le débordement
@@ -17045,7 +17045,7 @@ async function msgManualPhoto(input){
   if(res){ res.style.display='block'; res.innerHTML='<div style="color:#6b7280;font-size:13px;padding:10px 0">🖼️ Lecture de la photo en cours…</div>'; }
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   try{
-    var resized=await _resizeImageToDataURL(file,1568,0.85);
+    var resized=await _resizeImageToDataURL(file,1024,0.8);   // 1024px = bien moins de tokens, lecture OK
     var b64=resized.dataUrl.split(',')[1];
     var src=(document.getElementById('manual-src')||{}).value||'';
     var app=(document.getElementById('manual-appart')||{}).value||'';

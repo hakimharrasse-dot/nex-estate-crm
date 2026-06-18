@@ -265,7 +265,9 @@ async function analyzeImageMessage(ctx) {
     'Format exact :\n' +
     '{"description_fr":"ce que montre l\'image, factuel et bref (1-2 phrases), + ce que le voyageur semble vouloir ou signaler","detected_language":"code ISO 2 lettres du texte visible dans l\'image, sinon fr","classification":"simple","ai_draft":"brouillon de réponse dans la langue du voyageur","ai_draft_fr":"traduction française de ai_draft"}\n\n' +
     'Règles :\n' +
-    '- Décris factuellement (ex : photo d\'un dégât/fuite, capture d\'écran d\'une réservation ou d\'un paiement, pièce d\'identité, plan d\'accès, message d\'erreur).\n' +
+    '- ⚡ DÉCRIS UNIQUEMENT CE QUI EST CLAIREMENT VISIBLE sur l\'image (objets, texte lisible, état). N\'INVENTE RIEN : pas de cause, pas de problème, pas de scénario qui ne se voit pas. Ex : un récipient posé quelque part = « un récipient » — n\'en déduis PAS une fuite ou une infiltration si rien ne le montre.\n' +
+    '- ⚡ SI LE BUT DE LA PHOTO EST AMBIGU (on ne sait pas ce que le voyageur veut), dis-le clairement dans description_fr (« la raison de cette photo n\'est pas claire »), et fais un ai_draft qui DEMANDE poliment au voyageur ce qu\'il souhaite signaler — ne suppose pas un problème.\n' +
+    '- Si l\'image contient du texte (capture d\'écran, message), transcris/résume ce texte fidèlement.\n' +
     '- CONFIDENTIALITÉ : si c\'est une pièce d\'identité ou un document officiel, ne retranscris JAMAIS les numéros (CIN, passeport, carte) ni les données sensibles — indique seulement que le document a bien été reçu.\n' +
     '- Classification : "no_reply_needed" si aucune réponse utile (ai_draft et ai_draft_fr = ""), sinon "simple" / "sensible" / "conflit" / "remboursement".\n' +
     '- Si une instruction de Hakim est fournie, applique-la et NE classe jamais "no_reply_needed" (produis un brouillon).\n' +
@@ -286,10 +288,11 @@ async function analyzeImageMessage(ctx) {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: [
+      model:       'claude-haiku-4-5-20251001',
+      max_tokens:  1024,
+      temperature: 0,                 // description ancrée aux faits (moins d'invention)
+      system:      systemPrompt,
+      messages:    [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: media_type, data: image_base64 } },
         { type: 'text',  text: userText },
       ] }],
