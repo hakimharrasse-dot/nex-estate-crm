@@ -16760,7 +16760,7 @@ function voiceMic(targetId, btnId){
   rec.onstart=function(){ GEN_VOICE_REC=rec; GEN_VOICE_TARGET=targetId; GEN_VOICE_BTN=btnId;
     if(btn){ btn.innerHTML='🔴'; btn.title='Enregistrement… cliquez pour arrêter'; btn.style.borderColor='var(--re)'; btn.style.color='var(--re)'; } };
   rec.onresult=function(e){ var t=''; for(var i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; ta.value=base+t;
-    if(targetId==='conv-reply'||targetId==='conv-instr') convAutoGrow(ta, targetId==='conv-instr'?140:280); };
+    if(ta.tagName==='TEXTAREA') convAutoGrow(ta, /instr/.test(targetId)?160:300); };
   rec.onerror=function(e){
     if(e.error==='not-allowed'||e.error==='permission-denied') showToast('⚠ Micro refusé — autorisez l\'accès dans le navigateur');
     else if(e.error==='no-speech') showToast('Aucune voix détectée — réessayez');
@@ -16793,8 +16793,8 @@ function msgManualDraftOpen() {
 
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:13px;font-weight:600">Message reçu du client <span style="font-weight:400;color:#9ca3af">(optionnel)</span></label>' +
         '<button type="button" id="manual-msg-mic" onclick="voiceMic(\'manual-msg\',\'manual-msg-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:5px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button></div>' +
-        '<textarea id="manual-msg" rows="5" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…). Laissez vide pour écrire un message à partir d\'une consigne." ' +
-          'style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5"></textarea>' +
+        '<textarea id="manual-msg" rows="5" oninput="convAutoGrow(this,300)" placeholder="Coller OU dicter le message reçu (WhatsApp, email, Booking.com…). Laissez vide pour écrire un message à partir d\'une consigne." ' +
+          'style="width:100%;min-height:108px;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:none;overflow-y:hidden;box-sizing:border-box;font-family:inherit;line-height:1.5"></textarea>' +
 
         '<div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">' +
           '<div style="flex:1;min-width:140px">' +
@@ -16822,8 +16822,8 @@ function msgManualDraftOpen() {
 
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px"><label style="font-size:12px;color:#6b7280">Instruction Hakim <span style="font-weight:400">(optionnel)</span></label>' +
         '<button type="button" id="manual-instr-mic" onclick="voiceMic(\'manual-instr\',\'manual-instr-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:4px 9px;font-size:13px;cursor:pointer;line-height:1">🎤</button></div>' +
-        '<input id="manual-instr" type="text" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
-          'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
+        '<textarea id="manual-instr" rows="1" oninput="convAutoGrow(this,160)" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
+          'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:8px 10px;font-size:13px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit;line-height:1.4"></textarea>' +
 
         '<button id="manual-gen-btn" class="ba" onclick="msgManualDraftGenerate()" ' +
           'style="margin-top:18px;width:100%;background:var(--pu);color:#fff;border-color:var(--pu);font-weight:600;padding:11px;font-size:14px">🤖 Générer le brouillon</button>' +
@@ -16840,10 +16840,10 @@ function msgManualDraftOpen() {
   var srcEl  = document.getElementById('manual-src');
   var appEl  = document.getElementById('manual-appart');
   var insEl  = document.getElementById('manual-instr');
-  if (msgEl)  msgEl.value  = '';
+  if (msgEl)  { msgEl.value = ''; msgEl.style.height = 'auto'; msgEl.style.overflowY = 'hidden'; }
   if (srcEl)  srcEl.value  = '';
   if (appEl)  appEl.value  = '';
-  if (insEl)  insEl.value  = '';
+  if (insEl)  { insEl.value = ''; insEl.style.height = 'auto'; insEl.style.overflowY = 'hidden'; }
   if (resEl)  { resEl.style.display = 'none'; resEl.innerHTML = ''; }
   if (genBtn) { genBtn.disabled = false; genBtn.innerHTML = '🤖 Générer le brouillon'; }
   window._MANUAL_CLIENT = null;
@@ -16905,7 +16905,7 @@ async function manualReword(){
   try{
     var r=await fetch('/api/smoobu-messages?reword=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,source:src,appart:app})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } showToast('✏️ Reformulé'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } showToast('✏️ Reformulé'); }
     else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
   }catch(e){ showToast('⚠ Reformulation échouée'); }
 }
@@ -16922,7 +16922,7 @@ async function manualRefine(){
     var mc=window._MANUAL_CLIENT||{};
     var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:clientMsg,source:src,appart:app,checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } var ii=document.getElementById('manual-refine-instr'); if(ii) ii.value=''; showToast('🔄 Affiné'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } var ii=document.getElementById('manual-refine-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; } showToast('🔄 Affiné'); }
     else showToast('⚠ '+(d.error||'Échec'));
   }catch(e){ showToast('⚠ Affinage échoué'); }
 }
@@ -16983,7 +16983,7 @@ async function msgManualDraftGenerate() {
       html += '<p style="color:#16a34a;font-weight:600;font-size:14px;margin:0">✓ Pas de réponse nécessaire pour ce message.</p>';
     } else if (data.ai_draft) {
       html += '<label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:5px">Brouillon (modifiable) à envoyer au client :</label>';
-      html += '<textarea id="manual-draft-edit" rows="5" style="width:100%;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px;box-sizing:border-box;resize:vertical;font-family:inherit">' + escHtml(data.ai_draft) + '</textarea>';
+      html += '<textarea id="manual-draft-edit" rows="5" oninput="convAutoGrow(this,320)" style="width:100%;min-height:108px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit">' + escHtml(data.ai_draft) + '</textarea>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
       html += '<button type="button" id="manual-draft-mic" onclick="voiceMic(\'manual-draft-edit\',\'manual-draft-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:7px 11px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
       html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualReword()" title="L\'IA reformule votre texte (orthographe + ton pro, même sens)">✏️ Reformuler</button>';
@@ -16993,7 +16993,7 @@ async function msgManualDraftGenerate() {
       }
       html += '</div>';
       html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">';
-      html += '<input id="manual-refine-instr" type="text" placeholder="Dis à l\'IA quoi changer…" style="flex:1;min-width:140px;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:12px;box-sizing:border-box">';
+      html += '<textarea id="manual-refine-instr" rows="1" oninput="convAutoGrow(this,160)" placeholder="Dis à l\'IA quoi changer…" style="flex:1;min-width:140px;border:1.5px solid #d1d5db;border-radius:7px;padding:8px 10px;font-size:12px;box-sizing:border-box;resize:none;overflow-y:hidden;font-family:inherit;line-height:1.4"></textarea>';
       html += '<button type="button" id="manual-refine-mic" onclick="voiceMic(\'manual-refine-instr\',\'manual-refine-mic\')" title="Dicter la consigne" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1">🎤</button>';
       html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualRefine()" title="L\'IA révise le brouillon selon votre consigne">🔄 Affiner</button>';
       html += '<button type="button" class="ba ba-ghost" style="font-size:13px;padding:7px 12px" onclick="manualAdvise()" title="L\'IA relit et vous conseille sans réécrire">🧐 Conseil</button>';
@@ -17008,7 +17008,8 @@ async function msgManualDraftGenerate() {
       html += '<p style="color:#6b7280;font-size:13px">⚠ Aucun brouillon généré pour ce message.</p>';
     }
 
-    if (res) { res.innerHTML = html; res.style.display = 'block'; }
+    if (res) { res.innerHTML = html; res.style.display = 'block';
+      var _de=document.getElementById('manual-draft-edit'); if(_de) convAutoGrow(_de,320); }
 
   } catch(e) {
     if (res) {
