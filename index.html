@@ -16050,6 +16050,18 @@ async function _convLoad(){
         rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
       return '['+who+rel+'] '+(m.original||'');
     }).join('\n');
+    // RAFALE = derniers messages VOYAGEUR consécutifs et rapprochés (≤ 90 min entre eux) → ce à quoi
+    // l'IA doit répondre. Les messages plus anciens sont considérés déjà traités (Hakim répond <1h en
+    // journée, et ses réponses plateforme ne sont pas visibles ici). Une réponse Hôte clôt la rafale.
+    var _burst=[], _prevT=null;
+    for(var _i=cur.msgs.length-1;_i>=0;_i--){
+      var _m=cur.msgs[_i];
+      if(_m.sender!=='guest'){ if(_burst.length) break; else continue; }
+      var _t=_m.at?new Date(_m.at).getTime():null;
+      if(_burst.length && _prevT!=null && _t!=null && (_prevT-_t)>90*60000) break;
+      _burst.unshift(_m); if(_t!=null) _prevT=_t;
+    }
+    if(_burst.length) cur.lastGuest=_burst.map(function(m){return m.original;}).join('\n');
     if(cur.showOriginal==null) cur.showOriginal=false;
     _convRenderMsgs();
     _convUpdateLangBar();

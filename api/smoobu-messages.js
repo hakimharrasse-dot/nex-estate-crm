@@ -110,12 +110,21 @@ async function sendSmoobuMessage(bookingId, text) {
   return { httpStatus: res.status, body, rawText, confirmed, msgId };
 }
 
+// Extrait le PRÉNOM du voyageur pour personnaliser la salutation ('' si inconnu).
+function guestFirstName(name) {
+  const n = String(name || '').trim();
+  if (!n || /sans nom|inconnu|unknown|guest|voyageur|n\/a/i.test(n)) return '';
+  const first = n.split(/[\s,]+/)[0] || '';
+  return first.length >= 2 ? first : '';
+}
+
 // ── Claude API : analyse complète en un seul appel ────────────
 // Retourne : { detected_language, client_summary_fr, classification, ai_draft, ai_draft_fr }
 async function generateFullAnalysis(ctx) {
   const { appart, voyageur, checkin, checkout, source, message_content, conversation, hakim_instruction,
           reservation_confirmed, days_until_checkin_ctx, style_examples, apartment_kb, adults, children } = ctx;
   const phase = stayPhase(checkin, checkout);
+  const firstName = guestFirstName(voyageur);
 
   const systemPrompt =
     'Tu es l\'assistant de Hakim, hôte de locations courte durée à Rabat et Salé (Maroc), société Nex-Estate.\n\n' +
@@ -169,14 +178,22 @@ async function generateFullAnalysis(ctx) {
   // dernier(s) message(s) NON traité(s) — surtout pas aux anciens déjà répondus.
   const msgBlock = (conversation && conversation.trim() && conversation.trim() !== (message_content || '').trim())
     ? `\nFil de discussion récent (du plus ANCIEN au plus RÉCENT ; « Voyageur » = lui, « Hôte » = vos réponses DÉJÀ envoyées) :\n${conversation}\n\n` +
-      '⚡⚡ RÈGLE ABSOLUE — réponds UNIQUEMENT au(x) DERNIER(S) message(s) du voyageur qui n\'ont pas encore reçu de réponse (en bas du fil). ' +
-      'Les messages plus ANCIENS — surtout ceux déjà suivis d\'une réponse « Hôte », ou datant de plusieurs jours/semaines — sont du CONTEXTE uniquement : N\'Y RÉPONDS PAS, ne reformule pas leurs réponses, ne reviens pas dessus, SAUF si le dernier message du voyageur y fait explicitement référence. ' +
+      '⚠️ IMPORTANT — l\'hôte (Hakim) répond très souvent DIRECTEMENT sur la plateforme (Airbnb/Booking/Smoobu), et ces réponses N\'APPARAISSENT PAS dans ce fil (seules ses réponses envoyées via le CRM y figurent en « Hôte »). En journée, l\'hôte répond presque TOUJOURS en moins d\'1 heure. ' +
+      'CONCLUSION : tout message du voyageur qui n\'est pas dans le DERNIER groupe récent (les toutes dernières minutes / la dernière heure, en bas du fil) a TRÈS PROBABLEMENT DÉJÀ reçu une réponse de l\'hôte (invisible ici) → considère-le comme DÉJÀ TRAITÉ.\n' +
+      '⚡⚡ RÈGLE ABSOLUE — réponds UNIQUEMENT au DERNIER groupe de messages récents du voyageur. ' +
+      'Les messages plus ANCIENS (déjà suivis d\'une réponse « Hôte », OU séparés du dernier groupe par un écart de temps notable, OU datant de plusieurs heures/jours/semaines) sont du CONTEXTE uniquement : N\'Y RÉPONDS PAS, ne reviens pas dessus, SAUF si le dernier message y fait explicitement référence. ' +
+      'CAS DE LA RAFALE : si le voyageur a envoyé PLUSIEURS messages d\'affilée RÉCEMMENT (rapprochés dans le temps — même jour/même heure — et SANS réponse « Hôte » entre eux), considère-les comme UN SEUL message et réponds à l\'ENSEMBLE de ce groupe en une seule réponse (c\'est une seule pensée découpée en plusieurs bulles). ' +
       'Si le dernier message du voyageur est juste un remerciement / une confirmation, classe "no_reply_needed".'
     : `\nMessage du voyageur (réponds à CE message) :\n${message_content}`;
+
+  const salutLine = firstName
+    ? `PRÉNOM DU VOYAGEUR (à utiliser OBLIGATOIREMENT dans la salutation) : ${firstName}\n`
+    : `PRÉNOM DU VOYAGEUR : inconnu — salue poliment sans prénom (« Bonjour, »).\n`;
 
   const userPrompt =
     `Logement : ${appart    || 'non précisé'}\n` +
     `Voyageur : ${voyageur  || 'non précisé'}\n` +
+    salutLine +
     `Check-in : ${checkin   || 'non précisé'}\n` +
     `Check-out : ${checkout || 'non précisé'}\n` +
     `Plateforme : ${source  || 'non précisé'}\n` +
@@ -546,7 +563,7 @@ function hakimStyleGuide() {
     '— ⚡ RÈGLE N°1, LA PLUS IMPORTANTE — BREF ET DIRECT. Réponds UNIQUEMENT à ce qui est demandé, en 1 à 3 phrases courtes MAXIMUM. Cette règle PRIME sur toutes les autres : si le ton « chaleureux » te pousse à rallonger, RACCOURCIS.\n' +
     '— ⚡ INTERDIT (ce qui rend les messages trop chargés) : phrases de bienvenue émotionnelles ou marketing (« quelle joie de vous accueillir », « c\'est beau de revenir à Rabat », « profitez pleinement de votre séjour »), compliments, répétitions, ET toute formule de clôture non demandée (« au plaisir de vous accueillir bientôt », « si vous avez besoin de quoi que ce soit n\'hésitez pas »). Structure type = salutation courte + la réponse, point final.\n' +
     '— ⚡ QUAND HAKIM DONNE UNE CONSIGNE : exécute EXACTEMENT cette consigne et RIEN d\'autre. N\'ajoute aucune phrase décorative autour. Ex : consigne « demande à la cliente de remplir le formulaire de check-in » → réponse attendue ≈ « Bonjour Fatima, merci de remplir le formulaire de check-in avant votre arrivée. » — PAS de speech de bienvenue avant, PAS de « au plaisir » après.\n' +
-    '— ⚡ SALUTATION = JUSTE le bonjour + prénom, puis on enchaîne DIRECTEMENT sur la réponse. Ex : « Bonjour Fatima, » / « Salam Ssi Abdellah, ». JAMAIS faire suivre la salutation d\'une formule d\'enthousiasme du type « quelle joie de vous accueillir », « ravi de vous recevoir », « c\'est un plaisir » — c\'est exactement le remplissage à supprimer. Pour un homme marocain : « Ssi »/« Si » + prénom. Si le client salue en arabe/darija (« Salam »), réponds « Salam » ; sinon « Bonjour ». Mire toujours la langue du client.\n' +
+    '— ⚡ SALUTATION OBLIGATOIREMENT PERSONNALISÉE AVEC LE PRÉNOM (fourni dans le contexte) : « Bonjour <Prénom>, » / « Salam <Prénom>, » / « Hello <Prénom>, » selon la langue du client. INTERDIT de saluer sans le prénom (jamais « Bonjour » seul, « Salut », « Hi », « Hello » tout court) quand le prénom est connu. Puis on enchaîne DIRECTEMENT sur la réponse. JAMAIS faire suivre la salutation d\'une formule d\'enthousiasme du type « quelle joie de vous accueillir », « ravi de vous recevoir » — c\'est le remplissage à supprimer. Pour un homme marocain : « Ssi »/« Si » + prénom (« Bonjour Ssi Abdellah »). Si le client salue en arabe/darija (« Salam »), réponds « Salam <Prénom> ». Mire toujours la langue du client.\n' +
     '— Reste POSÉ et courtois même face à l\'agressivité ; ne te justifie jamais avec agacement. Un seul « merci » si pertinent, pas plus.\n' +
     '— Pour un refus ou une règle : explique le pourquoi en UNE phrase courte (réglementation, sécurité, copropriété) et propose une solution concrète — jamais un « non » sec, mais sans t\'étaler.\n' +
     '— Couples non mariés : INFORMER de la réglementation locale sans refuser d\'office, recentrer sur le respect du logement ; ne JAMAIS improviser un refus → laisser Hakim valider.\n' +
