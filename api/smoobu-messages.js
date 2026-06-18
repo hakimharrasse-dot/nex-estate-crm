@@ -853,10 +853,20 @@ export default async function handler(req, res) {
   // le nom à la main. Lecture seule, 100% depuis NOTRE base (pas l'API Smoobu).
   if (req.method === 'GET' && req.query?.recentConversations) {
     try {
+      // Filtre date optionnel (YYYY-MM-DD) : ne renvoie que les conversations ayant
+      // eu une activité ce jour-là (jour UTC). Sans date = 20 plus récentes.
+      const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : '';
+      let dateClause = '';
+      if (dateParam) {
+        const nx = new Date(dateParam + 'T00:00:00Z'); nx.setUTCDate(nx.getUTCDate() + 1);
+        const nxStr = nx.toISOString().slice(0, 10);
+        dateClause = `&created_at=gte.${dateParam}&created_at=lt.${nxStr}`;
+      }
       const rows = await sbGet(
         'messages?smoobu_booking_id=not.is.null' +
         '&select=smoobu_booking_id,voyageur,appart,source,sender,message_content,ai_draft,detected_language,client_summary_fr,created_at,sent_at,statut' +
-        '&order=created_at.desc&limit=150'
+        dateClause +
+        '&order=created_at.desc&limit=' + (dateParam ? '300' : '150')
       );
       const byBooking = {};
       (rows || []).forEach(function(r){
@@ -892,7 +902,7 @@ export default async function handler(req, res) {
           if (!b.last_at) return -1;
           return new Date(b.last_at) - new Date(a.last_at);
         })
-        .slice(0, 20);
+        .slice(0, dateParam ? 100 : 20);
       return res.status(200).json({ ok: true, count: list.length, conversations: list });
     } catch (err) {
       console.error('[messages] recentConversations error:', err.message);
