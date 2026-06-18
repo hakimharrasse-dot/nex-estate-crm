@@ -451,6 +451,11 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 .r-card-chk{display:flex;align-items:center;padding:4px;}
 @media(max-width:700px){
   .side{display:none;}.content{margin-left:0;padding:14px 12px 80px;}
+  /* Anti-débordement horizontal : un seul élément trop large (long lien, message IA…)
+     élargissait toute la page → le modal Conversation (position:fixed, attaché au body)
+     s'élargissait avec et coupait ses boutons. `overflow-x:clip` contient le débordement
+     sans casser les barres de filtres collantes (contrairement à overflow:hidden). */
+  #app,.content{overflow-x:clip;}
   /* Modal Conversation (Messages IA) — PLEIN ÉCRAN sur mobile (layout type WhatsApp :
      entête fixe en haut · fil de messages scrollable au milieu · zone de réponse fixe en bas).
      Boutons qui passent à la ligne (évite « Envoyer » coupé) + inputs 16px anti-zoom iOS. */
