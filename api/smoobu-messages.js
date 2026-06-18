@@ -165,11 +165,14 @@ async function generateFullAnalysis(ctx) {
     ? `Composition : ${adults != null ? adults : '?'} adulte(s)${children ? ', ' + children + ' enfant(s)' : (children === 0 ? ', 0 enfant' : '')}\n`
     : '';
 
-  // Si le voyageur a écrit plusieurs messages successifs → fournir tout le fil récent,
-  // pas seulement le dernier, et demander de répondre à l'ensemble.
+  // On fournit le fil récent comme CONTEXTE, mais l'IA ne doit répondre qu'au(x)
+  // dernier(s) message(s) NON traité(s) — surtout pas aux anciens déjà répondus.
   const msgBlock = (conversation && conversation.trim() && conversation.trim() !== (message_content || '').trim())
-    ? `\nDerniers messages du voyageur (du plus ancien au plus récent — il a écrit en plusieurs fois, réponds à L'ENSEMBLE de ses demandes en une seule réponse) :\n${conversation}`
-    : `\nMessage du voyageur :\n${message_content}`;
+    ? `\nFil de discussion récent (du plus ANCIEN au plus RÉCENT ; « Voyageur » = lui, « Hôte » = vos réponses DÉJÀ envoyées) :\n${conversation}\n\n` +
+      '⚡⚡ RÈGLE ABSOLUE — réponds UNIQUEMENT au(x) DERNIER(S) message(s) du voyageur qui n\'ont pas encore reçu de réponse (en bas du fil). ' +
+      'Les messages plus ANCIENS — surtout ceux déjà suivis d\'une réponse « Hôte », ou datant de plusieurs jours/semaines — sont du CONTEXTE uniquement : N\'Y RÉPONDS PAS, ne reformule pas leurs réponses, ne reviens pas dessus, SAUF si le dernier message du voyageur y fait explicitement référence. ' +
+      'Si le dernier message du voyageur est juste un remerciement / une confirmation, classe "no_reply_needed".'
+    : `\nMessage du voyageur (réponds à CE message) :\n${message_content}`;
 
   const userPrompt =
     `Logement : ${appart    || 'non précisé'}\n` +
@@ -717,11 +720,23 @@ function analyzeConversation(sortedMessages) {
 // puis la vraie question). On fournit les 5 derniers à l'IA pour qu'elle réponde
 // à l'ensemble. Retourne { text, multi } (multi = au moins 2 messages).
 function buildGuestTranscript(allMessages) {
+  const now = Date.now();
   const recent = (allMessages || [])
     .filter(function(m){ return isGuestMessage(m) && extractMessageText(m).length > 0; })
     .slice(-5)
-    .map(function(m){ return extractMessageText(m); });
-  return { text: recent.join('\n— — —\n'), multi: recent.length > 1 };
+    .map(function(m){
+      const txt = extractMessageText(m);
+      const dt  = extractMessageDate(m);
+      let rel = '';
+      if (dt) {
+        const d = new Date(dt);
+        const days = Math.floor((now - d.getTime()) / 86400000);
+        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2);
+        rel = ' · ' + dm + (days<=0 ? ' (aujourd\'hui)' : (days===1 ? ' (hier)' : ' (il y a '+days+' jours)'));
+      }
+      return '[Voyageur'+rel+'] '+txt;
+    });
+  return { text: recent.join('\n'), multi: recent.length > 1 };
 }
 
 // ── Détecter si un message vient du voyageur ─────────────────
@@ -1892,7 +1907,7 @@ export default async function handler(req, res) {
   if (req.query?.manualDraft) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { message, source, appart, instruction, checkin, checkout, adults, children } = body || {};
+      const { message, conversation, source, appart, instruction, checkin, checkout, adults, children } = body || {};
 
       const hasMsg   = message     && String(message).trim();
       const hasInstr = instruction && String(instruction).trim();
@@ -1913,6 +1928,7 @@ export default async function handler(req, res) {
         source:                 String(source      || '').trim(),
         message_content:        hasMsg ? String(message).trim()
                                        : '[Aucun message reçu du client. Rédige le message que l\'hôte souhaite ENVOYER au client, en appliquant exactement la consigne ci-dessous.]',
+        conversation:           String(conversation || '').trim() || undefined,
         hakim_instruction:      String(instruction || '').trim() || undefined,
         reservation_confirmed:  !!(checkin),
         days_until_checkin_ctx: daysUntilCheckin(String(checkin || '').trim()),

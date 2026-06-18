@@ -16040,6 +16040,16 @@ async function _convLoad(){
     }catch(e){}
     cur.clientLang=detected;
     cur.msgs=msgs.map(function(m,i){ return {sender:m.sender, at:m.at, via_crm:m.via_crm, original:m.text, fr:fr[i]||m.text}; });
+    // Fil chronologique (voyageur + réponses déjà envoyées via CRM) avec dates relatives.
+    // L'IA reçoit ça comme CONTEXTE ; elle ne doit répondre qu'au dernier message voyageur non traité.
+    var _now=Date.now();
+    cur.convFull=cur.msgs.slice(-8).map(function(m){
+      var who=m.sender==='guest'?'Voyageur':'Hôte (réponse déjà envoyée)';
+      var rel='';
+      if(m.at){ var d=new Date(m.at); var days=Math.floor((_now-d.getTime())/86400000);
+        rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
+      return '['+who+rel+'] '+(m.original||'');
+    }).join('\n');
     if(cur.showOriginal==null) cur.showOriginal=false;
     _convRenderMsgs();
     _convUpdateLangBar();
@@ -16099,7 +16109,7 @@ async function convGenerate(instruction){
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   if(ta) ta.placeholder='⏳ L\'IA prépare une réponse…';
   try{
-    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:base,source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children,instruction:instr||undefined})});
+    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:(cur.lastGuest||base),conversation:(cur.convFull||''),source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children,instruction:instr||undefined})});
     var d=await r.json();
     var draftFr=(d&&(d.ai_draft_fr||d.ai_draft))||'';  // Hakim travaille en français
     if(draftFr){
