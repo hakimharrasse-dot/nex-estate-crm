@@ -1660,7 +1660,17 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <button id="msg-refresh-btn" class="ba" style="background:var(--bl);color:#fff;border-color:var(--bl)" onclick="msgRefreshAndSync()">↻ Actualiser</button>
     </div>
   </div>
-  <div style="margin:4px 0 16px">
+  <!-- À TRAITER — EN HAUT, prioritaire (nouveaux messages avec brouillon à valider) -->
+  <div style="font-size:11px;font-weight:700;color:var(--re);text-transform:uppercase;letter-spacing:.06em;margin:4px 2px 8px">🔴 À traiter</div>
+  <div class="empty hidden" id="msg-empty" style="padding:24px 0">
+    <div style="font-size:30px;opacity:.4;margin-bottom:8px">✅</div>
+    <div style="color:var(--tm);font-size:14px">Aucun message en attente — tout est traité.</div>
+  </div>
+  <div id="msg-list"></div>
+  <div id="msg-nrn-bar" style="display:none;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--br);margin-top:4px"></div>
+
+  <!-- Recherche + conversations récentes — EN DESSOUS -->
+  <div style="margin:18px 0 16px;padding-top:14px;border-top:1px solid var(--br)">
     <input id="conv-search" type="text" autocomplete="off" oninput="convSearch(this.value)"
       placeholder="🔍 Rechercher la conversation d'un client (nom, réf…)"
       style="width:100%;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:10px;padding:11px 14px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none">
@@ -1672,12 +1682,6 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div id="conv-results" style="margin-top:8px"></div>
     <div id="conv-recent" style="margin-top:10px"></div>
   </div>
-  <div class="empty hidden" id="msg-empty" style="padding:40px 0">
-    <div style="font-size:32px;opacity:.4;margin-bottom:10px">💬</div>
-    <div style="color:var(--tm);font-size:14px">Aucun message en attente de validation</div>
-  </div>
-  <div id="msg-list"></div>
-  <div id="msg-nrn-bar" style="display:none;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--br);margin-top:4px"></div>
 </div>
 
 </div><!-- /content -->

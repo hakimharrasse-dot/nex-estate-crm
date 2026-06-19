@@ -139,7 +139,8 @@ async function generateFullAnalysis(ctx) {
     '- Langue : celle du voyageur (déterminée par detected_language)\n' +
     '- Ton : court, humain, professionnel, sans emojis\n' +
     '- Ne jamais inventer d\'information\n' +
-    '- Si info manquante ou incertaine : écrire "je vérifie et reviens vers vous"\n' +
+    '- ⚡ Si l\'information demandée FIGURE dans les INFORMATIONS VÉRIFIÉES DE CE LOGEMENT ou le PLAYBOOK ci-dessous (ex : piscine, climatisation, parking, wifi, équipements, règles), RÉPONDS-LA DIRECTEMENT. Ne dis JAMAIS « je vérifie » ni « je reviens vers vous » pour une info qui est déjà fournie ci-dessous — même si le voyageur demande « est-ce toujours d\'actualité ? » (les infos fournies font foi).\n' +
+    '- N\'écris « je vérifie et reviens vers vous » QUE si l\'information est réellement absente du contexte ci-dessous.\n' +
     '- Ne jamais confirmer définitivement sans vérification côté hôte\n\n' +
     'Règles pour classification :\n' +
     '- "no_reply_needed" : message trivial sans action requise (merci, ok, bien reçu, emoji, confirmation sans question, j\'ai trouvé, à bientôt, bonne nuit, de rien, you\'re welcome) → ai_draft et ai_draft_fr doivent être des chaînes vides ""\n' +
