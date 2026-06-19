@@ -229,7 +229,11 @@ td{padding:11px 12px;font-size:13px;vertical-align:middle;}
 .achip{background:var(--s2);border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;user-select:none;transition:all .15s;}
 .achip.sel{border-color:var(--or);background:var(--ors);color:var(--or);}
 /* Modal */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px;}
+/* z-index 400 : les modales de formulaire (Nouvelle entrée, solder, équipe, récurrentes…)
+   passent AU-DESSUS des barres collantes .fb-sticky (210) et .sel-bar (220) — sinon la barre
+   de filtres flottait par-dessus l'overlay sombre et gênait la saisie (retour Hakim 2026-06-19).
+   Reste SOUS les toasts (500) et les overlays spéciaux (900+). Aucun impact layout/mobile. */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px;}
 .ov.hidden{display:none;}
 .mbox{background:var(--s);border:1px solid var(--br);border-radius:16px;width:100%;max-width:500px;padding:24px;max-height:92vh;overflow-y:auto;}
 .mt{font-size:17px;font-weight:600;margin-bottom:18px;}
