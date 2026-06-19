@@ -133,6 +133,9 @@ async function generateFullAnalysis(ctx) {
     'Format exact :\n' +
     '{"detected_language":"code ISO 2 lettres","client_summary_fr":"résumé bref en français (1-2 phrases max, ce que dit le client)","classification":"simple","ai_draft":"réponse dans la langue du voyageur","ai_draft_fr":"traduction française fidèle de ai_draft"}\n\n' +
     'Règles pour ai_draft :\n' +
+    (firstName
+      ? '- ⚡⚡ RÈGLE ABSOLUE N°1 : COMMENCE TOUJOURS par une salutation contenant le PRÉNOM « ' + firstName + ' » — « Bonjour ' + firstName + ', » / « Salam ' + firstName + ', » / « Hello ' + firstName + ', » selon la langue du voyageur. Cette règle PRIME sur les exemples de style : même si les anciennes réponses ci-dessous ne mettent pas de prénom, TOI tu mets TOUJOURS « ' + firstName + ' ». INTERDIT de commencer par « Bonjour » seul, « Salut », « Hi » ou « Hello » sans le prénom.\n'
+      : '') +
     '- Langue : celle du voyageur (déterminée par detected_language)\n' +
     '- Ton : court, humain, professionnel, sans emojis\n' +
     '- Ne jamais inventer d\'information\n' +
@@ -394,7 +397,7 @@ async function getHakimStyleExamples(limit) {
 }
 function styleBlock(examples) {
   if (!examples || !examples.length) return '';
-  return '\n\nSTYLE DE HAKIM — n\'imite QUE le vocabulaire et le ton de ces exemples, PAS leur longueur ni leurs formules de politesse : la règle de brièveté (1 à 3 phrases, pas de bienvenue émotionnelle, pas de clôture non demandée) PRIME sur ces exemples, même s\'ils sont plus longs ou plus chaleureux. Ne recopie jamais mot pour mot :\n' +
+  return '\n\nSTYLE DE HAKIM — n\'imite QUE le vocabulaire et le ton de ces exemples, PAS leur longueur ni leurs formules de politesse : la règle de brièveté (1 à 3 phrases, pas de bienvenue émotionnelle, pas de clôture non demandée) PRIME sur ces exemples, même s\'ils sont plus longs ou plus chaleureux. ⚠️ N\'imite PAS non plus l\'ABSENCE de prénom : ces exemples commencent souvent par « Bonjour » seul, mais TOI tu DOIS toujours mettre le prénom du voyageur dans la salutation (voir Règle ABSOLUE N°1). Ne recopie jamais mot pour mot :\n' +
     examples.map(function(s, i){ return '— ' + s; }).join('\n');
 }
 
