@@ -16839,8 +16839,9 @@ function msgManualDraftOpen() {
           '</div>' +
           '<div style="flex:1;min-width:140px">' +
             '<label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Logement</label>' +
-            '<input id="manual-appart" type="text" placeholder="ex : Agdal Biognache" ' +
-              'style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
+            '<select id="manual-appart" style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;background:#fff;box-sizing:border-box">' +
+              '<option value="">— non précisé —</option>' +
+            '</select>' +
           '</div>' +
         '</div>' +
 
@@ -16872,7 +16873,15 @@ function msgManualDraftOpen() {
   var insEl  = document.getElementById('manual-instr');
   if (msgEl)  { msgEl.value = ''; msgEl.style.height = 'auto'; msgEl.style.overflowY = 'hidden'; }
   if (srcEl)  srcEl.value  = '';
-  if (appEl)  appEl.value  = '';
+  // Peuple le menu déroulant Logement depuis les vrais logements (nom EXACT = clé fiche IA).
+  if (appEl) {
+    var _noms = (DB.logements && DB.logements.length)
+      ? DB.logements.filter(function(l){return l.actif;}).map(function(l){return l.nom;})
+      : ['Résidence Al Boustane','Agdal 13','Touahri 11','Riad Ahl Sala'];
+    appEl.innerHTML = '<option value="">— non précisé —</option>' +
+      _noms.map(function(n){ return '<option value="'+escHtml(n)+'">'+escHtml(n)+'</option>'; }).join('');
+    appEl.value = '';
+  }
   if (insEl)  { insEl.value = ''; insEl.style.height = 'auto'; insEl.style.overflowY = 'hidden'; }
   if (resEl)  { resEl.style.display = 'none'; resEl.innerHTML = ''; }
   if (genBtn) { genBtn.disabled = false; genBtn.innerHTML = '🤖 Générer le brouillon'; }
@@ -16913,7 +16922,12 @@ function manualClientPick(i){
   var box=document.getElementById('manual-client-res'); if(box) box.innerHTML='';
   var sel=document.getElementById('manual-client-sel'); if(sel){ sel.textContent='✓ Client : '+(r.voyageur||r.ref)+' ('+aptShort(r.appart||'')+') — l\'envoi ira à cette réservation'; sel.style.display='block'; }
   var srcEl=document.getElementById('manual-src'); if(srcEl&&r.source){ for(var k=0;k<srcEl.options.length;k++){ if(srcEl.options[k].value===r.source){ srcEl.value=r.source; break; } } }
-  var appEl=document.getElementById('manual-appart'); if(appEl&&r.appart) appEl.value=r.appart;
+  var appEl=document.getElementById('manual-appart');
+  if(appEl&&r.appart){
+    var _has=false; for(var j=0;j<appEl.options.length;j++){ if(appEl.options[j].value===r.appart){ _has=true; break; } }
+    if(!_has){ var o=document.createElement('option'); o.value=r.appart; o.textContent=r.appart; appEl.appendChild(o); }
+    appEl.value=r.appart;
+  }
 }
 async function manualSendToClient(text){
   var c=window._MANUAL_CLIENT; if(!c||!c.booking_id){ showToast('Aucun client sélectionné'); return; }
