@@ -1127,7 +1127,40 @@ Classifications possibles :
 ### Fixes P1/P2 (2026-06-12, `a967d7f` + `604d742`)
 - **P1 latence 24h → secondes** : `case 'newMessage'` dans smoobu-webhook.js → forward HTTP vers `/api/smoobu-messages` (checkDuplicate protège du double traitement) ; maxDuration webhook 10→30s (analyse Claude dans le flux) ; badge Messages auto-rafraîchi toutes les 5 min côté CRM (`refreshMsgBadge`, requête légère qui ne touche jamais MSG_DATA ni la vue).
 - **P2 hygiène** : au début de chaque sync, expiration automatique des pending > 48h (Hakim répond toujours < 1h sur la plateforme → un pending vieux = déjà traité) — `resolved`, ou `ignored` si no_reply_needed ; les messages classés `no_reply_needed` par Claude (pas seulement la regex triviale) sont archivés d'office (`ignored`) sur les 4 chemins insert/update ; nettoyage one-shot des 8 zombies en base le 2026-06-12 (0 pending restant).
-- **Backlog P3 (validé dans le principe, non implémenté)** : base de connaissances par appartement (wifi, étage, check-in/out, accès, parking, équipements, règles, FAQ) éditable dans la vue Logements + injection dans le prompt `generateFullAnalysis` comme "informations vérifiées" → réponses précises non génériques.
+- **Backlog P3 — LIVRÉ (voir section 16b ci-dessous pour l'état complet 2026-06-14→18).**
+
+---
+
+## 16b. Module Messages IA — Évolution majeure 2026-06-14 → 2026-06-18 (état ACTUEL, prod)
+
+> Tout ce qui suit est **déployé et vérifié en réel**. C'est l'état courant du module — prioritaire sur les descriptions plus anciennes de la section 16.
+
+### Architecture intelligence (prompt `generateFullAnalysis` + helpers, `api/smoobu-messages.js`)
+- **Base de connaissances par logement** : colonne `logements.kb` (jsonb). Éditeur « 🤖 Fiche IA » par logement (vue Logements). `getApartmentKB(nom)` (match EXACT sur `logements.nom`) + `kbBlock(kb)` injecte titre/wifi/adresse+étage/**gmaps**/check-in-out/accès/parking/équipements/services+tarifs/règles/**faq** + RÈGLE ABSOLUE code serrure (jamais donné) + RÈGLE liens (n'invente jamais d'URL maps). 4 fiches Touahri/Agdal/Al Boustane/Riad pré-remplies (piscine Touahri = été 15/06-10/09, baignade **<14 ans**, adultes interdits, dans `faq`).
+- **`globalPlaybook()`** (politiques communes : avant-résa, documents/check-in marocain, personnes déclarées, papier WC, équipements [pas d'aspirateur → balai+raclette ; **clim 3€/nuit optionnelle**], localisation, escalade, jamais d'envoi auto) + **`hakimStyleGuide()`** (voix de Hakim).
+- **STYLE = brièveté DOMINANTE** : règle N°1 « 1-3 phrases, droit au but », INTERDIT bienvenue émotionnelle (« quelle joie de vous accueillir ») + clôtures non demandées ; consigne Hakim = exécute EXACTEMENT et rien d'autre. **LEÇON** : le few-shot (`getHakimStyleExamples` = ses réponses `sent`) enseignait le bla-bla → `styleBlock` dit « imite le ton PAS la longueur, la brièveté prime ».
+- **SALUTATION par PRÉNOM obligatoire** : `guestFirstName(voyageur)` injecté en RÈGLE ABSOLUE N°1 (« Bonjour <Prénom> », jamais « Bonjour » seul), prime sur les exemples. **VRAIE CAUSE d'un échec long** = `manualDraft` passait `voyageur:''` EN DUR → le prénom n'atteignait jamais le prompt. Fix : voyageur transmis depuis le frontend (`cur.voyageur` / `_MANUAL_CLIENT.voyageur`).
+- **PERTINENCE / RECENCY (capital)** : les réponses de Hakim sur Airbnb/Booking/Smoobu sont **INVISIBLES** (seules ses réponses via CRM sont vues). Donc logique par le **TEMPS** : l'IA répond UNIQUEMENT au dernier groupe récent ; tout message hors de la dernière heure = déjà traité (Hakim répond <1h en journée) → contexte, ne pas y répondre. **Rafale** : plusieurs msgs voyageur rapprochés (≤90 min, sans réponse Hôte entre) = traités comme UN SEUL. Frontend `_convLoad` calcule `cur.convFull` (fil voyageur + réponses CRM + dates relatives) et `cur.lastGuest` = la rafale ; `convGenerate` envoie message=rafale + conversation=fil complet. `buildGuestTranscript` (webhook) ajoute les dates relatives.
+- **Phase du séjour** (`stayPhase`) + composition (adultes/enfants) injectées partout.
+- **Ne JAMAIS dire « je vérifie »** si l'info figure déjà dans la fiche/playbook (même si on demande « est-ce toujours d'actualité »).
+- Modèle : **`claude-haiku-4-5-20251001`** (léger). Option future : basculer le SEUL appel brouillon vers Sonnet (~10× coût) si la nuance manque — garder haiku pour traduction/vision.
+
+### Endpoints `api/smoobu-messages.js` (ajouts)
+- `POST ?manualDraft=1` — brouillon depuis un message OU une simple consigne (message proactif) ; accepte `conversation`, `voyageur`, `appart`, `instruction`, dates, compo.
+- `POST ?sendDirect=1 {booking_id,text,...}` — envoie via Smoobu + INSERT `statut=sent` (apparaît dans le fil). **Tout envoi = clic + confirm(), jamais auto.**
+- `POST ?reword=1` (reformule le texte de Hakim), `POST ?assist=1 {mode:refine|advise}` (affiner / conseiller sans réécrire), `POST ?translate=1` ({texts}→FR+langue détectée / {text,to}→langue client).
+- `GET ?conversation=BOOKING_ID` (fil voyageur Smoobu + réponses CRM `sent`), `GET ?recentConversations=1[&date=YYYY-MM-DD]` (20 derniers fils, ou jusqu'à 100 d'un jour donné).
+- **`POST ?analyzeImage=1` (Claude Vision)** : lit une PHOTO (haiku-4-5 supporte la vision). Image redimensionnée client à **1024px JPEG q0.8** (tokens réduits) → `analyzeImageMessage()` (`temperature:0`, prompt « décris UNIQUEMENT le visible, n'invente rien, si ambigu DEMANDE au voyageur ») → `{description_fr, classification, ai_draft, ai_draft_fr}`. Confidentialité : pièces d'identité → jamais retranscrire les numéros.
+
+### UI Messages IA (`vw-messages` + modal conversation `conv-ov` + modal IA Manuelle)
+- **Mobile** : modal conversation en **PLEIN ÉCRAN** (`height:100dvh`, layout WhatsApp). Débordement horizontal réglé par `#app,.content{overflow-x:clip}` + `.content{min-width:0}` en `@media(max-width:700px)` (**piège flexbox : un flex item `min-width:auto` + contenu non-rétrécissable [select/input date natif, longue URL] élargit la page → modal `position:fixed` élargi ; `clip` masque mais `min-width:0` corrige la largeur**).
+- **Génération jamais bloquée** : `convGenerate` réinitialise toujours le placeholder ; si l'IA juge « aucune réponse nécessaire » → message clair (pas de spinner mort). Régénérer sur case vide + consigne → `convGenerate(instr)` (pas `assist` qui exigeait un brouillon).
+- **Cases dynamiques (auto-grow)** : `convAutoGrow(el,max)` sur réponse + consignes (conv-instr passé en `<textarea>`) + champs IA Manuelle ; plafond + ≤45% écran.
+- **Conversation** = 1 micro (sur les consignes), Envoyer + Régénérer pleine largeur.
+- **Liste** : bloc « 🔴 À traiter » (pending, tri `created_at` desc) EN HAUT ; recherche + **filtre 📅 Date** + « Conversations récentes » (cartes type WhatsApp : nom + date visible + aperçu 2 lignes) en dessous.
+- **IA Manuelle** : 2 usages (répondre à un message reçu OU écrire un message à partir d'une consigne) ; bouton 📷 Photo ; **champ Logement = menu DÉROULANT** peuplé depuis `DB.logements` (nom exact = clé fiche IA, zéro faute de frappe) ; champ Client/réservation (autocomplete → cible le booking pour l'envoi). Bandeau rouge 🚩 « relis bien avant d'envoyer » pour classif sensible/conflit/remboursement.
+
+### HEAD prod au 2026-06-18 : `bdfa31e` (+ suivants éventuels). Backup : `nex-estate-crm-BACKUP-2026-06-18.zip`.
 
 ### Mobile
 - Section Messages IA accessible via le drawer "Plus" → `mn-messages` (admin only)
