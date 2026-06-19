@@ -1927,7 +1927,7 @@ export default async function handler(req, res) {
   if (req.query?.manualDraft) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { message, conversation, source, appart, instruction, checkin, checkout, adults, children } = body || {};
+      const { message, conversation, source, appart, voyageur, instruction, checkin, checkout, adults, children } = body || {};
 
       const hasMsg   = message     && String(message).trim();
       const hasInstr = instruction && String(instruction).trim();
@@ -1942,7 +1942,7 @@ export default async function handler(req, res) {
 
       const analysis = await generateFullAnalysis({
         appart:                 String(appart      || '').trim(),
-        voyageur:               '',
+        voyageur:               String(voyageur    || '').trim(),
         checkin:                String(checkin  || '').trim(),
         checkout:               String(checkout || '').trim(),
         source:                 String(source      || '').trim(),

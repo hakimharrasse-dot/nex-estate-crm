@@ -16121,7 +16121,7 @@ async function convGenerate(instruction){
   if(btn){ btn.disabled=true; btn.textContent='⏳…'; }
   if(ta) ta.placeholder='⏳ L\'IA prépare une réponse…';
   try{
-    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:(cur.lastGuest||base),conversation:(cur.convFull||''),source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children,instruction:instr||undefined})});
+    var r=await fetch('/api/smoobu-messages?manualDraft=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:(cur.lastGuest||base),conversation:(cur.convFull||''),voyageur:cur.voyageur||'',source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children,instruction:instr||undefined})});
     var d=await r.json();
     var draftFr=(d&&(d.ai_draft_fr||d.ai_draft))||'';  // Hakim travaille en français
     if(draftFr){
@@ -17035,6 +17035,7 @@ async function msgManualDraftGenerate() {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ message: msg, source: source, appart: appart, instruction: instr,
+                 voyageur:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.voyageur)||'',
                  checkin:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkin)||'', checkout:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkout)||'',
                  adults:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.adults:null), children:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.children:null) }),
     });
@@ -17075,7 +17076,7 @@ async function msgManualPhoto(input){
     var msg=(document.getElementById('manual-msg')||{}).value||'';
     var mc=window._MANUAL_CLIENT||{};
     var r=await fetch('/api/smoobu-messages?analyzeImage=1',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image_base64:b64,media_type:'image/jpeg',message:msg,source:src,appart:app,instruction:instr,
+      body:JSON.stringify({image_base64:b64,media_type:'image/jpeg',message:msg,source:src,appart:app,instruction:instr,voyageur:mc.voyageur||'',
         checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
     var data; try{ data=await r.json(); }catch(e){ data={}; }
     if(!r.ok) throw new Error(data.error||'Erreur serveur HTTP '+r.status);
