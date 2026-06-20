@@ -519,6 +519,7 @@ function kbBlock(kb) {
     if (kb.checkout)      lines.push(`Heure de check-out : ${kb.checkout}`);
     if (kb.checkin_acces) lines.push(`Accès / arrivée : ${kb.checkin_acces}`);
     if (kb.parking)       lines.push(`Parking : ${kb.parking}`);
+    if (kb.environs)      lines.push(`Environs / quartier & transports : ${kb.environs}`);
     if (kb.equipements)   lines.push(`Équipements : ${kb.equipements}`);
     if (kb.services)      lines.push(`Services additionnels & tarifs : ${kb.services}`);
     if (kb.regles)        lines.push(`Règles de la maison : ${kb.regles}`);

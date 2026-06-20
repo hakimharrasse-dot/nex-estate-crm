@@ -11042,6 +11042,7 @@ function openLogementKB(id){
       '<div><label class="fl">🗺️ Lien Google Maps</label><input class="fi" id="kb-gmaps" value="'+g('gmaps')+'" placeholder="https://maps.app.goo.gl/…"></div>'+
       area('kb-checkin_acces','🧭 Instructions d’accès / arrivée (SANS le code de serrure)','Boîte à clés à gauche de la porte, ascenseur jusqu’au 3e…',3)+
       area('kb-parking','🅿️ Parking','Parking gratuit en bas de l’immeuble',2)+
+      area('kb-environs','📍 Environs / quartier & transports','Quartier, gare, tram/bus, taxi/inDrive, plages, commerces, distances (toujours « environ »)…',3)+
       area('kb-equipements','🛋️ Équipements','Climatisation, machine à laver, Netflix…',2)+
       area('kb-services','🛎️ Services additionnels & tarifs','Clim 3€/nuit, navette aéroport 15€, ménage 12€, départ tardif 10€ jusqu’à 13h…',3)+
       area('kb-regles','📜 Règles de la maison','Pas de fête, non-fumeur, calme après 22h…',2)+
@@ -11058,7 +11059,7 @@ function openLogementKB(id){
 async function saveLogementKB(id){
   if(!SUPA){ showToast('⛔ Non connecté'); return; }
   var gv=function(i){ var el=document.getElementById(i); return el?(el.value||'').trim():''; };
-  var fields=['wifi_nom','wifi_code','checkin_heure','checkout','adresse_etage','gmaps','checkin_acces','parking','equipements','services','regles','faq'];
+  var fields=['wifi_nom','wifi_code','checkin_heure','checkout','adresse_etage','gmaps','checkin_acces','parking','environs','equipements','services','regles','faq'];
   var kb={};
   fields.forEach(function(f){ var v=gv('kb-'+f); if(v) kb[f]=v; });
   try{
