@@ -16856,6 +16856,9 @@ function msgManualDraftOpen() {
         '<div id="manual-client-res" style="margin-top:5px"></div>' +
         '<div id="manual-client-sel" style="display:none;margin-top:6px;font-size:12px;color:#16a34a;font-weight:600"></div>' +
 
+        '<label style="font-size:12px;color:#6b7280;display:block;margin:12px 0 4px">Date d\'arrivée prévue <span style="font-weight:400">(optionnel — l\'IA compare avec aujourd\'hui : « ce soir / demain / dans X jours »)</span></label>' +
+        '<input id="manual-checkin" type="date" style="width:100%;border:1.5px solid #d1d5db;border-radius:7px;padding:7px 10px;font-size:13px;box-sizing:border-box">' +
+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px"><label style="font-size:12px;color:#6b7280">Instruction Hakim <span style="font-weight:400">(optionnel)</span></label>' +
         '<button type="button" id="manual-instr-mic" onclick="voiceMic(\'manual-instr\',\'manual-instr-mic\')" title="Dicter à voix haute" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:7px;padding:4px 9px;font-size:13px;cursor:pointer;line-height:1">🎤</button></div>' +
         '<textarea id="manual-instr" rows="1" oninput="convAutoGrow(this,160)" placeholder="ex : insister sur le code d\'accès, répondre en anglais…" ' +
@@ -17045,6 +17048,9 @@ async function msgManualDraftGenerate() {
   var source = (document.getElementById('manual-src')?.value    || '').trim();
   var appart = (document.getElementById('manual-appart')?.value || '').trim();
   var instr  = (document.getElementById('manual-instr')?.value  || '').trim();
+  // Date d'arrivée prévue (optionnelle) — priorité au champ manuel, sinon celle du client sélectionné.
+  var manualCi = (document.getElementById('manual-checkin')?.value || '').trim();
+  var ciToSend = manualCi || (window._MANUAL_CLIENT && window._MANUAL_CLIENT.checkin) || '';
   // On peut générer à partir du message reçu OU d'une simple consigne (message proactif).
   if (!msg && !instr) { showToast('Collez le message reçu du client, ou écrivez une consigne en bas'); return; }
 
@@ -17059,7 +17065,8 @@ async function msgManualDraftGenerate() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ message: msg, source: source, appart: appart, instruction: instr,
                  voyageur:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.voyageur)||'',
-                 checkin:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkin)||'', checkout:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkout)||'',
+                 reservation_confirmed: !!(window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id),
+                 checkin:ciToSend, checkout:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkout)||'',
                  adults:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.adults:null), children:(window._MANUAL_CLIENT?window._MANUAL_CLIENT.children:null) }),
     });
     var data;

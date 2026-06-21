@@ -187,6 +187,7 @@ async function generateFullAnalysis(ctx) {
       '⚡⚡ RÈGLE ABSOLUE — réponds UNIQUEMENT au DERNIER groupe de messages récents du voyageur. ' +
       'Les messages plus ANCIENS (déjà suivis d\'une réponse « Hôte », OU séparés du dernier groupe par un écart de temps notable, OU datant de plusieurs heures/jours/semaines) sont du CONTEXTE uniquement : N\'Y RÉPONDS PAS, ne reviens pas dessus, SAUF si le dernier message y fait explicitement référence. ' +
       'CAS DE LA RAFALE : si le voyageur a envoyé PLUSIEURS messages d\'affilée RÉCEMMENT (rapprochés dans le temps — même jour/même heure — et SANS réponse « Hôte » entre eux), considère-les comme UN SEUL message et réponds à l\'ENSEMBLE de ce groupe en une seule réponse (c\'est une seule pensée découpée en plusieurs bulles). ' +
+      '⚡⚡ COMPRÉHENSION DU CONTEXTE (CAPITAL) : avant de répondre, LIS et COMPRENDS la TOTALITÉ du fil — qui est ce client, ce qu\'il a déjà demandé, ce qui a déjà été réglé, les sujets encore en cours. Si le dernier message FAIT RÉFÉRENCE ou REVIENT à un sujet évoqué plus haut (même un point ancien, résolu ou non), ou contient une allusion implicite (« et pour l\'autre chose ? », « finalement ? », « comme je disais », « toujours d\'accord ? », « du coup ? »), tu DOIS relier ce message à ce sujet et répondre AVEC ce contexte — jamais « hors-sol » comme si c\'était une demande isolée. Réponds comme quelqu\'un qui a TOUT lu et suivi la conversation depuis le début, pas seulement la dernière ligne. ⚠️ Ceci ne contredit PAS la règle de récence : tu réponds toujours au DERNIER message du voyageur, mais en l\'ÉCLAIRANT de tout l\'historique (le récent = ce à quoi tu réponds ; l\'ancien = le contexte qui donne du sens). ' +
       'Si le dernier message du voyageur est juste un remerciement / une confirmation, classe "no_reply_needed".'
     : `\nMessage du voyageur (réponds à CE message) :\n${message_content}`;
 
@@ -1934,7 +1935,7 @@ export default async function handler(req, res) {
   if (req.query?.manualDraft) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { message, conversation, source, appart, voyageur, instruction, checkin, checkout, adults, children } = body || {};
+      const { message, conversation, source, appart, voyageur, instruction, checkin, checkout, adults, children, reservation_confirmed } = body || {};
 
       const hasMsg   = message     && String(message).trim();
       const hasInstr = instruction && String(instruction).trim();
@@ -1957,7 +1958,7 @@ export default async function handler(req, res) {
                                        : '[Aucun message reçu du client. Rédige le message que l\'hôte souhaite ENVOYER au client, en appliquant exactement la consigne ci-dessous.]',
         conversation:           String(conversation || '').trim() || undefined,
         hakim_instruction:      String(instruction || '').trim() || undefined,
-        reservation_confirmed:  !!(checkin),
+        reservation_confirmed:  (typeof reservation_confirmed === 'boolean') ? reservation_confirmed : !!(checkin),
         days_until_checkin_ctx: daysUntilCheckin(String(checkin || '').trim()),
         adults:                 (adults != null && adults !== '') ? parseInt(adults, 10) : null,
         children:               (children != null && children !== '') ? parseInt(children, 10) : null,
