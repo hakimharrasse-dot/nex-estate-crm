@@ -4244,12 +4244,20 @@ function msPayRenderBtn() {
 function msPcatBuild() {
   var drop = document.getElementById('ms-pcat-drop');
   if (!drop) return;
+  var _pcatItem=function(c){
+    return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msPcatCheck(this)">'+escHtml(c)+'</label>';
+  };
+  var _pcatHead=function(txt,color){
+    return '<div style="padding:4px 8px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:'+color+'">'+txt+'</div>';
+  };
   drop.innerHTML =
     '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-pcat-all" onchange="msPcatAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes catégories</span></label>' +
     '<div class="ms-sep"></div>' +
-    CATS_P.map(function(c){
-      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msPcatCheck(this)">'+escHtml(c)+'</label>';
-    }).join('') +
+    _pcatHead('Dépenses courantes','var(--td)') +
+    CATS_P_COURANT.map(_pcatItem).join('') +
+    '<div class="ms-sep"></div>' +
+    _pcatHead('🏗 Patrimoine / Investissement','var(--or, #d97706)') +
+    CATS_P_INVEST.map(_pcatItem).join('') +
     '<div class="ms-sep"></div>' +
     '<button class="ms-reset" onclick="msPcatReset()">✕ Tout effacer</button>';
 }
