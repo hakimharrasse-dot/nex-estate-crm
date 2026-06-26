@@ -1319,10 +1319,23 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
   </div>
   <div class="kg">
-    <div class="kc kc-hero"><div class="kl">Total période</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
+    <div class="kc kc-hero"><div class="kl">Dépenses courantes</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
     <div class="kc"><div class="kl">Crédits & Loyer</div><div class="kv" id="p-crd">0 MAD</div></div>
     <div class="kc"><div class="kl">En attente</div><div class="kv" style="color:var(--re)" id="p-att">0 MAD</div></div>
+  </div>
+  <!-- Rangée Patrimoine / Investissement — visible uniquement si dépenses VEFA dans la période -->
+  <div class="kg" id="p-kg-invest" style="display:none;border-top:1px solid var(--br);padding-top:2px">
+    <div class="kc" style="border-left:3px solid var(--or, #d97706)">
+      <div class="kl">🏗 Investissements / Patrimoine</div>
+      <div class="kv" style="color:var(--or, #d97706)" id="p-invest">0 MAD</div>
+      <div class="ks" id="p-invest-cnt">0 entrées</div>
+    </div>
+    <div class="kc">
+      <div class="kl">Total général perso</div>
+      <div class="kv" id="p-gen">0 MAD</div>
+      <div class="ks">courantes + investissements</div>
+    </div>
   </div>
   <!-- Rangée charges fixes — visible uniquement en vue Mois -->
   <div class="kg" id="p-kg-fixes" style="display:none;border-top:1px solid var(--br);padding-top:2px">
@@ -2918,7 +2931,7 @@ function openRecurPersoModal(id) {
   if (titleEl) titleEl.textContent = id ? 'Modifier la charge' : 'Nouvelle charge récurrente';
 
   var catSel = document.getElementById('rcp-cat');
-  if (catSel) catSel.innerHTML = CATS_P.map(function(c){
+  if (catSel) catSel.innerHTML = CATS_P_COURANT.map(function(c){
     return '<option'+(v('cat')===c?' selected':'')+'>'+c+'</option>';
   }).join('');
 
@@ -3502,7 +3515,11 @@ var COM     = {Airbnb:0.155,'Booking.com':0.22,Direct:0,VRBO:0.18};
 var CATS_B  = ['Ménage','Loyer','Eau & Électricité','Internet / Fibre','Frais de syndic','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Travaux / Rénovation','Assurance','Frais bancaires','Transport / déplacements','Outils / logiciels','Salaires / Équipe','Charges sociales / CNSS','Comptabilité / Fiscalité','Téléphonie / Communication','Avance caisse','Règlement terrain','Autre'];
 var CATS_B_RECUR = CATS_B.filter(function(c){ return ['Avance caisse','Règlement terrain'].indexOf(c) === -1; });
 function catLabel(c){return c==='Règlement terrain'?'Solde équipe déjà comptabilisé':c;}
-var CATS_P  = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Maison / Réparations / Électroménager','Charges foyer','Voiture / Entretien','Transport / Carburant','Médicaments','Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances','Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'];
+// Catégories Patrimoine / Investissement perso (VEFA…) — exclues des dépenses courantes
+var CATS_P_INVEST = ['VEFA – Avance appartement','VEFA – Frais notaire','VEFA – Frais dossier / banque','VEFA – Ameublement initial','VEFA – Travaux / finitions','Autre investissement perso'];
+function isInvestPerso(cat){ return CATS_P_INVEST.indexOf(cat) >= 0; }
+var CATS_P_COURANT = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Maison / Réparations / Électroménager','Charges foyer','Voiture / Entretien','Transport / Carburant','Médicaments','Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances','Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'];
+var CATS_P  = CATS_P_COURANT.concat(CATS_P_INVEST);
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
@@ -7766,34 +7783,51 @@ function renderPerso() {
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   if(fq)rows=rows.filter(function(r){return (r.desc||'').toLowerCase().includes(fq)||(r.prest||'').toLowerCase().includes(fq)||(r.cat||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
+  // Séparation Patrimoine/Investissement (VEFA…) des dépenses courantes
+  // Le total principal du budget perso ne compte QUE les dépenses courantes.
+  var rowsInv  = rows.filter(function(r){return isInvestPerso(r.cat);});
+  var rowsCour = rows.filter(function(r){return !isInvestPerso(r.cat);});
+  var totInvest = sum(rowsInv,'montant')+rowsInv.reduce(function(a,r){return a+(r.don||0);},0);
   var _hasDons=fcArr.indexOf('Dons / Aides')!==-1;
   var _donsOnly=fcArr.length===1&&_hasDons;
   var tot;
   if(_donsOnly){
     // Seule "Dons / Aides" : montant des entrées Dons + don de toutes les autres
-    tot=rows.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0);
+    tot=rowsCour.reduce(function(acc,r){return acc+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));},0);
   } else if(_hasDons){
     // "Dons / Aides" + autres catégories : somme des totaux standalone par catégorie
     // (Dons/Aides = montant Dons + TOUS les dons ; autres cats = montant + don de leurs lignes)
     // Ce calcul correspond au total que l'utilisateur voit pour chaque catégorie séparément
     tot=fcArr.reduce(function(acc,cat){
       if(cat==='Dons / Aides'){
-        return acc+rows.reduce(function(a,r){
+        return acc+rowsCour.reduce(function(a,r){
           return a+(r.cat==='Dons / Aides'?(r.montant||0):(r.don||0));
         },0);
       }
-      var catRows=rows.filter(function(r){return r.cat===cat;});
+      var catRows=rowsCour.filter(function(r){return r.cat===cat;});
       return acc+sum(catRows,'montant')+catRows.reduce(function(a,r){return a+(r.don||0);},0);
     },0);
   } else {
     // Pas de Dons / Aides dans la sélection : formule standard
-    tot=sum(rows,'montant')+rows.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
+    tot=sum(rowsCour,'montant')+rowsCour.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0);
   }
-  var fam=sum(rows.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
-  var crd=sum(rows.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
-  var att=sum(rows.filter(function(r){return r.statut==='En attente';}),'montant');
-  set('p-tot',fmt(tot)); set('p-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
+  var fam=sum(rowsCour.filter(function(r){return ['Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant'].indexOf(r.cat)>=0;}),'montant');
+  var crd=sum(rowsCour.filter(function(r){return ['Crédit personnel','Loyer perso'].indexOf(r.cat)>=0;}),'montant');
+  var att=sum(rowsCour.filter(function(r){return r.statut==='En attente';}),'montant');
+  set('p-tot',fmt(tot)); set('p-cnt',rowsCour.length+' entrée'+(rowsCour.length>1?'s':''));
   set('p-fam',fmt(fam)); set('p-crd',fmt(crd)); set('p-att',fmt(att));
+  // Rangée Patrimoine / Investissement (VEFA…) — affichée seulement si présent dans la période
+  var kgInvest=document.getElementById('p-kg-invest');
+  if(kgInvest){
+    if(rowsInv.length){
+      set('p-invest',fmt(totInvest));
+      set('p-invest-cnt',rowsInv.length+' entrée'+(rowsInv.length>1?'s':''));
+      set('p-gen',fmt(tot+totInvest));
+      kgInvest.style.display='';
+    } else {
+      kgInvest.style.display='none';
+    }
+  }
 
   // Rangée charges fixes — visible uniquement en vue Mois
   var kgFixes = document.getElementById('p-kg-fixes');
@@ -7823,15 +7857,22 @@ function renderPerso() {
     }
   }
   var allP=filterPer(DB.perso,'p');
-  set('p-recap',CATS_P.map(function(cat){
+  var _recapCat=function(cat,color){
     var x=allP.filter(function(r){return r.cat===cat;});
     var extraDon=cat==='Dons / Aides'?allP.reduce(function(acc,r){return acc+(r.cat!=='Dons / Aides'?(r.don||0):0);},0):0;
     var total=sum(x,'montant')+extraDon;
     if(!x.length&&!extraDon)return'';
     var subtitle=x.length+' entrée'+(x.length>1?'s':'');
     if(cat==='Dons / Aides'&&extraDon>0)subtitle+=' + pourboires';
-    return'<div class="rc"><div><div class="rn">'+cat+'</div><div class="rsb">'+subtitle+'</div></div><div class="rv" style="color:var(--pu)">'+fmt(total)+'</div></div>';
-  }).join('')||'<div style="color:var(--td);font-size:13px">Aucune dépense</div>');
+    return'<div class="rc"><div><div class="rn">'+cat+'</div><div class="rsb">'+subtitle+'</div></div><div class="rv" style="color:'+color+'">'+fmt(total)+'</div></div>';
+  };
+  var _recapCour=CATS_P_COURANT.map(function(c){return _recapCat(c,'var(--pu)');}).join('');
+  var _recapInv =CATS_P_INVEST.map(function(c){return _recapCat(c,'var(--or, #d97706)');}).join('');
+  var _recapHtml=_recapCour;
+  if(_recapInv){
+    _recapHtml+='<div class="rc" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px"><div><div class="rn" style="color:var(--or, #d97706);font-weight:600">🏗 Patrimoine / Investissement perso</div></div></div>'+_recapInv;
+  }
+  set('p-recap',_recapHtml||'<div style="color:var(--td);font-size:13px">Aucune dépense</div>');
   var tb=document.getElementById('p-tb'),em=document.getElementById('p-em');
   var cardsCont=document.getElementById('p-cards');
   var mobile=isMobile();
@@ -8860,7 +8901,10 @@ function buildForm(type, editId) {
   if(type==='perso') {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+CATS_P.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+
+        '<optgroup label="── Dépenses courantes ──">'+CATS_P_COURANT.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</optgroup>'+
+        '<optgroup label="── Patrimoine / Investissement ──">'+CATS_P_INVEST.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</optgroup>'+
+      '</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Détail de la dépense')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
       '<div class="ff" style="background:rgba(76,175,125,.07);border:1.5px solid rgba(76,175,125,.3);border-radius:8px;padding:10px 13px">'+

@@ -1344,10 +1344,11 @@ Module admin-only de gestion des dépenses personnelles. Table `perso` dans Supa
 | `recurring_charge_id` | text NULL | UUID de `recurring_charges` si généré automatiquement |
 | `recurring_month` | text NULL | Format `YYYY-MM` — mois de génération |
 
-### CATS_P — liste officielle (22 catégories, IMMUABLE)
+### CATS_P — liste officielle (28 catégories : 22 courantes + 6 invest, IMMUABLE)
 
 ```javascript
-var CATS_P = [
+// 22 dépenses courantes (budget mensuel)
+var CATS_P_COURANT = [
   'Crédit personnel','Loyer perso','Pension enfants','Famille / Femme',
   'Crèche / École','Enfant / Loisirs enfant','Abonnements',
   'Alimentation / Grande surface','Resto / Snack / Café',
@@ -1356,9 +1357,27 @@ var CATS_P = [
   'Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances',
   'Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'
 ];
+// 6 catégories Patrimoine / Investissement (VEFA…) — ajouté 2026-06-26
+var CATS_P_INVEST = [
+  'VEFA – Avance appartement','VEFA – Frais notaire','VEFA – Frais dossier / banque',
+  'VEFA – Ameublement initial','VEFA – Travaux / finitions','Autre investissement perso'
+];
+function isInvestPerso(cat){ return CATS_P_INVEST.indexOf(cat) >= 0; }
+var CATS_P = CATS_P_COURANT.concat(CATS_P_INVEST);
 ```
 
 **Source unique de vérité** pour le formulaire d'ajout ET le filtre catégorie. Ne jamais dupliquer cette liste.
+
+### Patrimoine / Investissement perso (VEFA…) — séparation budget courant (ajouté 2026-06-26)
+
+Objectif : ne pas mélanger les dépenses de vie courante avec les achats patrimoniaux (avances VEFA, notaire, ameublement initial…).
+
+- **Pas de migration Supabase** — la nature est portée par la catégorie (`cat`), détectée via `isInvestPerso(cat)`.
+- **Formulaire d'ajout** (`fi-cat`, ~ligne 8867) : select scindé en 2 `<optgroup>` — « ── Dépenses courantes ── » / « ── Patrimoine / Investissement ── ».
+- **KPIs `renderPerso()`** : le hero **« Dépenses courantes »** (ex « Total période ») + Famille + Crédits/Loyer + En attente sont calculés sur `rowsCour` (= `rows.filter(r => !isInvestPerso(r.cat))`). **Le budget mensuel ne compte JAMAIS les VEFA.** Rangée `p-kg-invest` (affichée seulement si VEFA dans la période) : `p-invest` (🏗 Investissements/Patrimoine) + `p-gen` (Total général perso = courantes + investissements).
+- **Résumé catégories** (`p-recap`) : helper `_recapCat(cat,color)` ; les courantes en violet, puis section dédiée « 🏗 Patrimoine / Investissement perso » (orange) pour les VEFA.
+- **Liste / pagination / doublons** : `rows` reste l'ensemble complet → les VEFA restent visibles et éditables.
+- **Charges récurrentes** (`rcp-cat`) restreintes à `CATS_P_COURANT` → impossible de créer une charge récurrente VEFA → `calcLissePerso()` / budget lissé inchangés. VEFA hors `CATS_P_FIXED`.
 
 ### Règles métier Dons / Pourboires — IMMUABLES
 
@@ -1508,7 +1527,8 @@ var LABEL_STOP_WORDS = {
 ### Ce qu'il ne faut JAMAIS toucher
 
 - La logique dons/pourboires (champ `don`, calcul Total période)
-- Les 22 catégories CATS_P (migrées et stabilisées)
+- Les catégories CATS_P_COURANT (22) et CATS_P_INVEST (6) — stabilisées
+- La séparation courant/investissement : le budget mensuel (p-tot/fam/crd/att) calculé sur `rowsCour` uniquement ; `isInvestPerso()` = source unique
 - Les charges business et leur module (`getEligibleCharges`, `renderRecurAdmin`)
 - Le statut généré : toujours `'En attente'` (jamais `'À payer'`)
 - `recurring_charge_id` stocké en `text` (pas uuid) dans `perso`
@@ -1526,3 +1546,12 @@ var LABEL_STOP_WORDS = {
 | Anti-doublon génération | Exclut les doublons manuels à l'insertion, section "Ignorées" dans la prévisualisation |
 | Contrôle doublons | Bouton 🔍 Doublons, détection affinée, suppression manuelle avec cases à cocher |
 | Budget lissé | `calcLissePerso()`, rangée KPI contextuelle en vue Mois uniquement |
+
+### Historique Dépenses Perso (2026-06-26)
+
+| Changement | Détail |
+|---|---|
+| Patrimoine / Investissement perso | Catégorie principale + 6 sous-catégories VEFA (CATS_P_INVEST), helper `isInvestPerso()`, séparation budget courant / investissement sans migration Supabase |
+| Formulaire | Select `fi-cat` scindé en 2 optgroups (courantes / patrimoine) ; charges récurrentes `rcp-cat` restreintes à CATS_P_COURANT |
+| KPIs | Hero « Dépenses courantes » (courant only) + rangée `p-kg-invest` (Investissements + Total général perso) affichée si VEFA présent |
+| Résumé catégories | Section dédiée « 🏗 Patrimoine / Investissement perso » (orange) sous les courantes |
