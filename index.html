@@ -9780,7 +9780,8 @@ function parseSmoobuRow(row, idx) {
   // ── Taxe de séjour ──
   var taxeEur = normAmount(cityTaxR);
   if (!taxeEur && src === 'Booking.com' && nuitsSejou > 0 && ap) {
-    taxeEur = nuitsSejou * adultes * tauxTaxe(ap);
+    // Taxe due pour CHAQUE personne (adultes + enfants), pas seulement les adultes
+    taxeEur = nuitsSejou * (adultes + enfants) * tauxTaxe(ap);
   }
 
   // ── Date paiement calculée par le CRM selon source/type ──
