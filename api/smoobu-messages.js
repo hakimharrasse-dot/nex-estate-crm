@@ -114,27 +114,41 @@ async function sbPatch(table, filter, patch) {
 }
 
 // ── Smoobu : lire les messages d'une réservation ──────────────
-// ⚠️ onlyRelatedToGuest=false est INDISPENSABLE : sans ce paramètre, l'API Smoobu
-// ne renvoie QUE les messages du voyageur (type=1) — les réponses de l'hôte (type=2,
-// tapées dans Airbnb/Booking/Smoobu ou envoyées via le CRM) sont invisibles. Avec le
-// paramètre, le fil complet remonte (vérifié 2026-07-02 sur booking 140560917 :
-// 11 msgs → 25 msgs, dont 15 réponses hôte). isGuestMessage() distingue déjà type 1/2.
+// ⚠️ DEUX pièges Smoobu, tous deux gérés ici :
+// 1) onlyRelatedToGuest=false est INDISPENSABLE : sans lui, l'API ne renvoie QUE le
+//    voyageur (type=1) — les réponses hôte (type=2, tapées dans Airbnb/Booking/Smoobu
+//    ou envoyées via le CRM) sont invisibles.
+// 2) L'endpoint est PAGINÉ : page_size FIXE à 25 (pageSize/limit ignorés) ; la page 1
+//    = les 25 messages les plus ANCIENS. Sans parcourir toutes les pages, les
+//    conversations > 25 messages sont tronquées et les messages RÉCENTS manquent
+//    (vérifié 2026-07-03 : booking 145626671 Nancy = 61 msgs sur 3 pages ; page 1 seule
+//    → on ne voyait que le début). On récupère donc TOUTES les pages via ?page=N.
+// isGuestMessage() distingue déjà type 1/2 ; sortMessagesChronologically() trie ensuite.
 async function getSmoobuMessages(bookingId) {
-  const res = await smoobuFetch(`/api/reservations/${bookingId}/messages`, {
-    query: { onlyRelatedToGuest: 'false' },
-  });
-  // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
-  // PAS les conversations sans réservation). Ce n'est pas une erreur traitable : on
-  // retourne vide → le handler ignore proprement (aucun faux record « erreur »).
-  if (res.status === 404) {
-    console.log('[messages] 404 messages (prospect/inquiry, non exposé par Smoobu) — booking:', bookingId, '| skip');
-    return { messages: [] };
+  const MAX_PAGES = 20; // garde-fou : 20 × 25 = 500 messages max
+  let all = [];
+  let pageCount = 1;
+  for (let page = 1; page <= pageCount && page <= MAX_PAGES; page++) {
+    const res = await smoobuFetch(`/api/reservations/${bookingId}/messages`, {
+      query: { onlyRelatedToGuest: 'false', page },
+    });
+    // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
+    // PAS les conversations sans réservation). Pas une erreur traitable : on retourne
+    // vide → le handler ignore proprement (aucun faux record « erreur »).
+    if (res.status === 404) {
+      console.log('[messages] 404 messages (prospect/inquiry, non exposé par Smoobu) — booking:', bookingId, '| skip');
+      return { messages: [] };
+    }
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Smoobu GET messages [${bookingId}] p${page}: ${res.status} ${err}`);
+    }
+    const data = await res.json();
+    const msgs = data?.messages || data?.data || (Array.isArray(data) ? data : []);
+    all = all.concat(msgs);
+    pageCount = Number(data?.page_count) || 1;
   }
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Smoobu GET messages [${bookingId}]: ${res.status} ${err}`);
-  }
-  return res.json();
+  return { messages: all };
 }
 
 // ── Smoobu : envoyer un message au voyageur ───────────────────
