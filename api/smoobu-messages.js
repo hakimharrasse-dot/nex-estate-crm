@@ -23,11 +23,59 @@
 //   NE PAS remplacer le webhook existant — Smoobu accepte plusieurs URLs
 // ============================================================
 
+import crypto from 'node:crypto';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SMOOBU_KEY   = process.env.SMOOBU_API_KEY;
 const CLAUDE_KEY   = process.env.ANTHROPIC_API_KEY;
 const SMOOBU_API   = 'https://login.smoobu.com/api';
+
+// ── Smoobu HMAC-SHA256 (obligatoire à partir du 25/09/2026) ───────────────
+// La signature s'ACTIVE automatiquement dès que SMOOBU_API_SECRET est présent
+// dans l'environnement. Sans secret → mode "legacy" (clé seule, non signé),
+// identique à aujourd'hui et accepté pendant la migration → déploiement sûr.
+// Format vérifié le 2026-07-02 contre l'API réelle (login.smoobu.com) :
+//   canonical = METHOD\nPATH\nQUERY(trié+URL-encodé)\nTIMESTAMP\nNONCE\nSHA256hex(body)\nAPIKEY
+//   X-Signature = base64( HMAC-SHA256(canonical, SECRET) )   ; body vide = SHA256("")
+// ⚠️ Bloc IDENTIQUE dans api/smoobu-poll.js — garder les deux synchronisés.
+const SMOOBU_HOST   = 'https://login.smoobu.com';
+const SMOOBU_SECRET = process.env.SMOOBU_API_SECRET || '';
+const EMPTY_SHA256  = crypto.createHash('sha256').update('').digest('hex');
+
+function _smoobuQuery(query) {
+  if (!query) return '';
+  const keys = Object.keys(query).filter((k) => query[k] !== undefined && query[k] !== null);
+  if (!keys.length) return '';
+  keys.sort();
+  return keys.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`).join('&');
+}
+
+// path commence par /api ; query = objet {clé:valeur} ; body = objet JSON ou null.
+async function smoobuFetch(path, { method = 'GET', query = null, body = null, apiKey } = {}) {
+  const key = apiKey || process.env.SMOOBU_API_KEY;
+  const qs  = _smoobuQuery(query);
+  const url = SMOOBU_HOST + path + (qs ? `?${qs}` : '');
+  const bodyString = body != null ? JSON.stringify(body) : '';
+  let headers;
+  if (!SMOOBU_SECRET) {
+    headers = { 'Content-Type': 'application/json', 'Api-Key': key };
+  } else {
+    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const nonce     = crypto.randomUUID();
+    const bodyHash  = bodyString ? crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex') : EMPTY_SHA256;
+    const canonical = [method.toUpperCase(), path, qs, timestamp, nonce, bodyHash, key].join('\n');
+    const signature = crypto.createHmac('sha256', SMOOBU_SECRET).update(canonical, 'utf8').digest('base64');
+    headers = {
+      'Content-Type': 'application/json',
+      'Api-Key': key, 'X-API-Key': key,
+      'X-Timestamp': timestamp, 'X-Nonce': nonce, 'X-Signature': signature,
+    };
+  }
+  const init = { method, headers };
+  if (body != null) init.body = bodyString;
+  return fetch(url, init);
+}
 
 // ── Supabase REST (service_role — bypass RLS) ─────────────────
 async function sbFetch(path, opts = {}) {
@@ -72,8 +120,8 @@ async function sbPatch(table, filter, patch) {
 // paramètre, le fil complet remonte (vérifié 2026-07-02 sur booking 140560917 :
 // 11 msgs → 25 msgs, dont 15 réponses hôte). isGuestMessage() distingue déjà type 1/2.
 async function getSmoobuMessages(bookingId) {
-  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages?onlyRelatedToGuest=false`, {
-    headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
+  const res = await smoobuFetch(`/api/reservations/${bookingId}/messages`, {
+    query: { onlyRelatedToGuest: 'false' },
   });
   // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
   // PAS les conversations sans réservation). Ce n'est pas une erreur traitable : on
@@ -96,10 +144,9 @@ async function getSmoobuMessages(bookingId) {
 //   POST /api/reservations/{id}/messages/send-message-to-guest
 //   Body : { messageBody: "...", subject: "..." (optionnel) }
 async function sendSmoobuMessage(bookingId, text) {
-  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages/send-message-to-guest`, {
-    method:  'POST',
-    headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ messageBody: text }),
+  const res = await smoobuFetch(`/api/reservations/${bookingId}/messages/send-message-to-guest`, {
+    method: 'POST',
+    body:   { messageBody: text },
   });
   const rawText = await res.text();
   if (!res.ok) {
@@ -1205,8 +1252,8 @@ export default async function handler(req, res) {
       let done = false;
 
       while (!done) {
-        const r = await fetch(`${SMOOBU_API}/threads?page_number=${page}&page_size=20`, {
-          headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
+        const r = await smoobuFetch(`/api/threads`, {
+          query: { page_number: page, page_size: 20 },
         });
         if (!r.ok) break;
         const data = await r.json();

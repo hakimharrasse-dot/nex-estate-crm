@@ -20,10 +20,58 @@
 //   CRON_SECRET        — secret pour sécuriser les appels cron (optionnel)
 // ============================================================
 
+import crypto from 'node:crypto';
+
 const POLL_WINDOW_HOURS = parseInt(process.env.POLL_WINDOW_HOURS || '25');
 const SMOOBU_API        = 'https://login.smoobu.com/api';
 const SUPABASE_URL      = process.env.SUPABASE_URL;
 const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// ── Smoobu HMAC-SHA256 (obligatoire à partir du 25/09/2026) ───────────────
+// La signature s'ACTIVE automatiquement dès que SMOOBU_API_SECRET est présent
+// dans l'environnement. Sans secret → mode "legacy" (clé seule, non signé),
+// identique à aujourd'hui et accepté pendant la migration → déploiement sûr.
+// Format vérifié le 2026-07-02 contre l'API réelle (login.smoobu.com) :
+//   canonical = METHOD\nPATH\nQUERY(trié+URL-encodé)\nTIMESTAMP\nNONCE\nSHA256hex(body)\nAPIKEY
+//   X-Signature = base64( HMAC-SHA256(canonical, SECRET) )   ; body vide = SHA256("")
+// ⚠️ Bloc IDENTIQUE dans api/smoobu-messages.js — garder les deux synchronisés.
+const SMOOBU_HOST   = 'https://login.smoobu.com';
+const SMOOBU_SECRET = process.env.SMOOBU_API_SECRET || '';
+const EMPTY_SHA256  = crypto.createHash('sha256').update('').digest('hex');
+
+function _smoobuQuery(query) {
+  if (!query) return '';
+  const keys = Object.keys(query).filter((k) => query[k] !== undefined && query[k] !== null);
+  if (!keys.length) return '';
+  keys.sort();
+  return keys.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`).join('&');
+}
+
+// path commence par /api ; query = objet {clé:valeur} ; body = objet JSON ou null.
+async function smoobuFetch(path, { method = 'GET', query = null, body = null, apiKey } = {}) {
+  const key = apiKey || process.env.SMOOBU_API_KEY;
+  const qs  = _smoobuQuery(query);
+  const url = SMOOBU_HOST + path + (qs ? `?${qs}` : '');
+  const bodyString = body != null ? JSON.stringify(body) : '';
+  let headers;
+  if (!SMOOBU_SECRET) {
+    headers = { 'Content-Type': 'application/json', 'Api-Key': key };
+  } else {
+    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const nonce     = crypto.randomUUID();
+    const bodyHash  = bodyString ? crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex') : EMPTY_SHA256;
+    const canonical = [method.toUpperCase(), path, qs, timestamp, nonce, bodyHash, key].join('\n');
+    const signature = crypto.createHmac('sha256', SMOOBU_SECRET).update(canonical, 'utf8').digest('base64');
+    headers = {
+      'Content-Type': 'application/json',
+      'Api-Key': key, 'X-API-Key': key,
+      'X-Timestamp': timestamp, 'X-Nonce': nonce, 'X-Signature': signature,
+    };
+  }
+  const init = { method, headers };
+  if (body != null) init.body = bodyString;
+  return fetch(url, init);
+}
 
 // Taux de commission par source (fallback si non fourni par Smoobu)
 const COM = { Airbnb: 0.155, 'Booking.com': 0.22, Direct: 0, VRBO: 0.18 };
@@ -282,9 +330,7 @@ function mapSmoobuBooking(b) {
 
 async function enrichFromSmoobu(mapped, apiKey, stats) {
   try {
-    const detailRes = await fetch(`${SMOOBU_API}/reservations/${mapped.smoobu_id}`, {
-      headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' }
-    });
+    const detailRes = await smoobuFetch(`/api/reservations/${mapped.smoobu_id}`, { apiKey });
     if (!detailRes.ok) {
       console.log(`[poll] WARNING enrichissement ${mapped.smoobu_id}: HTTP ${detailRes.status}`);
       stats.warnings++;
@@ -354,9 +400,7 @@ async function remediateStragglers(processedIds, apiKey, stats) {
 
   for (const rec of incomplete) {
     try {
-      const detailRes = await fetch(`${SMOOBU_API}/reservations/${rec.smoobu_id}`, {
-        headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' }
-      });
+      const detailRes = await smoobuFetch(`/api/reservations/${rec.smoobu_id}`, { apiKey });
       if (!detailRes.ok) {
         console.log(`[poll] WARN remediate ${rec.smoobu_id}: HTTP ${detailRes.status}`);
         stats.warnings++;
@@ -423,9 +467,7 @@ export default async function handler(req, res) {
   // ?probe=SMOOBU_ID — retourne le JSON brut du détail pour diagnostiquer les champs
   const probeId = req.query?.probe;
   if (probeId) {
-    const pr = await fetch(`${SMOOBU_API}/reservations/${probeId}`, {
-      headers: { 'Api-Key': process.env.SMOOBU_API_KEY, 'Content-Type': 'application/json' }
-    });
+    const pr = await smoobuFetch(`/api/reservations/${probeId}`, { apiKey: process.env.SMOOBU_API_KEY });
     const raw = await pr.json();
     return res.json({ probe: probeId, status: pr.status, keys: Object.keys(raw), raw });
   }
@@ -454,11 +496,11 @@ export default async function handler(req, res) {
   const MAX_PAGES = 5;
   let bookings = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const smoobuUrl = `${SMOOBU_API}/reservations?modifiedFrom=${encodeURIComponent(modifiedFrom)}&pageSize=100&showCancellation=true&page=${page}`;
     let smoobuRes;
     try {
-      smoobuRes = await fetch(smoobuUrl, {
-        headers: { 'Api-Key': process.env.SMOOBU_API_KEY, 'Content-Type': 'application/json' }
+      smoobuRes = await smoobuFetch(`/api/reservations`, {
+        apiKey: process.env.SMOOBU_API_KEY,
+        query:  { modifiedFrom, pageSize: 100, showCancellation: true, page },
       });
       if (!smoobuRes.ok) throw new Error(`Smoobu ${smoobuRes.status}`);
     } catch (err) {
