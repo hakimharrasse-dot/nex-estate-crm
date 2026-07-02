@@ -66,8 +66,13 @@ async function sbPatch(table, filter, patch) {
 }
 
 // ── Smoobu : lire les messages d'une réservation ──────────────
+// ⚠️ onlyRelatedToGuest=false est INDISPENSABLE : sans ce paramètre, l'API Smoobu
+// ne renvoie QUE les messages du voyageur (type=1) — les réponses de l'hôte (type=2,
+// tapées dans Airbnb/Booking/Smoobu ou envoyées via le CRM) sont invisibles. Avec le
+// paramètre, le fil complet remonte (vérifié 2026-07-02 sur booking 140560917 :
+// 11 msgs → 25 msgs, dont 15 réponses hôte). isGuestMessage() distingue déjà type 1/2.
 async function getSmoobuMessages(bookingId) {
-  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages`, {
+  const res = await fetch(`${SMOOBU_API}/reservations/${bookingId}/messages?onlyRelatedToGuest=false`, {
     headers: { 'Api-Key': SMOOBU_KEY, 'Content-Type': 'application/json' },
   });
   // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
@@ -902,9 +907,10 @@ export default async function handler(req, res) {
   }
 
   // ── Conversation par client : GET ?conversation=BOOKING_ID ───
-  // Retourne le fil complet d'une réservation : messages voyageur (Smoobu, lecture
-  // seule) + réponses envoyées via le CRM (table messages, statut=sent), triés par
-  // date. ⚠️ Smoobu n'expose PAS les réponses hôte tapées directement dans l'appli.
+  // Retourne le fil complet d'une réservation : messages voyageur ET réponses hôte
+  // (Smoobu, lecture seule, grâce à onlyRelatedToGuest=false) + réponses envoyées via
+  // le CRM (table messages, statut=sent), triés par date. Les réponses hôte tapées
+  // directement dans Airbnb/Booking/Smoobu remontent désormais (type=2).
   if (req.method === 'GET' && req.query?.conversation) {
     const cid = String(req.query.conversation).trim();
     if (!cid) return res.status(400).json({ error: 'conversation: booking_id requis' });
@@ -945,8 +951,20 @@ export default async function handler(req, res) {
         console.warn('[messages] conversation: Smoobu indisponible (booking ' + cid + '):', e.message);
       }
 
-      // 3. Fusion + tri chronologique (les sans-date à la fin, ordre conservé)
-      const all = guestMsgs.concat(crmReplies).sort(function(a, b){
+      // 3. Anti-doublon host : Smoobu renvoie désormais les réponses hôte (type=2),
+      //    y compris celles ENVOYÉES via le CRM (poussées vers Smoobu à l'envoi). On ne
+      //    garde donc du côté CRM que les réponses ABSENTES du fil Smoobu — envois trop
+      //    récents pas encore synchronisés, ou repli si Smoobu est indisponible.
+      const _normMsg = function(t){
+        return String(t || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
+      };
+      const smoobuHostSet = new Set(
+        guestMsgs.filter(function(m){ return m.sender === 'host' && m.text; }).map(function(m){ return _normMsg(m.text); })
+      );
+      const crmRepliesDedup = crmReplies.filter(function(r){ return !smoobuHostSet.has(_normMsg(r.text)); });
+
+      // 4. Fusion + tri chronologique (les sans-date à la fin, ordre conservé)
+      const all = guestMsgs.concat(crmRepliesDedup).sort(function(a, b){
         if (!a.at && !b.at) return 0;
         if (!a.at) return 1;
         if (!b.at) return -1;
