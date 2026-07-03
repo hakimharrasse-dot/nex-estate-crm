@@ -31,6 +31,14 @@ const SMOOBU_KEY   = process.env.SMOOBU_API_KEY;
 const CLAUDE_KEY   = process.env.ANTHROPIC_API_KEY;
 const SMOOBU_API   = 'https://login.smoobu.com/api';
 
+// ── Modèles Claude (2026-07-04) ───────────────────────────────
+// MODEL_DRAFT : rédaction des brouillons/réponses au voyageur (generateFullAnalysis
+//   + assist refine) → Sonnet, pour la compréhension fine des fils longs et nuances.
+// MODEL_LIGHT : tâches mécaniques (traduction, reformulation, vision, conseil) →
+//   Haiku, suffisant et ~3× moins cher.
+const MODEL_DRAFT = 'claude-sonnet-5';
+const MODEL_LIGHT = 'claude-haiku-4-5-20251001';
+
 // ── Smoobu HMAC-SHA256 (obligatoire à partir du 25/09/2026) ───────────────
 // La signature s'ACTIVE automatiquement dès que SMOOBU_API_SECRET est présent
 // dans l'environnement. Sans secret → mode "legacy" (clé seule, non signé),
@@ -288,8 +296,8 @@ async function generateFullAnalysis(ctx) {
       'content-type':      'application/json',
     },
     body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      model:      MODEL_DRAFT,
+      max_tokens: 2048,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     }),
@@ -386,7 +394,7 @@ async function analyzeImageMessage(ctx) {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
-      model:       'claude-haiku-4-5-20251001',
+      model:       MODEL_LIGHT,
       max_tokens:  1024,
       temperature: 0,                 // description ancrée aux faits (moins d'invention)
       system:      systemPrompt,
@@ -442,7 +450,7 @@ async function rewordReply(text, ctx) {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
+      model:      MODEL_LIGHT,
       max_tokens: 1024,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
@@ -460,14 +468,26 @@ async function rewordReply(text, ctx) {
 // ── Style de Hakim : ses dernières réponses ENVOYÉES (few-shot) ──
 // Sert à faire imiter son ton par l'IA. Lecture seule, best-effort.
 async function getHakimStyleExamples(limit) {
+  const want = limit || 8;
   try {
+    // On lit LARGE (want × 4) puis on filtre — avant, le filtre s'appliquait APRÈS
+    // le limit SQL : 2 messages triviaux dans les 6 derniers = 4 exemples seulement.
     const rows = await sbGet(
-      `messages?statut=eq.sent&ai_draft=not.is.null&select=ai_draft,sent_at&order=sent_at.desc.nullslast&limit=${limit || 6}`
+      `messages?statut=eq.sent&ai_draft=not.is.null&select=ai_draft,sent_at&order=sent_at.desc.nullslast&limit=${want * 4}`
     );
+    const seen = {};
     return (rows || [])
       .map(function(r){ return String(r.ai_draft || '').trim(); })
-      .filter(function(s){ return s && s.length >= 10 && s.length <= 600; })
-      .slice(0, limit || 6);
+      .filter(function(s){
+        // ≥ 80 caractères : écarte « Merci », « Je vous en prie 🙏 »… qui
+        // n'apprennent rien du style et diluent le few-shot.
+        if (s.length < 80 || s.length > 600) return false;
+        const k = s.toLowerCase().replace(/\s+/g, ' ');
+        if (seen[k]) return false; // déduplication (messages identiques renvoyés 2×)
+        seen[k] = true;
+        return true;
+      })
+      .slice(0, want);
   } catch { return []; }
 }
 function styleBlock(examples) {
@@ -515,7 +535,9 @@ async function assistReply(mode, p) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: system, messages: [{ role: 'user', content: user }] }),
+    // refine = rédaction d'un brouillon → Sonnet (même niveau que generateFullAnalysis) ;
+    // advise = notes de relecture → Haiku suffit.
+    body: JSON.stringify({ model: mode === 'refine' ? MODEL_DRAFT : MODEL_LIGHT, max_tokens: 1024, system: system, messages: [{ role: 'user', content: user }] }),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (assist ${mode}): ${res.status} ${err}`); }
   const data = await res.json();
@@ -530,7 +552,7 @@ async function _claudeText(system, user, maxTokens) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens || 1024, system: system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model: MODEL_LIGHT, max_tokens: maxTokens || 1024, system: system, messages: [{ role: 'user', content: user }] }),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (translate): ${res.status} ${err}`); }
   const data = await res.json();
@@ -840,6 +862,33 @@ function buildGuestTranscript(allMessages) {
   return { text: recent.join('\n'), multi: recent.length > 1 };
 }
 
+// ── Transcript COMPLET du fil (voyageur + hôte) pour l'IA ─────
+// Depuis le fix onlyRelatedToGuest=false (2026-07-02), les réponses hôte remontent
+// de Smoobu. Le prompt (msgBlock de generateFullAnalysis) raisonne FACTUELLEMENT
+// sur les réponses « Hôte » présentes dans le fil (règle de récence, apprentissage
+// du ton, no_reply_needed). Ce transcript est donc LE format attendu — à utiliser
+// sur TOUS les chemins (webhook, sync, Booking scan, regenerate), pas seulement la
+// modale Conversation. 12 derniers messages non vides, du plus ancien au plus récent.
+function buildFullTranscript(allMessages, limit) {
+  const now = Date.now();
+  const recent = (allMessages || [])
+    .filter(function(m){ return extractMessageText(m).length > 0; })
+    .slice(-(limit || 12))
+    .map(function(m){
+      const txt = extractMessageText(m);
+      const dt  = extractMessageDate(m);
+      let rel = '';
+      if (dt) {
+        const d = new Date(dt);
+        const days = Math.floor((now - d.getTime()) / 86400000);
+        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2);
+        rel = ' · ' + dm + (days<=0 ? ' (aujourd\'hui)' : (days===1 ? ' (hier)' : ' (il y a '+days+' jours)'));
+      }
+      return (isGuestMessage(m) ? '[Voyageur' : '[Hôte') + rel + '] ' + txt;
+    });
+  return { text: recent.join('\n'), count: recent.length };
+}
+
 // ── Détecter si un message vient du voyageur ─────────────────
 // Smoobu retourne type comme entier : 1 = guest, 2 = host
 function isGuestMessage(msg) {
@@ -875,8 +924,10 @@ function isTrivialMessage(text) {
   ];
   if (alertKeywords.some(function(w) { return tl.indexOf(w) !== -1; })) return false;
 
-  // Court (≤ 30 chars) et sans alerte → très probablement trivial
-  if (tl.length <= 30) return true;
+  // Court (≤ 15 chars) et sans alerte → très probablement trivial ("merci", "ok 👍").
+  // Seuil abaissé 30→15 (2026-07-04) : « le code svp » (11c) passait trivial → ignoré.
+  // Entre 15 et 30 chars, Claude tranche (il classe no_reply_needed si vraiment trivial).
+  if (tl.length <= 15) return true;
 
   // Patterns triviaux connus au-delà de 30 chars
   var trivialPatterns = [
@@ -1290,6 +1341,10 @@ export default async function handler(req, res) {
       const since = new Date(Date.now() - hoursBack * 3600 * 1000);
       console.log('[sync] démarrage — fenêtre:', hoursBack, 'h | since:', since.toISOString());
 
+      // Exemples de style de Hakim — chargés UNE fois par run (best-effort, [] si échec),
+      // injectés dans tous les appels IA du sync (avant : jamais passés sur ce chemin).
+      const styleExSync = await getHakimStyleExamples(8);
+
       // ── 0. Expiration automatique des pending obsolètes (> 48h) ──
       // Hakim répond TOUJOURS sur la plateforme en < 1h (règle Superhost). Or l'API
       // Smoobu n'expose PAS les messages hôte (tous les messages sont type=1 guest,
@@ -1430,8 +1485,9 @@ export default async function handler(req, res) {
           const lastMsg         = allMessages[lastGuestIdx];
           const messageContent  = extractMessageText(lastMsg);
           const smoobuMessageId = extractSmoobuMessageId(lastMsg);
-          const _tr             = buildGuestTranscript(allMessages);
-          const _conv           = _tr.multi ? _tr.text : null; // contexte IA multi-messages
+          // Fil COMPLET (voyageur + hôte) — l'IA voit les réponses « Hôte » et applique
+          // la règle de récence factuelle du prompt (avant : 5 msgs voyageur seulement).
+          const _conv           = buildFullTranscript(allMessages).text || null;
           const resaCtx         = await getResaContext(bookingId);
           const trivial         = isTrivialMessage(messageContent);
           const resaConfirmed   = !!(resaCtx.id);
@@ -1478,6 +1534,7 @@ export default async function handler(req, res) {
                     source:                 resaCtx?.source   || '',
                     message_content:        messageContent,
                     conversation:           _conv,
+                  style_examples:         styleExSync,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                   adults:                 resaCtx ? resaCtx.adults : null,
                   children:               resaCtx ? resaCtx.children : null,
@@ -1550,6 +1607,7 @@ export default async function handler(req, res) {
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
                   conversation:           _conv,
+                  style_examples:         styleExSync,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                   adults:                 resaCtx ? resaCtx.adults : null,
                   children:               resaCtx ? resaCtx.children : null,
@@ -1612,6 +1670,7 @@ export default async function handler(req, res) {
                   source:                 resaCtx.source   || '',
                   message_content:        messageContent,
                   conversation:           _conv,
+                  style_examples:         styleExSync,
                   apartment_kb:           await getApartmentKB(resaCtx && resaCtx.appart ? resaCtx.appart : appart),
                   adults:                 resaCtx ? resaCtx.adults : null,
                   children:               resaCtx ? resaCtx.children : null,
@@ -1726,8 +1785,8 @@ export default async function handler(req, res) {
           const messageContent = extractMessageText(lastMsg);
           const smoobuMsgId    = extractSmoobuMessageId(lastMsg);
           if (!messageContent) { bcom_skipped++; continue; }
-          const _trBc   = buildGuestTranscript(allMessages);
-          const _convBc = _trBc.multi ? _trBc.text : null; // contexte IA multi-messages
+          // Fil COMPLET (voyageur + hôte) — même logique que le sync threads.
+          const _convBc = buildFullTranscript(allMessages).text || null;
 
           // Cas B : pending existant, même message → skip (pas de stale pour scan direct)
           if (existingPending.length > 0 && isSameMessage(existingPending[0], smoobuMsgId, messageContent)) {
@@ -1755,6 +1814,7 @@ export default async function handler(req, res) {
                 source:                 'Booking.com',
                 message_content:        messageContent,
                 conversation:           _convBc,
+                style_examples:         styleExSync,
                 apartment_kb:           await getApartmentKB(resa && resa.appart ? resa.appart : ''),
                 reservation_confirmed:  true,
                 days_until_checkin_ctx: daysUntilCheckin(resa.checkin || ''),
@@ -1913,13 +1973,17 @@ export default async function handler(req, res) {
       // ── Re-fetch Smoobu pour avoir le dernier état réel de la conversation ──
       // Si la conversation a évolué depuis la dernière capture, on utilise le
       // dernier message voyageur actuel, pas celui figé en DB.
-      let latestContent    = msg.message_content;
-      let latestMsgId      = null;
-      let contentUpdated   = false;
+      let latestContent      = msg.message_content;
+      let latestMsgId        = null;
+      let contentUpdated     = false;
+      let freshConversation  = null; // fil complet (voyageur + hôte) pour l'IA
       try {
         const freshData  = await getSmoobuMessages(msg.smoobu_booking_id);
         const freshRaw   = freshData?.messages || freshData?.data || (Array.isArray(freshData) ? freshData : []);
         const freshMsgs  = sortMessagesChronologically(freshRaw); // trier ASC
+        // FIX 2026-07-04 : Régénérer ne passait AUCUNE conversation à l'IA (juste le
+        // dernier message) → réponses hors-sol quand Hakim régénérait avec consigne.
+        freshConversation = buildFullTranscript(freshMsgs).text || null;
         let freshLastIdx = -1;
         for (let gi = freshMsgs.length - 1; gi >= 0; gi--) {
           if (isGuestMessage(freshMsgs[gi]) && extractMessageText(freshMsgs[gi]).length > 0) {
@@ -1952,13 +2016,14 @@ export default async function handler(req, res) {
         checkout:               resaCtx.checkout || '',
         source:                 msg.source   || resaCtx.source   || '',
         message_content:        latestContent,
+        conversation:           freshConversation,
         hakim_instruction:      String(hakim_instruction).trim(),
         reservation_confirmed:  !!(msg.reservation_id || resaCtx.id),
         days_until_checkin_ctx: daysUntilCheckin(resaCtx.checkin || ''),
         // FIX : le chemin Régénérer n'injectait NI la fiche logement (→ lien Google
         // Maps/wifi absents quand Hakim régénère), NI le style, NI la composition.
         apartment_kb:           await getApartmentKB(_regenAppart),
-        style_examples:         await getHakimStyleExamples(6),
+        style_examples:         await getHakimStyleExamples(8),
         adults:                 resaCtx.adults   != null ? resaCtx.adults   : null,
         children:               resaCtx.children != null ? resaCtx.children : null,
       });
@@ -2001,7 +2066,7 @@ export default async function handler(req, res) {
       const { text, source, appart } = body || {};
       if (!text || !String(text).trim()) return res.status(400).json({ error: 'text requis' });
       if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
-      const styleEx = await getHakimStyleExamples(5);
+      const styleEx = await getHakimStyleExamples(8);
       const reworded = await rewordReply(String(text).trim(), { source: source || '', appart: appart || '', styleExamples: styleEx });
       return res.status(200).json({ ok: true, text: reworded });
     } catch (err) {
@@ -2020,7 +2085,7 @@ export default async function handler(req, res) {
       if (!draft || !String(draft).trim()) return res.status(400).json({ error: 'draft requis' });
       if (!CLAUDE_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY non configurée' });
       const m = (mode === 'advise') ? 'advise' : 'refine';
-      const styleEx = (m === 'refine') ? await getHakimStyleExamples(5) : [];
+      const styleEx = (m === 'refine') ? await getHakimStyleExamples(8) : [];
       const out = await assistReply(m, {
         draft:         String(draft).trim(),
         instruction:   String(instruction || '').trim(),
@@ -2096,7 +2161,7 @@ export default async function handler(req, res) {
         days_until_checkin_ctx: daysUntilCheckin(String(checkin || '').trim()),
         adults:                 (adults != null && adults !== '') ? parseInt(adults, 10) : null,
         children:               (children != null && children !== '') ? parseInt(children, 10) : null,
-        style_examples:         await getHakimStyleExamples(5),
+        style_examples:         await getHakimStyleExamples(8),
         apartment_kb:           await getApartmentKB(String(appart || '').trim()),
       });
 
@@ -2142,7 +2207,7 @@ export default async function handler(req, res) {
         checkout:          String(checkout || '').trim(),
         adults:            (adults != null && adults !== '') ? parseInt(adults, 10) : null,
         children:          (children != null && children !== '') ? parseInt(children, 10) : null,
-        style_examples:    await getHakimStyleExamples(5),
+        style_examples:    await getHakimStyleExamples(8),
         apartment_kb:      await getApartmentKB(String(appart || '').trim()),
       });
 
@@ -2350,6 +2415,10 @@ export default async function handler(req, res) {
     const isMultiPart = whTr.multi;
     // Ce qu'on stocke/affiche : le fil complet si multi-messages, sinon le message seul
     const displayContent = isMultiPart ? conversationText : messageContent;
+    // Ce qu'on donne à l'IA : le fil COMPLET voyageur + hôte (règle de récence factuelle).
+    // Avant : 5 derniers messages voyageur seulement → l'IA ne voyait jamais les
+    // réponses « Hôte » que le prompt lui demande pourtant d'exploiter.
+    const whFullConv = buildFullTranscript(allMessages).text || null;
 
     // 2. Déduplication (même message déjà en base)
     const isDup = await checkDuplicate(booking.id, messageContent, smoobuMessageId);
@@ -2393,13 +2462,13 @@ export default async function handler(req, res) {
         analysis = await generateFullAnalysis({
           appart, voyageur: guestName, checkin, checkout, source,
           message_content:        messageContent,
-          conversation:           isMultiPart ? conversationText : null,
+          conversation:           whFullConv,
           reservation_confirmed:  resaConfirmedWh,
           days_until_checkin_ctx: daysCheckinWh,
           adults:                 resaCtx.adults,
           children:               resaCtx.children,
           apartment_kb:           await getApartmentKB(appart),
-          style_examples:         await getHakimStyleExamples(5),
+          style_examples:         await getHakimStyleExamples(8),
         });
         console.log('[messages] Claude OK — lang:', analysis.detected_language, '| classif:', analysis.classification);
       } catch (claudeErr) {
