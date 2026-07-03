@@ -16028,8 +16028,9 @@ function _convModal(){
   ov.onclick=function(e){ if(e.target===ov) convClose(); };
   ov.innerHTML='<div class="conv-box" style="width:min(560px,96vw);max-height:84vh;background:var(--s);border:1px solid var(--br);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--br)">'+
-      '<div style="min-width:0"><div id="conv-title" style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="conv-sub" style="font-size:12px;color:var(--td)"></div></div>'+
+      '<div style="min-width:0"><div id="conv-title" style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="conv-sub" style="font-size:12px;color:var(--td)"></div><div id="conv-sync" style="font-size:10px;color:var(--td);margin-top:1px"></div></div>'+
       '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+        '<button id="conv-refresh-btn" onclick="convReload()" title="Rafraîchir la conversation" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:6px 9px;font-size:13px;cursor:pointer;line-height:1">🔄</button>'+
         '<button id="conv-lang-btn" onclick="convToggleLang()" title="Basculer original / français" style="background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;display:none">🌐 Voir l’original</button>'+
         '<button onclick="convClose()" style="background:none;border:none;color:var(--tm);font-size:20px;cursor:pointer;line-height:1">✕</button>'+
       '</div></div>'+
@@ -16049,6 +16050,13 @@ function _convModal(){
       '</div>'+
     '</div></div>';
   document.body.appendChild(ov);
+  if(!window._CONV_TIMERS){
+    window._CONV_TIMERS=true;
+    // Met à jour « il y a X min » régulièrement quand le panneau est ouvert.
+    setInterval(function(){ var o=document.getElementById('conv-ov'); if(o&&o.style.display!=='none') _convUpdateSyncBadge(); }, 15000);
+    // Rafraîchit le fil automatiquement (léger : re-render seulement s'il y a du nouveau).
+    setInterval(function(){ var o=document.getElementById('conv-ov'); if(o&&o.style.display!=='none'&&window._CONV_CUR) _convLoad(); }, 60000);
+  }
   return ov;
 }
 function _convSetBody(html){ var b=document.getElementById('conv-body'); if(b) b.innerHTML=html; }
@@ -16077,69 +16085,103 @@ async function convOpen(i){
 }
 async function _convLoad(){
   var cur=window._CONV_CUR; if(!cur) return;
-  _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">Chargement de la conversation…</div>');
+  var isReload=!!(cur.msgs && cur.msgs.length);
+  if(cur._loading) return;                 // évite les chevauchements (auto-refresh)
+  cur._loading=true;
+  if(!isReload) _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">Chargement de la conversation…</div>');
   try{
     var resp=await fetch('/api/smoobu-messages?conversation='+encodeURIComponent(cur.booking_id));
     var data=await resp.json();
+    if(window._CONV_CUR!==cur) return;      // l'utilisateur a changé de conversation entre-temps
     var msgs=(data&&data.messages)||[];
     var guest=msgs.filter(function(m){return m.sender==='guest';}).map(function(m){return m.text;});
     cur.convText=guest.slice(-5).join('\n— — —\n');
     cur.lastGuest=guest.length?guest[guest.length-1]:'';
     if(!msgs.length){
-      cur.msgs=[];
-      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message client pour le moment.<div style="font-size:11px;margin-top:6px">Smoobu n\'expose pas les réponses tapées directement dans l\'appli. Répondez ci-dessous (en français) pour garder une trace dans le CRM.</div></div>');
-      _convUpdateLangBar();
+      cur.msgs=[]; cur._sig='0';
+      _convSetBody('<div style="padding:22px;text-align:center;color:var(--td);font-size:13px">Aucun message client pour le moment.<div style="font-size:11px;margin-top:6px">Répondez ci-dessous (en français) pour garder une trace dans le CRM.</div></div>');
+      _convUpdateLangBar(); cur.lastSync=Date.now(); _convUpdateSyncBadge();
       return;
     }
-    // Traduction en français (style Airbnb) — affichage par défaut en français
-    _convSetBody('<div style="padding:24px;text-align:center;color:var(--td);font-size:13px">🌐 Traduction en français…</div>');
-    var fr=msgs.map(function(m){return m.text;}), detected='';
-    try{
-      var tr=await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:msgs.map(function(m){return m.text;})})});
-      var td=await tr.json();
-      if(td&&td.translations&&td.translations.length===msgs.length) fr=td.translations;
-      detected=(td&&td.detected)||'';
-    }catch(e){}
-    cur.clientLang=detected;
-    cur.msgs=msgs.map(function(m,i){ return {sender:m.sender, at:m.at, via_crm:m.via_crm, original:m.text, fr:fr[i]||m.text}; });
-    // Fil chronologique (voyageur + réponses déjà envoyées via CRM) avec dates relatives.
-    // L'IA reçoit ça comme CONTEXTE ; elle ne doit répondre qu'au dernier message voyageur non traité.
-    var _now=Date.now();
-    cur.convFull=cur.msgs.slice(-8).map(function(m){
-      var who=m.sender==='guest'?'Voyageur':'Hôte (réponse déjà envoyée)';
-      var rel='';
-      if(m.at){ var d=new Date(m.at); var days=Math.floor((_now-d.getTime())/86400000);
-        rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
-      return '['+who+rel+'] '+(m.original||'');
-    }).join('\n');
-    // RAFALE = derniers messages VOYAGEUR consécutifs et rapprochés (≤ 90 min entre eux) → ce à quoi
-    // l'IA doit répondre. Les messages plus anciens sont considérés déjà traités (Hakim répond <1h en
-    // journée, et ses réponses plateforme ne sont pas visibles ici). Une réponse Hôte clôt la rafale.
-    var _burst=[], _prevT=null;
-    for(var _i=cur.msgs.length-1;_i>=0;_i--){
-      var _m=cur.msgs[_i];
-      if(_m.sender!=='guest'){ if(_burst.length) break; else continue; }
-      var _t=_m.at?new Date(_m.at).getTime():null;
-      if(_burst.length && _prevT!=null && _t!=null && (_prevT-_t)>90*60000) break;
-      _burst.unshift(_m); if(_t!=null) _prevT=_t;
-    }
-    if(_burst.length) cur.lastGuest=_burst.map(function(m){return m.original;}).join('\n');
+    // AFFICHAGE IMMÉDIAT : on montre le fil tout de suite en texte original (ou traduction
+    // déjà en cache). La traduction manquante se fait ENSUITE en tâche de fond → fini
+    // l'attente de 20-40 s sur « Traduction en cours ».
+    var cache=window._TRANS_CACHE||(window._TRANS_CACHE={});
+    var _sig=msgs.length+'|'+((msgs[msgs.length-1]&&msgs[msgs.length-1].at)||'');
+    var changed=(_sig!==cur._sig); cur._sig=_sig;
+    cur.msgs=msgs.map(function(m){ return {sender:m.sender, at:m.at, via_crm:m.via_crm, original:m.text, fr:(cache[m.text]||m.text)}; });
     if(cur.showOriginal==null) cur.showOriginal=false;
-    _convRenderMsgs();
+    _convBuildContext(cur);
+    // Rafraîchissement auto sans changement → pas de re-render (évite le saut de défilement)
+    if(!isReload || changed) _convRenderMsgs();
     _convUpdateLangBar();
-    // Génération AUTO du brouillon à l'ouverture : si le dernier message est du
-    // voyageur (non répondu) et que la case est vide, l'IA prépare une réponse.
-    // Une seule fois (flag), pour ne pas régénérer après un envoi (convReload).
+    cur.lastSync=Date.now(); _convUpdateSyncBadge();
+    // Génération AUTO du brouillon à la PREMIÈRE ouverture seulement (jamais sur rafraîchissement/envoi)
     var _last=cur.msgs[cur.msgs.length-1];
     var _rep=document.getElementById('conv-reply');
-    if(!cur.autoGenDone && _last && _last.sender==='guest' && _rep && !_rep.value.trim()){
+    if(!isReload && !cur.autoGenDone && _last && _last.sender==='guest' && _rep && !_rep.value.trim()){
       cur.autoGenDone=true;
       _rep.placeholder='⏳ L\'IA prépare une réponse…';
       convGenerate();
     }
+    // Traduction en tâche de fond (voyageur non caché) — ne bloque pas l'affichage
+    if(!isReload || changed) _convTranslateAsync(cur);
   }catch(e){
-    _convSetBody('<div style="padding:22px;text-align:center;color:var(--re);font-size:13px">Erreur de chargement de la conversation.</div>');
+    if(!isReload) _convSetBody('<div style="padding:22px;text-align:center;color:var(--re);font-size:13px">Erreur de chargement de la conversation.</div>');
+  }finally{ if(cur) cur._loading=false; }
+}
+// Construit le CONTEXTE IA (fil des 8 derniers messages + rafale voyageur) à partir de cur.msgs.
+function _convBuildContext(cur){
+  var _now=Date.now();
+  cur.convFull=cur.msgs.slice(-8).map(function(m){
+    var who=m.sender==='guest'?'Voyageur':'Hôte (réponse déjà envoyée)';
+    var rel='';
+    if(m.at){ var d=new Date(m.at); var days=Math.floor((_now-d.getTime())/86400000);
+      rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
+    return '['+who+rel+'] '+(m.original||'');
+  }).join('\n');
+  // RAFALE = derniers messages VOYAGEUR consécutifs rapprochés (≤ 90 min) → ce à quoi l'IA répond.
+  var _burst=[], _prevT=null;
+  for(var _i=cur.msgs.length-1;_i>=0;_i--){
+    var _m=cur.msgs[_i];
+    if(_m.sender!=='guest'){ if(_burst.length) break; else continue; }
+    var _t=_m.at?new Date(_m.at).getTime():null;
+    if(_burst.length && _prevT!=null && _t!=null && (_prevT-_t)>90*60000) break;
+    _burst.unshift(_m); if(_t!=null) _prevT=_t;
   }
+  if(_burst.length) cur.lastGuest=_burst.map(function(m){return m.original;}).join('\n');
+}
+// Traduit en tâche de fond UNIQUEMENT les messages voyageur pas encore en cache (les
+// réponses hôte sont déjà en français). Cache global → réouverture/refresh instantanés.
+async function _convTranslateAsync(cur){
+  var cache=window._TRANS_CACHE||(window._TRANS_CACHE={});
+  var idxs=[], texts=[];
+  cur.msgs.forEach(function(m,i){
+    if(m.sender==='guest' && m.original && !(m.original in cache)){ idxs.push(i); texts.push(m.original); }
+  });
+  if(!texts.length){ _convUpdateSyncBadge(); return; }
+  cur._translating=true; _convUpdateSyncBadge();
+  try{
+    var tr=await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts})});
+    var td=await tr.json();
+    var trans=(td&&td.translations)||[];
+    if(td&&td.detected) cur.clientLang=td.detected;
+    if(window._CONV_CUR!==cur) return;      // conversation changée pendant la traduction
+    idxs.forEach(function(idx,k){ var f=trans[k]; if(f){ cache[cur.msgs[idx].original]=f; if(cur.msgs[idx]) cur.msgs[idx].fr=f; } });
+    if(!cur.showOriginal) _convRenderMsgs();
+    _convUpdateLangBar();
+  }catch(e){}
+  finally{ cur._translating=false; _convUpdateSyncBadge(); }
+}
+// Indicateur « Synchronisé il y a X min » / « traduction en cours ».
+function _convUpdateSyncBadge(){
+  var cur=window._CONV_CUR||{};
+  var el=document.getElementById('conv-sync'); if(!el) return;
+  if(cur._translating){ el.textContent='🌐 traduction en cours…'; el.style.color='var(--bl)'; return; }
+  if(!cur.lastSync){ el.textContent=''; return; }
+  var sec=Math.floor((Date.now()-cur.lastSync)/1000);
+  var t=sec<10?'à l\'instant':(sec<60?('il y a '+sec+' s'):('il y a '+Math.floor(sec/60)+' min'));
+  el.textContent='🔄 Synchronisé '+t; el.style.color='var(--td)';
 }
 function convReload(){ _convLoad(); }
 function _convRenderMsgs(){

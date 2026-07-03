@@ -126,27 +126,33 @@ async function sbPatch(table, filter, patch) {
 // isGuestMessage() distingue déjà type 1/2 ; sortMessagesChronologically() trie ensuite.
 async function getSmoobuMessages(bookingId) {
   const MAX_PAGES = 20; // garde-fou : 20 × 25 = 500 messages max
-  let all = [];
-  let pageCount = 1;
-  for (let page = 1; page <= pageCount && page <= MAX_PAGES; page++) {
+  const pageMsgs = (data) => data?.messages || data?.data || (Array.isArray(data) ? data : []);
+  const fetchPage = async (page) => {
     const res = await smoobuFetch(`/api/reservations/${bookingId}/messages`, {
       query: { onlyRelatedToGuest: 'false', page },
     });
     // 404 = booking inconnu de l'endpoint messages = prospect / inquiry (Smoobu n'expose
-    // PAS les conversations sans réservation). Pas une erreur traitable : on retourne
-    // vide → le handler ignore proprement (aucun faux record « erreur »).
-    if (res.status === 404) {
-      console.log('[messages] 404 messages (prospect/inquiry, non exposé par Smoobu) — booking:', bookingId, '| skip');
-      return { messages: [] };
-    }
+    // PAS les conversations sans réservation). Pas une erreur traitable → on remonte vide.
+    if (res.status === 404) return { _notFound: true };
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Smoobu GET messages [${bookingId}] p${page}: ${res.status} ${err}`);
     }
-    const data = await res.json();
-    const msgs = data?.messages || data?.data || (Array.isArray(data) ? data : []);
-    all = all.concat(msgs);
-    pageCount = Number(data?.page_count) || 1;
+    return res.json();
+  };
+  // Page 1 d'abord (donne page_count) ; les pages suivantes en PARALLÈLE (latence réduite).
+  const first = await fetchPage(1);
+  if (first._notFound) {
+    console.log('[messages] 404 messages (prospect/inquiry, non exposé par Smoobu) — booking:', bookingId, '| skip');
+    return { messages: [] };
+  }
+  const pageCount = Math.min(Number(first?.page_count) || 1, MAX_PAGES);
+  let all = pageMsgs(first);
+  if (pageCount > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, k) => fetchPage(k + 2))
+    );
+    for (const d of rest) all = all.concat(pageMsgs(d)); // Promise.all conserve l'ordre des pages
   }
   return { messages: all };
 }
@@ -539,7 +545,7 @@ async function translateBatchToFrench(texts) {
     'Détecte aussi la langue source dominante. Réponds UNIQUEMENT avec un objet JSON valide sur une seule ligne, sans markdown : ' +
     '{"detected":"<langue source en français, ex: anglais, chinois, arabe, français>","translations":["...","..."]} — le tableau translations dans le MÊME ORDRE et la MÊME taille que l\'entrée.';
   const user = JSON.stringify(arr);
-  let raw = await _claudeText(system, user, 2048);
+  let raw = await _claudeText(system, user, 4096);
   raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
   try {
     const j = JSON.parse(raw);
