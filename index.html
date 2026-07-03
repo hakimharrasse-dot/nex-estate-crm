@@ -16133,7 +16133,7 @@ async function _convLoad(){
 // Construit le CONTEXTE IA (fil des 8 derniers messages + rafale voyageur) à partir de cur.msgs.
 function _convBuildContext(cur){
   var _now=Date.now();
-  cur.convFull=cur.msgs.slice(-8).map(function(m){
+  cur.convFull=cur.msgs.slice(-12).map(function(m){
     var who=m.sender==='guest'?'Voyageur':'Hôte (réponse déjà envoyée)';
     var rel='';
     if(m.at){ var d=new Date(m.at); var days=Math.floor((_now-d.getTime())/86400000);
