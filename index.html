@@ -1698,6 +1698,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     </div>
     <div id="conv-results" style="margin-top:8px"></div>
     <div id="conv-recent" style="margin-top:10px"></div>
+    <div id="conv-all" style="margin-top:16px"></div>
   </div>
 </div>
 
@@ -15994,12 +15995,53 @@ function convOpenBooking(bookingId, fallback){
   window._CONV_MATCHES=[r];
   convOpen(0);
 }
+// ── Liste UNIFIÉE : TOUTES les conversations Smoobu (endpoint ?allThreads=) ──
+// Source = API Smoobu /threads → visibilité COMPLÈTE (pas seulement les fils déjà
+// traités par le CRM). Paginé 25/page avec bouton « Charger plus ».
+async function renderAllThreads(page, append){
+  var box=document.getElementById('conv-all'); if(!box) return;
+  page=page||1;
+  var head='<div style="font-size:11px;font-weight:700;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin:2px 2px 7px">🗂️ Toutes les conversations</div>';
+  if(!append){ window._ALL_THREADS=[]; box.innerHTML=head+'<div style="color:var(--td);font-size:12px;padding:6px 2px">Chargement…</div>'; }
+  else { var mb=document.getElementById('conv-all-more'); if(mb){ mb.textContent='⏳ Chargement…'; mb.disabled=true; } }
+  try{
+    var resp=await fetch('/api/smoobu-messages?allThreads=1&page='+page);
+    var data=await resp.json();
+    if(!data||!data.ok){ if(!append) box.innerHTML=head+'<div style="color:var(--td);font-size:13px;padding:10px 2px">Liste indisponible pour le moment.</div>'; return; }
+    window._ALL_THREADS=(window._ALL_THREADS||[]).concat(data.conversations||[]);
+    var rows=window._ALL_THREADS.map(function(c,i){
+      var t=c.last_at?new Date(c.last_at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+      return '<div onclick="convOpenAllThread('+i+')" style="padding:10px 12px;border:1px solid var(--br);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--s)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'+
+          '<div style="font-weight:600;font-size:13px;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(c.voyageur||'(sans nom)')+'</div>'+
+          '<div style="font-size:10px;color:var(--td);white-space:nowrap;flex:0 0 auto">'+t+'</div>'+
+        '</div>'+
+        (c.appart?'<div style="font-size:11px;color:var(--td);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(aptShort(c.appart))+'</div>':'')+
+        '<div style="font-size:12px;color:var(--tm);margin-top:3px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+escHtml(c.last_text||'')+'</div>'+
+      '</div>';
+    }).join('');
+    var curPage=Number(data.page)||page, pageCount=Number(data.page_count)||1;
+    var moreBtn=(curPage<pageCount)
+      ? '<button id="conv-all-more" onclick="renderAllThreads('+(curPage+1)+',true)" style="width:100%;margin-top:4px;background:var(--s2);border:1px solid var(--br);color:var(--tx);border-radius:9px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">Charger plus ('+window._ALL_THREADS.length+' / '+(data.total||'?')+')</button>'
+      : '';
+    box.innerHTML=head+rows+moreBtn;
+  }catch(e){
+    if(!append) box.innerHTML=head+'<div style="color:var(--td);font-size:13px;padding:10px 2px">Liste indisponible.</div>';
+    var mb2=document.getElementById('conv-all-more'); if(mb2){ mb2.textContent='Réessayer'; mb2.disabled=false; }
+  }
+}
+function convOpenAllThread(i){
+  var c=(window._ALL_THREADS||[])[i]; if(!c) return;
+  convOpenBooking(c.booking_id, c);
+}
 function convSearch(q){
   var box=document.getElementById('conv-results'); if(!box) return;
   var recent=document.getElementById('conv-recent');
+  var all=document.getElementById('conv-all');
   var nq=_convNorm((q||'').trim());
-  if(nq.length<2){ box.innerHTML=''; if(recent) recent.style.display=''; return; }
+  if(nq.length<2){ box.innerHTML=''; if(recent) recent.style.display=''; if(all) all.style.display=''; return; }
   if(recent) recent.style.display='none';
+  if(all) all.style.display='none';
   var matches=(DB.resa||[]).filter(function(r){
     if(!r.smoobu_id) return false; // pas de conversation Smoobu sans booking
     return _convNorm([r.voyageur,r.ref,r.appart].join(' ')).indexOf(nq)>=0;
@@ -16385,6 +16427,7 @@ async function renderMessages() {
   if (!el) return;
 
   renderRecentConvos(); // Point 1a — liste des fils récents (indépendant du chargement pending)
+  renderAllThreads(1);  // Liste unifiée : TOUTES les conversations Smoobu (/threads)
 
   el.innerHTML = '<div style="color:var(--tm);font-size:13px;padding:30px 0;text-align:center">⏳ Chargement…</div>';
   if (em)     em.classList.add('hidden');

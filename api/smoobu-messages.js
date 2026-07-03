@@ -1108,6 +1108,44 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Liste UNIFIÉE de toutes les conversations : GET ?allThreads=1[&page=N] ──
+  // Source = API Smoobu /threads (PAS notre base) → visibilité COMPLÈTE sur TOUTES les
+  // conversations que Smoobu connaît (y compris celles absentes du CRM), 25 par page,
+  // triées par activité la plus récente. Chaque entrée s'ouvre via ?conversation=BOOKING_ID.
+  if (req.method === 'GET' && req.query?.allThreads) {
+    try {
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const r = await smoobuFetch('/api/threads', { query: { page_number: page, page_size: 25 } });
+      if (!r.ok) {
+        const err = await r.text();
+        return res.status(200).json({ ok: false, conversations: [], error: `Smoobu threads ${r.status}: ${err}`.slice(0, 180) });
+      }
+      const d = await r.json();
+      const clean = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+      const conversations = (d.threads || []).map(function (t) {
+        const lm = t.latest_message || {};
+        const created = lm.created_at ? String(lm.created_at).trim().replace(' ', 'T') + 'Z' : null; // Smoobu = UTC
+        return {
+          booking_id: String((t.booking && t.booking.id) || ''),
+          voyageur:   (t.booking && t.booking.guest_name) || '',
+          appart:     (t.apartment && t.apartment.name) || '',
+          last_text:  clean(lm.text_content || lm.html_content || '').slice(0, 120),
+          last_at:    created && !isNaN(new Date(created)) ? new Date(created).toISOString() : null,
+        };
+      }).filter(function (c) { return c.booking_id; });
+      return res.status(200).json({
+        ok: true,
+        page:       Number(d.page_number) || page,
+        page_count: Number(d.page_count) || 1,
+        total:      Number(d.total_threads) || conversations.length,
+        conversations,
+      });
+    } catch (err) {
+      console.error('[messages] allThreads error:', err.message);
+      return res.status(200).json({ ok: false, conversations: [], error: err.message });
+    }
+  }
+
   // ── Debug booking : GET ?debugBooking=ID ─────────────────
   // Retourne l'état complet de la conversation Smoobu + décision sync
   // pour un booking donné — sans modifier aucune donnée.
