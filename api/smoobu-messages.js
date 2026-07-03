@@ -1122,15 +1122,25 @@ export default async function handler(req, res) {
       }
       const d = await r.json();
       const clean = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+      // ⚠️ /threads renvoie created_at en heure de BERLIN (Europe/Berlin), PAS en UTC —
+      // vérifié 2026-07-03 : le même message = 20:27 via /reservations/{id}/messages (UTC)
+      // mais 22:27 via /threads (été = UTC+2). Conversion Berlin → UTC via Intl (gère l'heure d'été).
+      const berlinToIso = (naive) => {
+        if (!naive) return null;
+        const guess = new Date(String(naive).trim().replace(' ', 'T') + 'Z');
+        if (isNaN(guess)) return null;
+        const offsetMs = new Date(guess.toLocaleString('en-US', { timeZone: 'Europe/Berlin' })) -
+                         new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }));
+        return new Date(guess.getTime() - offsetMs).toISOString();
+      };
       const conversations = (d.threads || []).map(function (t) {
         const lm = t.latest_message || {};
-        const created = lm.created_at ? String(lm.created_at).trim().replace(' ', 'T') + 'Z' : null; // Smoobu = UTC
         return {
           booking_id: String((t.booking && t.booking.id) || ''),
           voyageur:   (t.booking && t.booking.guest_name) || '',
           appart:     (t.apartment && t.apartment.name) || '',
           last_text:  clean(lm.text_content || lm.html_content || '').slice(0, 120),
-          last_at:    created && !isNaN(new Date(created)) ? new Date(created).toISOString() : null,
+          last_at:    berlinToIso(lm.created_at),
         };
       }).filter(function (c) { return c.booking_id; });
       return res.status(200).json({
