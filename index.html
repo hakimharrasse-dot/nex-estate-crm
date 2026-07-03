@@ -17180,10 +17180,31 @@ async function msgManualDraftGenerate() {
   if (res) { res.style.display = 'none'; }
 
   try {
+    // Si un client Smoobu est sélectionné, on récupère son fil COMPLET (voyageur + hôte)
+    // pour donner le même contexte à l'IA que dans la modale Conversation (fix 2026-07-04 :
+    // avant, l'IA Manuelle générait sans aucun historique même avec un client sélectionné).
+    // Best-effort : si le fetch échoue, la génération continue sans contexte.
+    var convCtx = '';
+    if (window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id) {
+      try {
+        var rc = await fetch('/api/smoobu-messages?conversation=' + encodeURIComponent(window._MANUAL_CLIENT.booking_id));
+        var dc = await rc.json();
+        var ms = (dc && dc.messages) || [];
+        var _nowMc = Date.now();
+        convCtx = ms.slice(-12).map(function(m){
+          var who = m.sender === 'guest' ? 'Voyageur' : 'Hôte (réponse déjà envoyée)';
+          var rel = '';
+          if (m.at) { var d = new Date(m.at); var days = Math.floor((_nowMc - d.getTime()) / 86400000);
+            rel = ' · ' + d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) + (days <= 0 ? ' (aujourd’hui)' : (days === 1 ? ' (hier)' : ' (il y a ' + days + ' jours)')); }
+          return '[' + who + rel + '] ' + (m.text || '');
+        }).join('\n');
+      } catch (eCtx) { /* pas de contexte — la génération continue quand même */ }
+    }
     var r = await fetch('/api/smoobu-messages?manualDraft=1', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ message: msg, source: source, appart: appart, instruction: instr,
+                 conversation: convCtx || undefined,
                  voyageur:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.voyageur)||'',
                  reservation_confirmed: !!(window._MANUAL_CLIENT && window._MANUAL_CLIENT.booking_id),
                  checkin:ciToSend, checkout:(window._MANUAL_CLIENT&&window._MANUAL_CLIENT.checkout)||'',
