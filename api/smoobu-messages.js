@@ -39,6 +39,21 @@ const SMOOBU_API   = 'https://login.smoobu.com/api';
 const MODEL_DRAFT = 'claude-sonnet-5';
 const MODEL_LIGHT = 'claude-haiku-4-5-20251001';
 
+// ── Extraction du texte d'une réponse Claude ──────────────────
+// ⚠️ FIX CRITIQUE 2026-07-04 (cas réel Kumba) : Sonnet réfléchit par défaut sur les
+// cas délicats (adaptive thinking) → sa réponse contient un bloc "thinking" AVANT le
+// bloc "text". L'ancien code lisait content[0].text → tombait sur le bloc thinking
+// (texte vide) → parse JSON échouait → brouillon NULL silencieux (pending sans
+// brouillon, aucune erreur). On concatène ici TOUS les blocs "text", peu importe
+// leur position. À utiliser pour TOUTE lecture de réponse Claude.
+function claudeTextOf(data) {
+  return ((data && data.content) || [])
+    .filter(function(b){ return b && b.type === 'text' && b.text; })
+    .map(function(b){ return b.text; })
+    .join('')
+    .trim();
+}
+
 // ── Smoobu HMAC-SHA256 (obligatoire à partir du 25/09/2026) ───────────────
 // La signature s'ACTIVE automatiquement dès que SMOOBU_API_SECRET est présent
 // dans l'environnement. Sans secret → mode "legacy" (clé seule, non signé),
@@ -297,7 +312,9 @@ async function generateFullAnalysis(ctx) {
     },
     body: JSON.stringify({
       model:      MODEL_DRAFT,
-      max_tokens: 2048,
+      // 4096 : la réflexion de Sonnet (adaptive thinking, cas délicats) compte dans
+      // max_tokens — il faut la place pour la réflexion ET le JSON complet.
+      max_tokens: 4096,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     }),
@@ -309,7 +326,7 @@ async function generateFullAnalysis(ctx) {
   }
 
   const data = await res.json();
-  const rawText = (data.content?.[0]?.text || '').trim();
+  const rawText = claudeTextOf(data);
 
   // Extraction ROBUSTE du JSON : Claude ajoute parfois une note/explication autour
   // (surtout quand l'instruction de Hakim est formulée comme une question). On tente
@@ -407,7 +424,7 @@ async function analyzeImageMessage(ctx) {
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (image): ${res.status} ${err}`); }
 
   const data = await res.json();
-  const rawText = (data.content?.[0]?.text || '').trim();
+  const rawText = claudeTextOf(data);
   const parsed = extractJsonObject(rawText);
   if (parsed) {
     const allowed = ['no_reply_needed', 'simple', 'sensible', 'conflit', 'remboursement'];
@@ -458,7 +475,7 @@ async function rewordReply(text, ctx) {
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (reword): ${res.status} ${err}`); }
   const data = await res.json();
-  const out = (data.content?.[0]?.text || '').trim()
+  const out = claudeTextOf(data)
     .replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '')
     .replace(/^["«»\s]+|["«»\s]+$/g, '')
     .trim();
@@ -536,12 +553,13 @@ async function assistReply(mode, p) {
     method:  'POST',
     headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     // refine = rédaction d'un brouillon → Sonnet (même niveau que generateFullAnalysis) ;
-    // advise = notes de relecture → Haiku suffit.
-    body: JSON.stringify({ model: mode === 'refine' ? MODEL_DRAFT : MODEL_LIGHT, max_tokens: 1024, system: system, messages: [{ role: 'user', content: user }] }),
+    // advise = notes de relecture → Haiku suffit. max_tokens 2048 côté Sonnet :
+    // sa réflexion (adaptive thinking) compte dans la limite.
+    body: JSON.stringify({ model: mode === 'refine' ? MODEL_DRAFT : MODEL_LIGHT, max_tokens: mode === 'refine' ? 2048 : 1024, system: system, messages: [{ role: 'user', content: user }] }),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (assist ${mode}): ${res.status} ${err}`); }
   const data = await res.json();
-  let out = (data.content?.[0]?.text || '').trim().replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  let out = claudeTextOf(data).replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
   if (mode === 'refine') out = out.replace(/^["«»\s]+|["«»\s]+$/g, '').trim();
   return out;
 }
@@ -556,7 +574,7 @@ async function _claudeText(system, user, maxTokens) {
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (translate): ${res.status} ${err}`); }
   const data = await res.json();
-  return (data.content?.[0]?.text || '').trim();
+  return claudeTextOf(data);
 }
 // Traduit un lot de messages vers le français + détecte la langue source dominante.
 async function translateBatchToFrench(texts) {
