@@ -267,10 +267,17 @@ function mapSmoobuBooking(b) {
     netEur = 0; comEurFinal = 0; comPct = 0;
   }
 
-  // Taxe
-  let taxeEur = parseFloat(b['city-tax'] || b.cityTax || b.city_tax || 0);
-  if (!taxeEur && src === 'Booking.com' && nuitsSejou > 0 && ap) {
-    taxeEur = nuitsSejou * adultes * tauxTaxe(ap);
+  // ── Taxe séjour — PARITÉ EXACTE avec lib/smoobu-normalizer.js (webhook) ──
+  // ⚠️ Récidive corrigée 2026-07-06 (cas Hafsa El Jattari, Touahri 11) : cette COPIE
+  // locale avait gardé l'ancienne formule « adultes seulement » — le fix cbbdda8
+  // (2026-06-29) n'avait corrigé que le normalizer et index.html. Résultat : le cron
+  // de midi ré-écrasait CHAQUE JOUR la taxe correcte écrite par le webhook (2+2 pers
+  // → 4€ au lieu de 8€). La taxe est due par personne (ADULTES + ENFANTS).
+  // city-tax Smoobu ignoré ici comme dans le normalizer — sinon ping-pong quotidien
+  // webhook↔poll sur taxe_sejour. Règle CRM : toujours recalculer (comme commissions).
+  let taxeEur = 0;
+  if (src === 'Booking.com' && nuitsSejou > 0 && ap) {
+    taxeEur = nuitsSejou * (adultes + enfants) * tauxTaxe(ap);
   }
 
   const dp = calcDatePaiement(src, typeNorm, ci, co, dateCreation);
