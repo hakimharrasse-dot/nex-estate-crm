@@ -226,12 +226,12 @@ async function generateFullAnalysis(ctx) {
     'Analyse le message du voyageur et réponds UNIQUEMENT avec un objet JSON valide sur une seule ligne (sans markdown, sans ``` , sans explication, juste le JSON brut). ' +
     'IMPÉRATIF : même si l\'instruction de Hakim est formulée comme une question ou une conversation (« est-ce que tu as… », « peux-tu… »), tu ne réponds JAMAIS de façon conversationnelle et tu n\'ajoutes AUCUNE note, AUCUN commentaire, AUCUN texte avant ou après le JSON. Ta réponse entière = le seul objet JSON.\n\n' +
     'Format exact :\n' +
-    '{"detected_language":"code ISO 2 lettres","client_summary_fr":"résumé bref en français (1-2 phrases max, ce que dit le client)","classification":"simple","ai_draft":"réponse dans la langue du voyageur","ai_draft_fr":"traduction française fidèle de ai_draft"}\n\n' +
+    '{"detected_language":"code ISO 2 lettres (langue du VOYAGEUR)","client_summary_fr":"résumé bref en français (1-2 phrases max, ce que dit le client)","classification":"simple","ai_draft":"réponse EN FRANÇAIS","ai_draft_fr":""}\n\n' +
     'Règles pour ai_draft :\n' +
     (firstName
-      ? '- ⚡⚡ RÈGLE ABSOLUE N°1 : COMMENCE TOUJOURS par une salutation contenant le PRÉNOM « ' + firstName + ' » — « Bonjour ' + firstName + ', » / « Salam ' + firstName + ', » / « Hello ' + firstName + ', » selon la langue du voyageur. Cette règle PRIME sur les exemples de style : même si les anciennes réponses ci-dessous ne mettent pas de prénom, TOI tu mets TOUJOURS « ' + firstName + ' ». INTERDIT de commencer par « Bonjour » seul, « Salut », « Hi » ou « Hello » sans le prénom.\n'
+      ? '- ⚡⚡ RÈGLE ABSOLUE N°1 : COMMENCE TOUJOURS par une salutation contenant le PRÉNOM « ' + firstName + ' » — « Bonjour ' + firstName + ', » (ou « Salam ' + firstName + ', » si le voyageur salue en arabe/darija). Cette règle PRIME sur les exemples de style : même si les anciennes réponses ci-dessous ne mettent pas de prénom, TOI tu mets TOUJOURS « ' + firstName + ' ». INTERDIT de commencer par « Bonjour » seul, « Salut », « Hi » ou « Hello » sans le prénom.\n'
       : '') +
-    '- Langue : celle du voyageur (déterminée par detected_language)\n' +
+    '- ⚡⚡ Langue : TOUJOURS LE FRANÇAIS, quelle que soit la langue du voyageur — Hakim envoie ses réponses en français et la plateforme (Airbnb/Booking) les traduit automatiquement pour le client. N\'écris JAMAIS ai_draft dans une autre langue. detected_language décrit la langue du CLIENT, pas celle de ta réponse.\n' +
     '- Ton : court, humain, professionnel, sans emojis\n' +
     '- Ne jamais inventer d\'information\n' +
     '- ⚡ Si l\'information demandée FIGURE dans les INFORMATIONS VÉRIFIÉES DE CE LOGEMENT ou le PLAYBOOK ci-dessous (ex : piscine, climatisation, parking, wifi, équipements, règles), RÉPONDS-LA DIRECTEMENT. Ne dis JAMAIS « je vérifie » ni « je reviens vers vous » pour une info qui est déjà fournie ci-dessous — même si le voyageur demande « est-ce toujours d\'actualité ? » (les infos fournies font foi).\n' +
@@ -258,8 +258,7 @@ async function generateFullAnalysis(ctx) {
     '- Séjour TERMINÉ : le voyageur est reparti — réponds en conséquence (avis, objet oublié, facture…).\n' +
     '- Tiens compte de la COMPOSITION (adultes / enfants) quand c\'est pertinent (serviettes, capacité, accès piscine réservé aux moins de 14 ans, etc.).\n\n' +
     'Règles pour ai_draft_fr :\n' +
-    '- Traduction fidèle de ai_draft en français\n' +
-    '- Usage Hakim uniquement — ne jamais envoyer au voyageur\n\n' +
+    '- Laisse TOUJOURS ce champ vide "" — ai_draft est déjà en français, aucune traduction à produire\n\n' +
     'INSTRUCTION DE HAKIM (si fournie) — applique-la de façon ADDITIVE et CHIRURGICALE :\n' +
     '- Si Hakim demande plusieurs choses (ex : « envoie le lien ET dis-lui qu\'il a déjà reçu un guide »), inclus TOUTES ses demandes — n\'en omets aucune.\n' +
     '- Une demande d\'AJOUT (« ajoute… », « dis aussi… », « en plus… ») ne REMPLACE jamais le reste : garde le contenu utile de ta réponse (liens, infos, coordonnées) ET ajoute ce qu\'il demande.\n' +
@@ -350,7 +349,10 @@ async function generateFullAnalysis(ctx) {
       classification:    classif,
       // Si no_reply_needed : pas de brouillon (Claude renvoie "" — on force null)
       ai_draft:    classif === 'no_reply_needed' ? null : (String(parsed.ai_draft   || '').trim() || null),
-      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || null),
+      // 2026-07-09 : le brouillon est rédigé EN FRANÇAIS (Airbnb/Booking traduisent pour
+      // le client) → ai_draft_fr = miroir de ai_draft (l'UI lit ai_draft_fr). Si le modèle
+      // renvoie quand même une traduction (ancien format), on la garde en priorité.
+      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || String(parsed.ai_draft || '').trim() || null),
     };
   }
   // Échec total : ne JAMAIS renvoyer le JSON/texte brut dans le champ (anti-charabia).
@@ -392,7 +394,7 @@ async function analyzeImageMessage(ctx) {
     'On te donne une IMAGE envoyée par un voyageur (parfois accompagnée d\'un texte). Analyse-la et réponds ' +
     'UNIQUEMENT avec un objet JSON valide sur une seule ligne (pas de markdown, pas de ```, aucun texte avant/après).\n' +
     'Format exact :\n' +
-    '{"description_fr":"ce que montre l\'image, factuel et bref (1-2 phrases), + ce que le voyageur semble vouloir ou signaler","detected_language":"code ISO 2 lettres du texte visible dans l\'image, sinon fr","classification":"simple","ai_draft":"brouillon de réponse dans la langue du voyageur","ai_draft_fr":"traduction française de ai_draft"}\n\n' +
+    '{"description_fr":"ce que montre l\'image, factuel et bref (1-2 phrases), + ce que le voyageur semble vouloir ou signaler","detected_language":"code ISO 2 lettres du texte visible dans l\'image, sinon fr","classification":"simple","ai_draft":"brouillon de réponse EN FRANÇAIS (la plateforme traduit automatiquement pour le voyageur — n\'écris jamais dans une autre langue)","ai_draft_fr":""}\n\n' +
     'Règles :\n' +
     '- ⚡ DÉCRIS UNIQUEMENT CE QUI EST CLAIREMENT VISIBLE sur l\'image (objets, texte lisible, état). N\'INVENTE RIEN : pas de cause, pas de problème, pas de scénario qui ne se voit pas. Ex : un récipient posé quelque part = « un récipient » — n\'en déduis PAS une fuite ou une infiltration si rien ne le montre.\n' +
     '- ⚡ SI LE BUT DE LA PHOTO EST AMBIGU (on ne sait pas ce que le voyageur veut), dis-le clairement dans description_fr (« la raison de cette photo n\'est pas claire »), et fais un ai_draft qui DEMANDE poliment au voyageur ce qu\'il souhaite signaler — ne suppose pas un problème.\n' +
@@ -441,7 +443,8 @@ async function analyzeImageMessage(ctx) {
       detected_language: String(parsed.detected_language || '').slice(0, 10).trim() || null,
       classification:    classif,
       ai_draft:    classif === 'no_reply_needed' ? null : (String(parsed.ai_draft    || '').trim() || null),
-      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || null),
+      // Brouillon en français (2026-07-09) → miroir, comme generateFullAnalysis.
+      ai_draft_fr: classif === 'no_reply_needed' ? null : (String(parsed.ai_draft_fr || '').trim() || String(parsed.ai_draft || '').trim() || null),
     };
   }
   // Échec parse JSON : au moins renvoyer le texte comme description (jamais de charabia structuré).
@@ -694,7 +697,7 @@ function hakimStyleGuide() {
     '— ⚡ RÈGLE N°1, LA PLUS IMPORTANTE — BREF ET DIRECT. Réponds UNIQUEMENT à ce qui est demandé, en 1 à 3 phrases courtes MAXIMUM. Cette règle PRIME sur toutes les autres : si le ton « chaleureux » te pousse à rallonger, RACCOURCIS.\n' +
     '— ⚡ INTERDIT (ce qui rend les messages trop chargés) : phrases de bienvenue émotionnelles ou marketing (« quelle joie de vous accueillir », « c\'est beau de revenir à Rabat », « profitez pleinement de votre séjour »), compliments, répétitions, ET toute formule de clôture non demandée (« au plaisir de vous accueillir bientôt », « si vous avez besoin de quoi que ce soit n\'hésitez pas »). Structure type = salutation courte + la réponse, point final.\n' +
     '— ⚡ QUAND HAKIM DONNE UNE CONSIGNE : exécute EXACTEMENT cette consigne et RIEN d\'autre. N\'ajoute aucune phrase décorative autour. Ex : consigne « demande à la cliente de remplir le formulaire de check-in » → réponse attendue ≈ « Bonjour Fatima, merci de remplir le formulaire de check-in avant votre arrivée. » — PAS de speech de bienvenue avant, PAS de « au plaisir » après.\n' +
-    '— ⚡ SALUTATION OBLIGATOIREMENT PERSONNALISÉE AVEC LE PRÉNOM (fourni dans le contexte) : « Bonjour <Prénom>, » / « Salam <Prénom>, » / « Hello <Prénom>, » selon la langue du client. INTERDIT de saluer sans le prénom (jamais « Bonjour » seul, « Salut », « Hi », « Hello » tout court) quand le prénom est connu. Puis on enchaîne DIRECTEMENT sur la réponse. JAMAIS faire suivre la salutation d\'une formule d\'enthousiasme du type « quelle joie de vous accueillir », « ravi de vous recevoir » — c\'est le remplissage à supprimer. Pour un homme marocain : « Ssi »/« Si » + prénom (« Bonjour Ssi Abdellah »). Si le client salue en arabe/darija (« Salam »), réponds « Salam <Prénom> ». Mire toujours la langue du client.\n' +
+    '— ⚡ SALUTATION OBLIGATOIREMENT PERSONNALISÉE AVEC LE PRÉNOM (fourni dans le contexte) : « Bonjour <Prénom>, ». INTERDIT de saluer sans le prénom (jamais « Bonjour » seul, « Salut », « Hi », « Hello » tout court) quand le prénom est connu. Puis on enchaîne DIRECTEMENT sur la réponse. JAMAIS faire suivre la salutation d\'une formule d\'enthousiasme du type « quelle joie de vous accueillir », « ravi de vous recevoir » — c\'est le remplissage à supprimer. Pour un homme marocain : « Ssi »/« Si » + prénom (« Bonjour Ssi Abdellah »). Si le client salue en arabe/darija (« Salam »), réponds « Salam <Prénom> ». Rédige toujours en FRANÇAIS — la plateforme traduit pour le client.\n' +
     '— Reste POSÉ et courtois même face à l\'agressivité ; ne te justifie jamais avec agacement. Un seul « merci » si pertinent, pas plus.\n' +
     '— Pour un refus ou une règle : explique le pourquoi en UNE phrase courte (réglementation, sécurité, copropriété) et propose une solution concrète — jamais un « non » sec, mais sans t\'étaler.\n' +
     '— Couples non mariés : INFORMER de la réglementation locale sans refuser d\'office, recentrer sur le respect du logement ; ne JAMAIS improviser un refus → laisser Hakim valider.\n' +

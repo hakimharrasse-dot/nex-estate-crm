@@ -16237,7 +16237,7 @@ function _convUpdateLangBar(){
   var info=document.getElementById('conv-lang-info');
   if(info){
     var lang=cur.clientLang||'';
-    if(lang && !/fran[çc]ais|^fr$|inconnue/i.test(lang)){ info.textContent='🌍 Client : '+lang+' — votre réponse sera traduite en '+lang+' à l’envoi.'; info.style.display=''; }
+    if(lang && !/fran[çc]ais|^fr$|inconnue/i.test(lang)){ info.textContent='🌍 Client : '+lang+' — vous répondez en français, la plateforme traduit pour le client.'; info.style.display=''; }
     else { info.style.display='none'; }
   }
 }
@@ -16325,25 +16325,15 @@ async function convSend(){
   var ta=document.getElementById('conv-reply'); var text=((ta&&ta.value)||'').trim();
   if(!text){ showToast('Réponse vide'); return; }
   var btn=document.getElementById('conv-send-btn');
-  var lang=cur.clientLang||'', sendText=text;
-  // Traduire ton français vers la langue du client avant l'envoi (style Airbnb)
-  if(lang && !/fran[çc]ais|^fr$|inconnue/i.test(lang)){
-    if(btn){ btn.disabled=true; btn.textContent='⏳ Traduction…'; }
-    try{
-      var tr=await fetch('/api/smoobu-messages?translate=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,to:lang})});
-      var td=await tr.json(); if(td&&td.text) sendText=td.text;
-    }catch(e){}
-    if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
-  }
-  var confirmMsg=(sendText!==text)
-    ? 'Envoyer à '+(cur.voyageur||'ce client')+' (traduit en '+lang+') :\n\n'+sendText+'\n\n— — —\nVotre texte FR : '+text
-    : 'Envoyer cette réponse à '+(cur.voyageur||'ce client')+' via Smoobu ?\n\n'+sendText;
+  // Envoi TOUJOURS en français (2026-07-09) : la plateforme traduit pour le client.
+  var sendText=text;
+  var confirmMsg='Envoyer cette réponse à '+(cur.voyageur||'ce client')+' via Smoobu ?\n\n'+sendText;
   if(!confirm(confirmMsg)) return;
   if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
   try{
     var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:sendText,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
     var d=await r.json();
-    if(r.ok&&d.sent){ showToast('✅ Message envoyé'+(sendText!==text?' (traduit en '+lang+')':'')); if(ta) ta.value=''; convReload(); }
+    if(r.ok&&d.sent){ showToast('✅ Message envoyé'); if(ta) ta.value=''; convReload(); }
     else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
   }catch(e){ showToast('⚠ Envoi échoué'); }
   if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
@@ -16556,8 +16546,8 @@ async function renderMessages() {
         html += msgMsgBlock(m);
 
         // ── 3. Votre réponse (en FRANÇAIS, éditable) ──────────
-        // Hakim travaille toujours en français ; la traduction vers la langue du
-        // client se fait à l'envoi (cf. msgSend). Champ éditable = ai_draft_fr.
+        // Hakim travaille toujours en français ; le message part EN FRANÇAIS,
+        // la plateforme traduit pour le client (2026-07-09). Champ éditable = ai_draft_fr.
         var _draftFr = m.ai_draft_fr || m.ai_draft || '';
         // Garde-fou : ancien charabia JSON brut stocké avant le fix → vider (Hakim régénère)
         if (/```|"detected_language"\s*:|"ai_draft_fr"\s*:/.test(_draftFr)) _draftFr = '';
@@ -16568,16 +16558,10 @@ async function renderMessages() {
         html += '<textarea id="draft-' + m.id + '" rows="5" placeholder="Rédigez votre réponse en français…" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx);font-family:inherit;resize:vertical;line-height:1.5">' + escHtml(_draftFr) + '</textarea>';
         html += '</div>';
 
-        // ── 4. Langue d'envoi (seulement si client non francophone) ──
+        // ── 4. Envoi TOUJOURS en français (2026-07-09) : Airbnb/Booking traduisent
+        // automatiquement pour le client — plus de traduction IA à l'envoi (économie tokens).
         if (_cliLang) {
-          html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-          html += '<span style="font-size:11px;color:var(--tm)">🌍 Langue d\'envoi :</span>';
-          html += '<select id="sendlang-' + m.id + '" class="fse" style="padding:5px 8px;font-size:12px;border-radius:6px">';
-          html += '<option value="' + escHtml(_cliLang) + '" selected>Langue du client (' + escHtml(String(_cliLang).toUpperCase()) + ')</option>';
-          html += '<option value="fr">Français</option>';
-          html += '</select>';
-          html += '<span style="font-size:10px;color:var(--td)">Votre texte FR sera traduit automatiquement.</span>';
-          html += '</div>';
+          html += '<div style="margin-bottom:12px;font-size:11px;color:var(--tm)">🌍 Client : ' + escHtml(String(_cliLang).toUpperCase()) + ' — votre réponse part en français, la plateforme la traduit pour lui.</div>';
         }
 
         // ── 5 & 6. Instruction Hakim + Regénérer ──────────────
@@ -16692,28 +16676,10 @@ async function msgSend(messageId, bookingId) {
     return;
   }
 
-  // Langue d'envoi : Hakim écrit en FR, on traduit vers la langue du client si choisi.
-  var langEl   = document.getElementById('sendlang-' + messageId);
-  var sendLang = langEl ? (langEl.value || 'fr') : 'fr';
+  // Envoi TOUJOURS en français (2026-07-09) : la plateforme traduit pour le client.
   var sendText = frText;
 
-  if (sendLang && !/^fr$/i.test(sendLang)) {
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳ Traduction…'; }
-    try {
-      var tr = await fetch('/api/smoobu-messages?translate=1', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: frText, to: sendLang }),
-      });
-      var td = await tr.json();
-      if (td && td.text) sendText = td.text;
-    } catch (e) { /* fallback : envoi du FR si la traduction échoue */ }
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '✅ Valider &amp; Envoyer'; }
-  }
-
-  var confirmMsg = (sendText !== frText)
-    ? 'Envoyer cette réponse au voyageur (traduite en ' + sendLang + ') :\n\n' + sendText + '\n\n— — —\nVotre texte FR : ' + frText
-    : 'Envoyer ce message au voyageur via Smoobu ?\n\n' + sendText;
+  var confirmMsg = 'Envoyer ce message au voyageur via Smoobu ?\n\n' + sendText;
   if (!confirm(confirmMsg)) return;
 
   // C3 : désactiver le bouton immédiatement — protection anti double-clic
