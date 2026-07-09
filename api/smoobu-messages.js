@@ -246,6 +246,12 @@ async function generateFullAnalysis(ctx) {
     'Règles contextuelles supplémentaires :\n' +
     '- Si "Réservation confirmée = Oui" → ne jamais écrire "après confirmation de votre réservation" — la réservation EST déjà confirmée\n' +
     '- Ne jamais inventer un code, une adresse ou un horaire absent du contexte.\n\n' +
+    '⚡⚡ CONTRÔLE DE COHÉRENCE (SYSTÉMATIQUE — compare TOUJOURS le message aux données réelles de la réservation) :\n' +
+    '- Les données fournies ci-dessous (Composition réservée, Check-in, Check-out, Logement) sont les données OFFICIELLES de la réservation sur la plateforme — elles font foi.\n' +
+    '- Compare ce que le voyageur DIT avec ces données. Incohérences à détecter : il évoque venir avec femme/mari/enfants/famille/amis alors que la composition réservée compte MOINS de personnes que ce qu\'il décrit (ex : « moi, ma femme et mes enfants » = 4+ personnes, mais réservation pour 1 adulte) ; il mentionne des dates différentes de celles réservées ; il parle d\'un autre logement.\n' +
+    '- Si incohérence sur le NOMBRE DE PERSONNES → classification = "sensible" ; commence client_summary_fr par « ⚠️ INCOHÉRENCE : » en chiffrant l\'écart (ex : « ⚠️ INCOHÉRENCE : il évoque femme + enfants, la réservation est pour 1 adulte. ») ; dans ai_draft, réponds d\'abord normalement à son message PUIS demande poliment de confirmer le nombre exact de voyageurs et de mettre à jour la réservation sur la plateforme (règle PERSONNES DÉCLARÉES du playbook : seules les personnes déclarées accèdent au logement, pièce d\'identité requise pour chacune). Ton accueillant et bienveillant, JAMAIS accusateur — pars du principe d\'un simple oubli de sa part.\n' +
+    '- Si incohérence sur les DATES ou le LOGEMENT → classification = "sensible", préfixe « ⚠️ INCOHÉRENCE : » dans client_summary_fr, et fais préciser poliment dans ai_draft sans rien confirmer.\n' +
+    '- ANTI-FAUX-POSITIFS : « ma femme et moi » avec 2 adultes réservés = COHÉRENT, ne rien signaler ; un nombre évoqué INFÉRIEUR ou ÉGAL à la composition réservée = cohérent ; si la Composition réservée est absente du contexte (« non précisé ») → ne signale rien ; un bébé/nourrisson évoqué en plus ne suffit pas à lui seul à déclencher l\'alerte.\n\n' +
     'TRÈS IMPORTANT — adapte ta réponse à la PHASE DU SÉJOUR (fournie dans le contexte) :\n' +
     '- AVANT l\'arrivée / arrive demain / arrive aujourd\'hui : tu peux dire que les détails d\'accès et le code de la serrure seront envoyés le jour de l\'arrivée (après vérification des pièces d\'identité). Ne promets pas un envoi "24h avant".\n' +
     '- SÉJOUR EN COURS (déjà sur place) ou DÉPART : le voyageur est DÉJÀ dans le logement et possède DÉJÀ ses accès et son code → ne dis JAMAIS qu\'il "recevra" le code, le wifi ou les instructions d\'arrivée. Réponds directement à sa demande réelle du moment (problème, info pratique, prolongation, départ…). S\'il redemande le wifi, redonne-le simplement.\n' +
@@ -270,7 +276,7 @@ async function generateFullAnalysis(ctx) {
   const resaLine   = `Réservation confirmée : ${reservation_confirmed === true ? 'Oui' : reservation_confirmed === false ? 'Non' : 'non précisé'}\n`;
   const phaseLine  = `PHASE DU SÉJOUR (aujourd'hui = ${new Date().toISOString().slice(0,10)}) : ${phase.label}\n`;
   const compoLine  = (adults != null || children != null)
-    ? `Composition : ${adults != null ? adults : '?'} adulte(s)${children ? ', ' + children + ' enfant(s)' : (children === 0 ? ', 0 enfant' : '')}\n`
+    ? `Composition RÉSERVÉE (donnée officielle de la plateforme) : ${adults != null ? adults : '?'} adulte(s)${children ? ', ' + children + ' enfant(s)' : (children === 0 ? ', 0 enfant' : '')}\n`
     : '';
 
   // On fournit le fil récent comme CONTEXTE, mais l'IA ne doit répondre qu'au(x)
@@ -531,6 +537,7 @@ async function assistReply(mode, p) {
       'Donne à Hakim un avis court et concret EN FRANÇAIS (3 à 5 puces maximum) : ce qui va, ce qui manque, ' +
       'les infos risquées ou non confirmées (code, horaire, prix, promesse), le ton à ajuster. ' +
       'Vérifie la COHÉRENCE avec la PHASE DU SÉJOUR (fournie) : signale par ex. si le brouillon dit au voyageur qu\'il "recevra" le code/les accès alors qu\'il est DÉJÀ sur place. ' +
+      'Vérifie aussi la COHÉRENCE avec la COMPOSITION réservée (fournie) : si le voyageur évoque plus de personnes (femme, enfants, amis…) que la réservation n\'en compte, signale à Hakim cette incohérence et le fait que le nombre de voyageurs doit être mis à jour sur la plateforme. ' +
       'NE RÉÉCRIS PAS la réponse — donne uniquement tes notes, en puces courtes commençant par "• ". ' +
       'Si le brouillon est déjà bon, dis-le franchement.';
     user = ctxLine + `Brouillon de Hakim :\n${p.draft}` + (p.instruction ? `\n\nPoint d'attention demandé par Hakim : ${p.instruction}` : '');
