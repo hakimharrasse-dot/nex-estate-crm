@@ -682,7 +682,7 @@ function globalPlaybook() {
     '— CONTRAT PAPIER À L\'ARRIVÉE (procédure GÉNÉRALE, valable pour TOUS les logements et CHAQUE séjour) : à son arrivée, le voyageur trouve dans le logement un contrat papier et un stylo. S\'il accède en autonomie (aucun agent terrain sur place), il doit le remplir avec ses informations, le signer, inscrire la date du jour sur la dernière page, photographier TOUTES les pages et les envoyer à l\'hôte par WhatsApp ou via la messagerie de la plateforme. Si un agent terrain est présent à l\'arrivée, c\'est lui qui s\'occupe du contrat.\n' +
     '— PERSONNES DÉCLARÉES : seules les personnes déclarées sur la réservation peuvent accéder au logement ; toute personne supplémentaire (ami, famille) doit être déclarée (mettre à jour le nombre de voyageurs sur la plateforme). Ne jamais dépasser la capacité de l\'annonce.\n' +
     '— CONSOMMABLES : 1 à 2 rouleaux de papier toilette sont fournis à l\'arrivée ; au-delà, le voyageur peut en racheter au supermarché à proximité.\n' +
-    '— ÉQUIPEMENTS (tous les logements) : aucun aspirateur électrique, mais un balai et une raclette de sol sont disponibles. Climatisation = service optionnel à 3 €/nuit (même si l\'annonce montre la clim) : à activer sur demande après paiement ; rappeler d\'éteindre la clim de la chambre pendant l\'usage de l\'eau chaude / la douche.\n' +
+    '— ÉQUIPEMENTS (tous les logements) : aucun aspirateur électrique, mais un balai et une raclette de sol sont disponibles. Climatisation = service optionnel à 3 €/nuit (même si l\'annonce montre la clim) : à activer sur demande après paiement. Les consignes de sécurité clim / eau chaude sont PROPRES À CHAQUE LOGEMENT : applique UNIQUEMENT celles listées dans les règles de la fiche du logement ci-dessus (ex. Touahri 11) — n\'invente pas de consigne pour les autres logements.\n' +
     '— ARRIVÉE ANTICIPÉE / DÉPART TARDIF (NE PAS CONFONDRE — erreur fréquente) : le check-in standard est à partir de 15h, le check-out avant 11h. Le supplément (≈10 €, voir la fiche du logement) s\'applique UNIQUEMENT dans 2 cas : (a) ARRIVÉE plus TÔT que 15h (arrivée anticipée), ou (b) DÉPART plus TARD que 11h (départ tardif, jusqu\'à 13h ou 13h30 selon le logement). En revanche, si le voyageur veut PARTIR AVANT 11h (départ anticipé / plus tôt que l\'heure de check-out) : AUCUN supplément, rien à facturer, c\'est sans aucun problème (au contraire). NE JAMAIS proposer de service payant pour un départ avant 11h. Bien distinguer « arriver tôt » (payant) de « partir tôt » (gratuit), et « partir tard » (payant) de « partir tôt » (gratuit).\n' +
     '— LOCALISATION : donner le lien Google Maps de la fiche + préciser que le guide voyageur contient les instructions d\'arrivée.\n' +
     '— MODIFICATION DE DATES : ne jamais confirmer sans vérifier le calendrier → brouillon à faire valider par Hakim.\n' +
@@ -2276,7 +2276,7 @@ export default async function handler(req, res) {
       }
 
       const rows = await sbGet(
-        `messages?id=eq.${encodeURIComponent(message_id)}&select=id,smoobu_booking_id,statut&limit=1`
+        `messages?id=eq.${encodeURIComponent(message_id)}&select=id,smoobu_booking_id,statut,ai_draft,ai_draft_fr&limit=1`
       );
       const msg = rows?.[0];
       if (!msg) return res.status(404).json({ error: 'Message introuvable en base' });
@@ -2294,6 +2294,10 @@ export default async function handler(req, res) {
       await sbPatch('messages', `id=eq.${encodeURIComponent(message_id)}`, {
         statut:               confirmed ? 'sent'  : 'error',
         ai_draft:             String(text).trim(),
+        // P4 (2026-07-10) : baseline figée AVANT écrasement de ai_draft — dernier
+        // brouillon IA du record vs texte réellement envoyé → KPI « sans retouche ».
+        ai_original:          msg.ai_draft_fr || msg.ai_draft || null,
+        sent_text:            String(text).trim(),
         sent_at:              confirmed ? now     : null,
         updated_at:           now,
         smoobu_api_response:  apiRespStr,
@@ -2331,7 +2335,7 @@ export default async function handler(req, res) {
   if (req.query?.sendDirect) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { booking_id, text, voyageur, appart, source } = body || {};
+      const { booking_id, text, voyageur, appart, source, ai_original } = body || {};
       if (!booking_id || !String(booking_id).trim()) return res.status(400).json({ error: 'booking_id requis' });
       if (!text || !String(text).trim())             return res.status(400).json({ error: 'text requis' });
 
@@ -2345,6 +2349,10 @@ export default async function handler(req, res) {
           sender:              'host',
           message_content:     '(réponse envoyée depuis le CRM)',
           ai_draft:            String(text).trim(),
+          // P4 : dernier brouillon IA transmis par le frontend (null si Hakim a
+          // écrit sans IA) + texte réellement envoyé → KPI « sans retouche ».
+          ai_original:         (ai_original && String(ai_original).trim()) || null,
+          sent_text:           String(text).trim(),
           voyageur:            voyageur || null,
           appart:              appart   || null,
           source:              source   || null,

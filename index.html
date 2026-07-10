@@ -1670,6 +1670,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div>
       <div class="vt" style="background:linear-gradient(135deg,var(--bl),var(--pu));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Messages IA</div>
       <div class="vsub">Brouillons générés par Claude — valider avant envoi</div>
+      <div id="msg-kpi" style="display:none;margin-top:6px;font-size:12px;color:var(--tm);background:var(--s2);border:1px solid var(--br);border-radius:8px;padding:6px 10px;width:fit-content"></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ba ba-ghost" style="font-size:13px" onclick="msgShowSentHistory()">📤 Envois</button>
@@ -16257,6 +16258,7 @@ async function convGenerate(instruction){
     var d=await r.json();
     var draftFr=(d&&(d.ai_draft_fr||d.ai_draft))||'';  // Hakim travaille en français
     if(draftFr){
+      cur.lastAiDraft=draftFr; // P4 : baseline « brouillon IA » pour le KPI sans-retouche
       if(ta){ ta.value=draftFr; convAutoGrow(ta,280); ta.focus(); }
       var ii=document.getElementById('conv-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; }  // consigne consommée
       showToast('✅ Brouillon prêt');
@@ -16288,7 +16290,7 @@ async function convReword(){
   try{
     var r=await fetch('/api/smoobu-messages?reword=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,source:cur.source||'',appart:cur.appart||''})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } showToast('✏️ Reformulé'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; ta.focus(); } cur.lastAiDraft=d.text; showToast('✏️ Reformulé'); }
     else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
   }catch(e){ showToast('⚠ Reformulation échouée'); }
   if(btn){ btn.disabled=false; btn.textContent='✏️ Reformuler'; }
@@ -16306,7 +16308,7 @@ async function convRefine(){
   try{
     var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:cur.convText||cur.lastGuest||'',source:cur.source||'',appart:cur.appart||'',checkin:cur.checkin||'',checkout:cur.checkout||'',adults:cur.adults,children:cur.children})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,280); ta.focus(); } var ii=document.getElementById('conv-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; } showToast('🔄 Régénéré'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,280); ta.focus(); } cur.lastAiDraft=d.text; var ii=document.getElementById('conv-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; } showToast('🔄 Régénéré'); }
     else { showToast('⚠ '+(d.error||'Échec')); }
   }catch(e){ showToast('⚠ Régénération échouée'); }
   if(btn){ btn.disabled=false; btn.textContent='🔄 Régénérer'; }
@@ -16337,7 +16339,7 @@ async function convSend(){
   if(!confirm(confirmMsg)) return;
   if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
   try{
-    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:sendText,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
+    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:sendText,voyageur:cur.voyageur,appart:cur.appart,source:cur.source,ai_original:(cur.lastAiDraft||null)})});
     var d=await r.json();
     if(r.ok&&d.sent){
       showToast('✅ Message envoyé'); if(ta) ta.value='';
@@ -16408,7 +16410,31 @@ function msgMsgBlock(m){
   return h;
 }
 
+// ── P4 (2026-07-10) : KPI qualité IA — % de brouillons envoyés SANS retouche ──
+// Compare ai_original (dernier brouillon IA au moment de l'envoi) et sent_text
+// (texte réellement envoyé) sur les envois des 30 derniers jours. Les envois
+// antérieurs à P4 (sent_text null) et les messages écrits sans IA sont exclus.
+// C'est CET indicateur qui décidera un jour de l'envoi auto des cas « simple ».
+async function _msgQualityKPI() {
+  var el = document.getElementById('msg-kpi'); if (!el) return;
+  try {
+    var since = new Date(Date.now() - 30 * 86400000).toISOString();
+    var r = await SUPA.from('messages').select('ai_original,sent_text')
+      .eq('statut', 'sent').gte('sent_at', since).not('sent_text', 'is', null);
+    if (r.error || !r.data) { el.style.display = 'none'; return; }
+    var rows = r.data.filter(function(m) { return m.ai_original && m.sent_text; });
+    if (!rows.length) { el.style.display = 'none'; return; }
+    var norm = function(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+    var same = rows.filter(function(m) { return norm(m.ai_original) === norm(m.sent_text); }).length;
+    var pct = Math.round(100 * same / rows.length);
+    var col = pct >= 80 ? 'var(--gr)' : (pct >= 50 ? 'var(--or)' : 'var(--re)');
+    el.innerHTML = '🎯 Qualité IA (30 j) : <strong style="color:' + col + '">' + pct + '%</strong> de brouillons envoyés sans retouche · ' + same + '/' + rows.length + ' envoi' + (rows.length > 1 ? 's' : '') + ' <span title="Objectif 80% : quand ce cap est tenu plusieurs semaines, l\'envoi automatique des cas simples pourra être envisagé">ⓘ</span>';
+    el.style.display = '';
+  } catch (e) { el.style.display = 'none'; }
+}
+
 async function renderMessages() {
+  _msgQualityKPI(); // P4 — best-effort, indépendant de la liste
   if (!SUPA) return;
   var el     = document.getElementById('msg-list');
   var em     = document.getElementById('msg-empty');
@@ -17067,7 +17093,7 @@ async function manualSendToClient(text){
   if(!text||!text.trim()){ showToast('Brouillon vide'); return; }
   if(!confirm('Envoyer ce message à '+(c.voyageur||'ce client')+' via Smoobu ?\n\n'+text)) return;
   try{
-    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:c.booking_id,text:text.trim(),voyageur:c.voyageur,appart:c.appart,source:c.source})});
+    var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:c.booking_id,text:text.trim(),voyageur:c.voyageur,appart:c.appart,source:c.source,ai_original:(window._MANUAL_LAST_AI||null)})});
     var d=await r.json();
     if(r.ok&&d.sent){ showToast('✅ Message envoyé à '+(c.voyageur||'client')); }
     else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
@@ -17082,7 +17108,7 @@ async function manualReword(){
   try{
     var r=await fetch('/api/smoobu-messages?reword=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,source:src,appart:app})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } showToast('✏️ Reformulé'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } window._MANUAL_LAST_AI=d.text; showToast('✏️ Reformulé'); }
     else { showToast('⚠ '+(d.error||'Reformulation échouée')); }
   }catch(e){ showToast('⚠ Reformulation échouée'); }
 }
@@ -17099,7 +17125,7 @@ async function manualRefine(){
     var mc=window._MANUAL_CLIENT||{};
     var r=await fetch('/api/smoobu-messages?assist=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'refine',draft:draft,instruction:instr,client_context:clientMsg,source:src,appart:app,checkin:mc.checkin||'',checkout:mc.checkout||'',adults:mc.adults,children:mc.children})});
     var d=await r.json();
-    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } var ii=document.getElementById('manual-refine-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; } showToast('🔄 Affiné'); }
+    if(r.ok&&d.text){ if(ta){ ta.value=d.text; convAutoGrow(ta,320); ta.focus(); } window._MANUAL_LAST_AI=d.text; var ii=document.getElementById('manual-refine-instr'); if(ii){ ii.value=''; ii.style.height='auto'; ii.style.overflowY='hidden'; } showToast('🔄 Affiné'); }
     else showToast('⚠ '+(d.error||'Échec'));
   }catch(e){ showToast('⚠ Affinage échoué'); }
 }
@@ -17119,6 +17145,8 @@ async function manualAdvise(){
 // Construit l'affichage du résultat IA Manuelle (badge classification + brouillon
 // éditable + actions). `topHtml` = bloc optionnel affiché en tête (ex : description photo).
 function manualBuildResultHtml(data, topHtml) {
+  // P4 : baseline « brouillon IA » de l'IA Manuelle pour le KPI sans-retouche
+  window._MANUAL_LAST_AI = (data && data.classification !== 'no_reply_needed' && data.ai_draft) ? data.ai_draft : null;
   var classifColor = { no_reply_needed: '#16a34a', simple: '#2563eb', sensible: '#d97706', conflit: '#dc2626', remboursement: '#7c3aed' };
   var classif = data.classification || 'simple';
   var badgeColor = classifColor[classif] || '#6b7280';
