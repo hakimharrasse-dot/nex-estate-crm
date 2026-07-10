@@ -16099,6 +16099,7 @@ function convClose(){ var ov=document.getElementById('conv-ov'); if(ov) ov.style
 async function convOpen(i){
   var r=(window._CONV_MATCHES||[])[i]; if(!r) return;
   window._CONV_CUR={ booking_id:String(r.smoobu_id||''), voyageur:r.voyageur||'', appart:r.appart||'', source:r.source||'', ref:r.ref||'', checkin:r.checkin||'', checkout:r.checkout||'', adults:(r.adults!=null?r.adults:null), children:(r.children!=null?r.children:null), convText:'', lastGuest:'' };
+  window._CONV_PENDING=null; // ouverture hors carte « À traiter » (msgOpenConv le re-pose juste après)
   var ov=_convModal();
   document.getElementById('conv-title').textContent=r.voyageur||'(sans nom)';
   document.getElementById('conv-sub').textContent=aptShort(r.appart||'')+(r.ref?' · '+r.ref:'');
@@ -16338,7 +16339,17 @@ async function convSend(){
   try{
     var r=await fetch('/api/smoobu-messages?sendDirect=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({booking_id:cur.booking_id,text:sendText,voyageur:cur.voyageur,appart:cur.appart,source:cur.source})});
     var d=await r.json();
-    if(r.ok&&d.sent){ showToast('✅ Message envoyé'); if(ta) ta.value=''; convReload(); }
+    if(r.ok&&d.sent){
+      showToast('✅ Message envoyé'); if(ta) ta.value='';
+      // Ouvert depuis une carte « À traiter » (msgOpenConv) : l'envoi contextuel vaut
+      // traitement → la carte d'origine est résolue automatiquement.
+      var pend=window._CONV_PENDING;
+      if(pend && String(cur.booking_id)===String(pend.booking_id)){
+        window._CONV_PENDING=null;
+        try{ await SUPA.from('messages').update({statut:'resolved',updated_at:new Date().toISOString()}).eq('id',pend.id); msgRemoveCard(pend.id); }catch(e){}
+      }
+      convReload();
+    }
     else { showToast('⚠ '+(d.error||d.warning||'Échec de l\'envoi')); }
   }catch(e){ showToast('⚠ Envoi échoué'); }
   if(btn){ btn.disabled=false; btn.textContent='📤 Envoyer'; }
@@ -16587,6 +16598,7 @@ async function renderMessages() {
         } else {
           html += '<button class="ba msg-send-btn" style="background:var(--gr);color:#fff;border-color:var(--gr);flex:1;min-width:140px" onclick="msgSend(\'' + m.id + '\',' + m.smoobu_booking_id + ')">✅ Valider &amp; Envoyer</button>';
         }
+        html += '<button class="ba ba-ghost" style="min-width:130px;color:var(--bl);border-color:var(--bl)" onclick="msgOpenConv(\'' + m.id + '\')" title="Ouvrir le fil complet de la conversation et répondre avec tout le contexte — le brouillon ci-dessus est repris, et l\'envoi depuis la conversation traite cette carte automatiquement">💬 Conversation</button>';
         html += '<button class="ba ba-ghost" style="min-width:100px" onclick="msgIgnore(\'' + m.id + '\')">🙈 Ignorer</button>';
         html += '<button class="ba ba-ghost" style="min-width:120px;color:var(--gr);border-color:var(--gr)" onclick="msgResolve(\'' + m.id + '\')">✓ Traité</button>';
         html += '</div>';
@@ -16755,6 +16767,28 @@ async function msgResolve(messageId) {
     if (card) card.style.opacity = '1';
     showToast('⚠ Erreur : ' + e.message);
   }
+}
+
+// Ouvre la conversation COMPLÈTE depuis une carte « À traiter » (2026-07-10) :
+// fil entier (traduit, horodaté) + réponse avec tout le contexte. Le brouillon de
+// la carte (édité ou non) est repris dans la zone de réponse ; un envoi depuis la
+// modale résout automatiquement la carte (cf. convSend + window._CONV_PENDING).
+function msgOpenConv(messageId) {
+  var m = (MSG_DATA || []).find(function(x) { return x.id === messageId; });
+  if (!m || !m.smoobu_booking_id) { showToast('Réservation Smoobu introuvable pour cette carte'); return; }
+  var ta = document.getElementById('draft-' + messageId);
+  var draft = ((ta && ta.value) || '').trim();
+  convOpenBooking(m.smoobu_booking_id, { voyageur: m.voyageur, appart: m.appart, source: m.source });
+  // Posé APRÈS convOpenBooking : convOpen remet _CONV_PENDING à null en ouvrant.
+  window._CONV_PENDING = { id: messageId, booking_id: String(m.smoobu_booking_id) };
+  // conv-reply existe dès le retour (partie synchrone de convOpen) mais on tolère
+  // un rendu différé : petites tentatives espacées.
+  var _try = 0;
+  (function _setDraft() {
+    var reply = document.getElementById('conv-reply');
+    if (reply) { if (draft && !reply.value.trim()) { reply.value = draft; convAutoGrow(reply, 280); } return; }
+    if (++_try < 20) setTimeout(_setDraft, 150);
+  })();
 }
 
 function msgTogglePreview(messageId) {
