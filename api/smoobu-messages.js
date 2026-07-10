@@ -266,7 +266,10 @@ async function generateFullAnalysis(ctx) {
     '{"detected_language":"code ISO 2 lettres (langue du VOYAGEUR)","client_summary_fr":"résumé bref en français (1-2 phrases max, ce que dit le client)","classification":"simple","ai_draft":"réponse EN FRANÇAIS","ai_draft_fr":""}\n\n' +
     'Règles pour ai_draft :\n' +
     (firstName
-      ? '- ⚡⚡ RÈGLE ABSOLUE N°1 : COMMENCE TOUJOURS par une salutation contenant le PRÉNOM « ' + firstName + ' » — « Bonjour ' + firstName + ', » (ou « Salam ' + firstName + ', » si le voyageur salue en arabe/darija). Cette règle PRIME sur les exemples de style : même si les anciennes réponses ci-dessous ne mettent pas de prénom, TOI tu mets TOUJOURS « ' + firstName + ' ». INTERDIT de commencer par « Bonjour » seul, « Salut », « Hi » ou « Hello » sans le prénom.\n'
+      ? '- ⚡⚡ RÈGLE ABSOLUE N°1 — SALUTATION CONTEXTUELLE (regarde les HORODATAGES du fil pour décider) :\n' +
+        '  • SALUE avec le prénom — « Bonjour ' + firstName + ', » (ou « Salam ' + firstName + ', » si le voyageur salue en arabe/darija) — UNIQUEMENT si c\'est le DÉBUT de la conversation (aucun échange avant), OU si le dernier message du fil date de PLUS DE 6 HEURES ou d\'un autre jour (reprise de conversation).\n' +
+        '  • CONVERSATION EN COURS (le dernier échange du fil date de moins de ~6 heures, même journée) : NE SALUE PAS — enchaîne DIRECTEMENT sur la réponse, comme dans une discussion instantanée qui se poursuit. Re-dire « Bonjour ' + firstName + ' » à chaque bulle alors qu\'on se répond à quelques minutes d\'intervalle fait robot et n\'est PAS professionnel.\n' +
+        '  • QUAND tu salues : jamais « Bonjour » seul, « Salut », « Hi » ou « Hello » sans le prénom — toujours « ' + firstName + ' ». Cette règle PRIME sur les exemples de style ci-dessous.\n'
       : '') +
     '- ⚡⚡ Langue : TOUJOURS LE FRANÇAIS, quelle que soit la langue du voyageur — Hakim envoie ses réponses en français et la plateforme (Airbnb/Booking) les traduit automatiquement pour le client. N\'écris JAMAIS ai_draft dans une autre langue. detected_language décrit la langue du CLIENT, pas celle de ta réponse.\n' +
     '- Ton : court, humain, professionnel, sans emojis\n' +
@@ -331,8 +334,8 @@ async function generateFullAnalysis(ctx) {
     : `\nMessage du voyageur (réponds à CE message) :\n${message_content}`;
 
   const salutLine = firstName
-    ? `PRÉNOM DU VOYAGEUR (à utiliser OBLIGATOIREMENT dans la salutation) : ${firstName}\n`
-    : `PRÉNOM DU VOYAGEUR : inconnu — salue poliment sans prénom (« Bonjour, »).\n`;
+    ? `PRÉNOM DU VOYAGEUR (pour la salutation, quand elle est appropriée — voir règle de salutation contextuelle) : ${firstName}\n`
+    : `PRÉNOM DU VOYAGEUR : inconnu — si une salutation est appropriée (voir règle contextuelle), salue poliment sans prénom (« Bonjour, »).\n`;
 
   const userPrompt =
     `Logement : ${appart    || 'non précisé'}\n` +
@@ -528,7 +531,7 @@ async function getHakimStyleExamples(limit) {
 }
 function styleBlock(examples) {
   if (!examples || !examples.length) return '';
-  return '\n\nSTYLE DE HAKIM — n\'imite QUE le vocabulaire et le ton de ces exemples, PAS leur longueur ni leurs formules de politesse : la règle de brièveté (1 à 3 phrases, pas de bienvenue émotionnelle, pas de clôture non demandée) PRIME sur ces exemples, même s\'ils sont plus longs ou plus chaleureux. ⚠️ N\'imite PAS non plus l\'ABSENCE de prénom : ces exemples commencent souvent par « Bonjour » seul, mais TOI tu DOIS toujours mettre le prénom du voyageur dans la salutation (voir Règle ABSOLUE N°1). Ne recopie jamais mot pour mot :\n' +
+  return '\n\nSTYLE DE HAKIM — n\'imite QUE le vocabulaire et le ton de ces exemples, PAS leur longueur ni leurs formules de politesse : la règle de brièveté (1 à 3 phrases, pas de bienvenue émotionnelle, pas de clôture non demandée) PRIME sur ces exemples, même s\'ils sont plus longs ou plus chaleureux. ⚠️ QUAND tu salues (voir règle de salutation contextuelle), mets TOUJOURS le prénom du voyageur — même si ces exemples commencent par « Bonjour » seul. Ne recopie jamais mot pour mot :\n' +
     examples.map(function(s, i){ return '— ' + s; }).join('\n');
 }
 
@@ -695,7 +698,7 @@ function hakimStyleGuide() {
     '— ⚡ RÈGLE N°1, LA PLUS IMPORTANTE — BREF ET DIRECT. Réponds UNIQUEMENT à ce qui est demandé, en 1 à 3 phrases courtes MAXIMUM. Cette règle PRIME sur toutes les autres : si le ton « chaleureux » te pousse à rallonger, RACCOURCIS.\n' +
     '— ⚡ INTERDIT (ce qui rend les messages trop chargés) : phrases de bienvenue émotionnelles ou marketing (« quelle joie de vous accueillir », « c\'est beau de revenir à Rabat », « profitez pleinement de votre séjour »), compliments, répétitions, ET toute formule de clôture non demandée (« au plaisir de vous accueillir bientôt », « si vous avez besoin de quoi que ce soit n\'hésitez pas »). Structure type = salutation courte + la réponse, point final.\n' +
     '— ⚡ QUAND HAKIM DONNE UNE CONSIGNE : exécute EXACTEMENT cette consigne et RIEN d\'autre. N\'ajoute aucune phrase décorative autour. Ex : consigne « demande à la cliente de remplir le formulaire de check-in » → réponse attendue ≈ « Bonjour Fatima, merci de remplir le formulaire de check-in avant votre arrivée. » — PAS de speech de bienvenue avant, PAS de « au plaisir » après.\n' +
-    '— ⚡ SALUTATION OBLIGATOIREMENT PERSONNALISÉE AVEC LE PRÉNOM (fourni dans le contexte) : « Bonjour <Prénom>, ». INTERDIT de saluer sans le prénom (jamais « Bonjour » seul, « Salut », « Hi », « Hello » tout court) quand le prénom est connu. Puis on enchaîne DIRECTEMENT sur la réponse. JAMAIS faire suivre la salutation d\'une formule d\'enthousiasme du type « quelle joie de vous accueillir », « ravi de vous recevoir » — c\'est le remplissage à supprimer. Pour un homme marocain : « Ssi »/« Si » + prénom (« Bonjour Ssi Abdellah »). Si le client salue en arabe/darija (« Salam »), réponds « Salam <Prénom> ». Rédige toujours en FRANÇAIS — la plateforme traduit pour le client.\n' +
+    '— ⚡ SALUTATION CONTEXTUELLE : salue UNIQUEMENT en début de conversation ou après une longue pause (plus de ~6 heures ou un autre jour — regarde les horodatages du fil) ; en pleine conversation (échanges rapprochés), enchaîne DIRECTEMENT sans re-saluer — re-dire bonjour à chaque bulle fait robot. QUAND tu salues : toujours avec le prénom (« Bonjour <Prénom>, », jamais « Bonjour » seul), pour un homme marocain « Ssi »/« Si » + prénom (« Bonjour Ssi Abdellah »), « Salam <Prénom> » si le client salue en arabe/darija, et JAMAIS suivie d\'une formule d\'enthousiasme (« quelle joie de vous accueillir » = remplissage à supprimer). Rédige toujours en FRANÇAIS — la plateforme traduit pour le client.\n' +
     '— Reste POSÉ et courtois même face à l\'agressivité ; ne te justifie jamais avec agacement. Un seul « merci » si pertinent, pas plus.\n' +
     '— Pour un refus ou une règle : explique le pourquoi en UNE phrase courte (réglementation, sécurité, copropriété) et propose une solution concrète — jamais un « non » sec, mais sans t\'étaler.\n' +
     '— Couples non mariés : INFORMER de la réglementation locale sans refuser d\'office, recentrer sur le respect du logement ; ne JAMAIS improviser un refus → laisser Hakim valider.\n' +
@@ -880,7 +883,10 @@ function buildGuestTranscript(allMessages) {
       if (dt) {
         const d = new Date(dt);
         const days = Math.floor((now - d.getTime()) / 86400000);
-        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2);
+        // HH:MM inclus (2026-07-10) : l'IA en a besoin pour la salutation contextuelle
+        // (écart entre messages : minutes = conversation en cours, heures/jours = reprise).
+        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2)
+                 + ' ' + ('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2);
         rel = ' · ' + dm + (days<=0 ? ' (aujourd\'hui)' : (days===1 ? ' (hier)' : ' (il y a '+days+' jours)'));
       }
       return '[Voyageur'+rel+'] '+txt;
@@ -907,7 +913,10 @@ function buildFullTranscript(allMessages, limit) {
       if (dt) {
         const d = new Date(dt);
         const days = Math.floor((now - d.getTime()) / 86400000);
-        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2);
+        // HH:MM inclus (2026-07-10) : l'IA en a besoin pour la salutation contextuelle
+        // (écart entre messages : minutes = conversation en cours, heures/jours = reprise).
+        const dm = ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2)
+                 + ' ' + ('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2);
         rel = ' · ' + dm + (days<=0 ? ' (aujourd\'hui)' : (days===1 ? ' (hier)' : ' (il y a '+days+' jours)'));
       }
       return (isGuestMessage(m) ? '[Voyageur' : '[Hôte') + rel + '] ' + txt;

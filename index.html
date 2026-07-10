@@ -16162,7 +16162,9 @@ function _convBuildContext(cur){
     var who=m.sender==='guest'?'Voyageur':'Hôte (réponse déjà envoyée)';
     var rel='';
     if(m.at){ var d=new Date(m.at); var days=Math.floor((_now-d.getTime())/86400000);
-      rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
+      // HH:MM inclus (2026-07-10) : nécessaire à la salutation contextuelle de l'IA
+      // (écart en minutes = conversation en cours → pas de re-salutation).
+      rel=' · '+d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+(days<=0?' (aujourd’hui)':(days===1?' (hier)':' (il y a '+days+' jours)')); }
     return '['+who+rel+'] '+(m.original||'');
   }).join('\n');
   // RAFALE = derniers messages VOYAGEUR consécutifs rapprochés (≤ 90 min) → ce à quoi l'IA répond.
