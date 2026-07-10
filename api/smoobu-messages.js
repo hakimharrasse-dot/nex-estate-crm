@@ -54,6 +54,43 @@ function claudeTextOf(data) {
     .trim();
 }
 
+// ── Appel Claude API avec RETRY sur erreurs transitoires ─────
+// Cas réel Jawad (2026-07-10 14:45 UTC) : 2 clics « Régénérer » à 35 s d'écart,
+// 2 × « 529 Overloaded » (saturation ponctuelle côté Anthropic) → aucun brouillon.
+// Un 529/429/5xx revient en < 1 s : jusqu'à 2 retries espacés (1 s puis 2,5 s)
+// absorbent ces pics sans risquer le maxDuration 30 s de la fonction.
+// Les erreurs non transitoires (400, 401, crédit épuisé…) ne sont JAMAIS retentées.
+// ⚠️ TOUT appel à api.anthropic.com passe par ce helper (aucun fetch direct).
+const CLAUDE_RETRY_STATUS = [429, 500, 502, 503, 529];
+async function claudeCall(payload, label) {
+  const delays = [1000, 2500]; // 3 tentatives max
+  let lastErr = '';
+  for (let i = 0; i <= delays.length; i++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:  'POST',
+      headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    if (res.ok) return res.json();
+    lastErr = `${res.status} ${await res.text()}`;
+    if (CLAUDE_RETRY_STATUS.indexOf(res.status) === -1 || i === delays.length) break;
+    console.warn(`[claude] ${label || 'appel'} tentative ${i + 1} → ${res.status}, retry dans ${delays[i]} ms`);
+    await new Promise(function(r){ setTimeout(r, delays[i]); });
+  }
+  throw new Error(`Claude API${label ? ' (' + label + ')' : ''}: ${lastErr}`);
+}
+
+// ── Message d'erreur IA lisible pour Hakim (frontend) ────────
+// Traduit les codes techniques Anthropic en consigne claire. Les messages
+// inconnus passent tels quels (debug possible).
+function friendlyIaError(msg) {
+  const m = String(msg || '');
+  if (/529|overloaded/i.test(m))  return 'L\'IA d\'Anthropic est momentanément surchargée — attendez quelques secondes et recliquez (votre consigne est conservée).';
+  if (/credit|billing|insufficient|balance/i.test(m)) return 'Crédit API Anthropic épuisé — rechargez sur platform.claude.com → Billing, puis réessayez.';
+  if (/429|rate.?limit/i.test(m)) return 'Trop de demandes IA d\'un coup — attendez quelques secondes puis réessayez.';
+  return m;
+}
+
 // ── Smoobu HMAC-SHA256 (obligatoire à partir du 25/09/2026) ───────────────
 // La signature s'ACTIVE automatiquement dès que SMOOBU_API_SECRET est présent
 // dans l'environnement. Sans secret → mode "legacy" (clé seule, non signé),
@@ -286,6 +323,7 @@ async function generateFullAnalysis(ctx) {
       '⚡⚡ RÈGLE DE RÉCENCE (factuelle) : réponds UNIQUEMENT au(x) dernier(s) message(s) du VOYAGEUR qui ne sont PAS suivis d\'une réponse « Hôte » plus bas dans le fil. ' +
       'Un message du voyageur DÉJÀ suivi d\'une réponse « Hôte » est TRAITÉ → n\'y réponds pas, ne le répète pas. ' +
       'Si le TOUT DERNIER élément du fil est une réponse « Hôte » (le voyageur n\'a rien envoyé depuis), il n\'y a rien à répondre → classe "no_reply_needed". ' +
+      '⚡⚡ EXCEPTION ABSOLUE À LA RÈGLE DE RÉCENCE : si une INSTRUCTION DE HAKIM est fournie plus bas, la règle de récence et "no_reply_needed" NE S\'APPLIQUENT PAS — Hakim veut envoyer un message (souvent PROACTIF, sans nouveau message du voyageur) : rédige le message demandé par sa consigne, en t\'appuyant sur le fil comme contexte. ' +
       'CAS DE LA RAFALE : si le voyageur a envoyé PLUSIEURS messages d\'affilée RÉCENTS SANS réponse « Hôte » entre eux, traite-les comme UN SEUL message et réponds à l\'ENSEMBLE en une seule réponse (une seule pensée découpée en plusieurs bulles). ' +
       '⚡⚡ APPRENDS DE VOS RÉPONSES « Hôte » — elles sont la SOURCE DE VÉRITÉ sur ce qui a déjà été dit et promis au client (horaires, accès, code, parking, prix, arrangements). Ne CONTREDIS JAMAIS une information déjà donnée en « Hôte », ne la redemande pas et ne la répète pas inutilement. Reprends le MÊME ton, le même niveau de langue et les mêmes formulations que Hakim dans ses réponses « Hôte » : c\'est sa vraie voix, imite-la. ' +
       '⚡⚡ COMPRÉHENSION DU CONTEXTE (CAPITAL) : avant de répondre, LIS et COMPRENDS la TOTALITÉ du fil — qui est ce client, ce qu\'il a déjà demandé, ce qui a déjà été réglé, les sujets encore en cours. Si le dernier message FAIT RÉFÉRENCE à un sujet évoqué plus haut, ou contient une allusion implicite (« et pour l\'autre chose ? », « finalement ? », « comme je disais », « du coup ? »), relie-le à ce sujet et réponds AVEC ce contexte — jamais « hors-sol ». Réponds comme quelqu\'un qui a TOUT lu et suivi la conversation. Le récent = ce à quoi tu réponds ; l\'ancien (voyageur ET hôte) = le contexte qui donne du sens. ' +
@@ -308,29 +346,14 @@ async function generateFullAnalysis(ctx) {
     msgBlock +
     instrNote;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: {
-      'x-api-key':         CLAUDE_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type':      'application/json',
-    },
-    body: JSON.stringify({
-      model:      MODEL_DRAFT,
-      // 4096 : la réflexion de Sonnet (adaptive thinking, cas délicats) compte dans
-      // max_tokens — il faut la place pour la réflexion ET le JSON complet.
-      max_tokens: 4096,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Claude API: ${res.status} ${err}`);
-  }
-
-  const data = await res.json();
+  // 4096 : la réflexion de Sonnet (adaptive thinking, cas délicats) compte dans
+  // max_tokens — il faut la place pour la réflexion ET le JSON complet.
+  const data = await claudeCall({
+    model:      MODEL_DRAFT,
+    max_tokens: 4096,
+    system:     systemPrompt,
+    messages:   [{ role: 'user', content: userPrompt }],
+  }, 'brouillon');
   const rawText = claudeTextOf(data);
 
   // Extraction ROBUSTE du JSON : Claude ajoute parfois une note/explication autour
@@ -415,23 +438,16 @@ async function analyzeImageMessage(ctx) {
     (hakim_instruction ? `\nInstruction de Hakim (à appliquer) : ${hakim_instruction}\n` : '') +
     '\nDécris l\'image ci-jointe et propose une réponse si pertinent.';
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model:       MODEL_LIGHT,
-      max_tokens:  1024,
-      temperature: 0,                 // description ancrée aux faits (moins d'invention)
-      system:      systemPrompt,
-      messages:    [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type: media_type, data: image_base64 } },
-        { type: 'text',  text: userText },
-      ] }],
-    }),
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (image): ${res.status} ${err}`); }
-
-  const data = await res.json();
+  const data = await claudeCall({
+    model:       MODEL_LIGHT,
+    max_tokens:  1024,
+    temperature: 0,                 // description ancrée aux faits (moins d'invention)
+    system:      systemPrompt,
+    messages:    [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: media_type, data: image_base64 } },
+      { type: 'text',  text: userText },
+    ] }],
+  }, 'image');
   const rawText = claudeTextOf(data);
   const parsed = extractJsonObject(rawText);
   if (parsed) {
@@ -472,18 +488,12 @@ async function rewordReply(text, ctx) {
       : '') +
     `Brouillon de Hakim à reformuler :\n${text}`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model:      MODEL_LIGHT,
-      max_tokens: 1024,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    }),
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (reword): ${res.status} ${err}`); }
-  const data = await res.json();
+  const data = await claudeCall({
+    model:      MODEL_LIGHT,
+    max_tokens: 1024,
+    system:     systemPrompt,
+    messages:   [{ role: 'user', content: userPrompt }],
+  }, 'reword');
   const out = claudeTextOf(data)
     .replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '')
     .replace(/^["«»\s]+|["«»\s]+$/g, '')
@@ -559,16 +569,10 @@ async function assistReply(mode, p) {
       globalPlaybook() + hakimStyleGuide() + styleBlock(p.styleExamples) + kbBlock(p.apartmentKb);
     user = ctxLine + `Brouillon actuel :\n${p.draft}\n\nConsigne de Hakim : ${p.instruction || '(améliore-le, rends-le plus naturel et professionnel)'}`;
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    // refine = rédaction d'un brouillon → Sonnet (même niveau que generateFullAnalysis) ;
-    // advise = notes de relecture → Haiku suffit. max_tokens 2048 côté Sonnet :
-    // sa réflexion (adaptive thinking) compte dans la limite.
-    body: JSON.stringify({ model: mode === 'refine' ? MODEL_DRAFT : MODEL_LIGHT, max_tokens: mode === 'refine' ? 2048 : 1024, system: system, messages: [{ role: 'user', content: user }] }),
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (assist ${mode}): ${res.status} ${err}`); }
-  const data = await res.json();
+  // refine = rédaction d'un brouillon → Sonnet (même niveau que generateFullAnalysis) ;
+  // advise = notes de relecture → Haiku suffit. max_tokens 2048 côté Sonnet :
+  // sa réflexion (adaptive thinking) compte dans la limite.
+  const data = await claudeCall({ model: mode === 'refine' ? MODEL_DRAFT : MODEL_LIGHT, max_tokens: mode === 'refine' ? 2048 : 1024, system: system, messages: [{ role: 'user', content: user }] }, 'assist ' + mode);
   let out = claudeTextOf(data).replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
   if (mode === 'refine') out = out.replace(/^["«»\s]+|["«»\s]+$/g, '').trim();
   return out;
@@ -577,13 +581,7 @@ async function assistReply(mode, p) {
 // ── Traduction (messagerie style Airbnb) ─────────────────────
 // claudeJSON : appel Claude renvoyant un JSON (helper interne).
 async function _claudeText(system, user, maxTokens) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: { 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODEL_LIGHT, max_tokens: maxTokens || 1024, system: system, messages: [{ role: 'user', content: user }] }),
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API (translate): ${res.status} ${err}`); }
-  const data = await res.json();
+  const data = await claudeCall({ model: MODEL_LIGHT, max_tokens: maxTokens || 1024, system: system, messages: [{ role: 'user', content: user }] }, 'translate');
   return claudeTextOf(data);
 }
 // Traduit un lot de messages vers le français + détecte la langue source dominante.
@@ -1956,7 +1954,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, hours, count: sent.length, sent });
     } catch (err) {
       console.error('[sentHistory] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2081,7 +2079,7 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[messages] regenerate error:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2099,7 +2097,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, text: reworded });
     } catch (err) {
       console.error('[reword] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2129,7 +2127,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, mode: m, text: out });
     } catch (err) {
       console.error('[assist] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2151,7 +2149,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'texts[] ou text requis' });
     } catch (err) {
       console.error('[translate] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2205,7 +2203,7 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[manualDraft] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2251,7 +2249,7 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[analyzeImage] erreur:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2313,7 +2311,7 @@ export default async function handler(req, res) {
 
     } catch (err) {
       console.error('[messages] send error:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 
@@ -2353,7 +2351,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, sent: true, booking_id, smoobu_http: smoobuResult.httpStatus });
     } catch (err) {
       console.error('[messages] sendDirect error:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: friendlyIaError(err.message) });
     }
   }
 

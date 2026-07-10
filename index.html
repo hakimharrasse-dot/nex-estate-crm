@@ -16264,8 +16264,11 @@ async function convGenerate(instruction){
       showToast('IA : aucune réponse nécessaire');
     }
     else {
-      if(ta) ta.placeholder='Pas de brouillon généré. Écrivez votre réponse, ou donnez une consigne ci-dessous puis 🔄 Régénérer.';
-      showToast('⚠ '+((d&&d.error)||'Pas de brouillon généré'));
+      // Erreur backend (ex : IA surchargée 529) → l'afficher DANS la case, pas
+      // seulement en toast fugace ; la consigne reste remplie → recliquer suffit.
+      var _err=(d&&d.error)||'';
+      if(ta) ta.placeholder=_err?('⚠ '+_err):'Pas de brouillon généré. Écrivez votre réponse, ou donnez une consigne ci-dessous puis 🔄 Régénérer.';
+      showToast('⚠ '+(_err||'Pas de brouillon généré'));
     }
   }catch(e){
     if(ta) ta.placeholder='⚠ Génération échouée — réessayez, ou écrivez votre réponse directement.';
