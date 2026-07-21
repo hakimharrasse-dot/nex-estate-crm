@@ -220,6 +220,26 @@ async function softDeleteResa(supabase, smoobuId) {
   return { ok: true, soft_deleted: sid, type_norm: newType };
 }
 
+// ── Déclencher le run last-minute (temps réel) ───────────────
+// Après tout événement de réservation, on notifie /api/lastminute-run pour
+// détecter immédiatement un cas last-minute (B-LM) ou annuler des envois
+// planifiés. Best-effort : le cron pg_cron (10 min) sert de filet si ce
+// forward échoue ou expire.
+async function pingLastminute(req, bookingId) {
+  try {
+    const host = req.headers.host || 'nex-estate-seven.vercel.app';
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    const r = await fetch(`https://${host}/api/lastminute-run?booking=${encodeURIComponent(String(bookingId))}`, {
+      method: 'POST', signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    console.log('[webhook] lastminute-run notifié:', bookingId, '→', r.status);
+  } catch (e) {
+    console.warn('[webhook] lastminute-run forward échoué (le cron rattrapera):', e.message);
+  }
+}
+
 // ── Handler principal Vercel ─────────────────────────────────
 module.exports = async function handler(req, res) {
   // Smoobu envoie toujours un POST
@@ -280,6 +300,7 @@ module.exports = async function handler(req, res) {
         }
         const result = await upsertResa(supabase, entry);
         console.log('[webhook] newReservation upserted:', result);
+        await pingLastminute(req, booking.id);
         return res.status(200).json({ ok: true, action, result });
       }
 
@@ -295,6 +316,7 @@ module.exports = async function handler(req, res) {
         }
         const result = await upsertResa(supabase, entry);
         console.log('[webhook] updateReservation upserted:', result);
+        await pingLastminute(req, booking.id);
         return res.status(200).json({ ok: true, action, result });
       }
 
@@ -313,6 +335,7 @@ module.exports = async function handler(req, res) {
         }
         const result = await upsertResa(supabase, entry);
         console.log('[webhook] cancelReservation upserted:', result);
+        await pingLastminute(req, booking.id);
         return res.status(200).json({ ok: true, action, result });
       }
 
@@ -322,6 +345,7 @@ module.exports = async function handler(req, res) {
         const smoobuId = String(booking.id || '');
         const result   = await softDeleteResa(supabase, smoobuId);
         console.log('[webhook] deleteReservation (soft):', result);
+        await pingLastminute(req, smoobuId);
         return res.status(200).json({ ok: true, action, result });
       }
 

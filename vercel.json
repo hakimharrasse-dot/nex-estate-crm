@@ -4,6 +4,7 @@
     "api/smoobu-webhook.js":  { "maxDuration": 30 },
     "api/smoobu-poll.js":     { "maxDuration": 30 },
     "api/admin-users.js":     { "maxDuration": 10 },
+    "api/lastminute-run.js":  { "maxDuration": 30 },
     "api/smoobu-messages.js": { "maxDuration": 30 }
   },
   "crons": [
