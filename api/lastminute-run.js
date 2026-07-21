@@ -62,6 +62,12 @@ const D_WIN_START_UTC = { h: 19, m: 0 };  // début fenêtre Départ le plus tô
 const D_SAFE_END_UTC  = { h: 21, m: 30 }; // fin sûre fenêtre Départ
 const DEPART_DELAY_MS = 60 * 60 * 1000;   // départ ≈ 1h après le B-LM (règle Hakim)
 
+// Lancement propre : les résas créées AVANT le déploiement de l'automatisation
+// ont été gérées manuellement par Hakim (souvent hors conversation Smoobu,
+// ex. WhatsApp) → on ne les traite JAMAIS. Seules les résas créées après cette
+// date/heure entrent dans l'automatisation.
+const LAUNCH_EPOCH = new Date(Date.UTC(2026, 6, 21, 17, 0, 0)); // 2026-07-21 17:00 UTC
+
 // ── Templates de secours (si logements.kb.msg_* absent) ───────
 // ⚠️ JAMAIS de code d'accès ici — le code reste 100 % manuel après
 // vérification du check-in en ligne (règle absolue).
@@ -244,6 +250,7 @@ function firstName(voyageur) {
 // ── Décision par réservation et par type de message ───────────
 // Retourne { action: 'skip'|'schedule', dueAt, reason }
 function decideBlm(resa, createdUtc, now) {
+  if (createdUtc < LAUNCH_EPOCH) return { action: 'skip', reason: 'pre-launch' };
   if (!resa.checkin) return { action: 'skip', reason: 'no-checkin' };
   const expiry = dayAtUtc(resa.checkin, 1, { h: 6, m: 0 }); // pertinent jusqu'au lendemain 6h UTC
   if (now >= expiry) return { action: 'skip', reason: 'expired' };
@@ -259,6 +266,7 @@ function decideBlm(resa, createdUtc, now) {
 }
 
 function decideDepart(resa, createdUtc, now) {
+  if (createdUtc < LAUNCH_EPOCH) return { action: 'skip', reason: 'pre-launch' };
   if (!resa.checkout) return { action: 'skip', reason: 'no-checkout' };
   const expiry = dayAtUtc(resa.checkout, 0, { h: 9, m: 0 }); // avant ~10h locale le jour du départ
   if (now >= expiry) return { action: 'skip', reason: 'expired' };
