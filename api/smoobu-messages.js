@@ -278,7 +278,8 @@ async function generateFullAnalysis(ctx) {
     '- N\'écris « je vérifie et reviens vers vous » QUE si l\'information est réellement absente du contexte ci-dessous.\n' +
     '- Ne jamais confirmer définitivement sans vérification côté hôte\n\n' +
     'Règles pour classification :\n' +
-    '- "no_reply_needed" : message trivial sans action requise (merci, ok, bien reçu, emoji, confirmation sans question, j\'ai trouvé, à bientôt, bonne nuit, de rien, you\'re welcome) → ai_draft et ai_draft_fr doivent être des chaînes vides ""\n' +
+    '- ⚡⚡ ON RÉPOND TOUJOURS AU VOYAGEUR : si le dernier message du fil vient du VOYAGEUR, produis TOUJOURS un brouillon — même pour un simple « merci », « ok », emoji ou confirmation (réponds alors par une courtoisie BRÈVE : « Je vous en prie. », « Avec plaisir, bonne journée. »). Ne laisse JAMAIS un message du voyageur sans réponse, même si le sujet est clos à 100 %.\n' +
+    '- "no_reply_needed" : UNIQUEMENT quand il n\'y a littéralement rien à répondre — le dernier élément du fil est une réponse « Hôte » et le voyageur n\'a rien envoyé depuis → ai_draft et ai_draft_fr doivent être des chaînes vides ""\n' +
     '- "simple" : demande standard, question, information\n' +
     '- "sensible" : invités non déclarés, couple non marié, avis négatif, plainte légère, demande inhabituelle\n' +
     '- "conflit" : situation clairement conflictuelle, menace, litige\n' +
@@ -330,7 +331,7 @@ async function generateFullAnalysis(ctx) {
       'CAS DE LA RAFALE : si le voyageur a envoyé PLUSIEURS messages d\'affilée RÉCENTS SANS réponse « Hôte » entre eux, traite-les comme UN SEUL message et réponds à l\'ENSEMBLE en une seule réponse (une seule pensée découpée en plusieurs bulles). ' +
       '⚡⚡ APPRENDS DE VOS RÉPONSES « Hôte » — elles sont la SOURCE DE VÉRITÉ sur ce qui a déjà été dit et promis au client (horaires, accès, code, parking, prix, arrangements). Ne CONTREDIS JAMAIS une information déjà donnée en « Hôte », ne la redemande pas et ne la répète pas inutilement. Reprends le MÊME ton, le même niveau de langue et les mêmes formulations que Hakim dans ses réponses « Hôte » : c\'est sa vraie voix, imite-la. ' +
       '⚡⚡ COMPRÉHENSION DU CONTEXTE (CAPITAL) : avant de répondre, LIS et COMPRENDS la TOTALITÉ du fil — qui est ce client, ce qu\'il a déjà demandé, ce qui a déjà été réglé, les sujets encore en cours. Si le dernier message FAIT RÉFÉRENCE à un sujet évoqué plus haut, ou contient une allusion implicite (« et pour l\'autre chose ? », « finalement ? », « comme je disais », « du coup ? »), relie-le à ce sujet et réponds AVEC ce contexte — jamais « hors-sol ». Réponds comme quelqu\'un qui a TOUT lu et suivi la conversation. Le récent = ce à quoi tu réponds ; l\'ancien (voyageur ET hôte) = le contexte qui donne du sens. ' +
-      'Si le dernier message du voyageur est juste un remerciement / une confirmation, classe "no_reply_needed".'
+      '⚡⚡ Si le dernier message du voyageur est un simple remerciement / une confirmation : réponds quand même — courtoisie BRÈVE (« Je vous en prie. », « Avec plaisir, bonne journée. ») si aucun sujet n\'est en suspens ; et si une OFFRE est en suspens (voir règle OFFRE EN SUSPENS du playbook), profite de cette réponse pour demander la confirmation. Ne classe JAMAIS "no_reply_needed" quand le dernier élément du fil vient du voyageur.'
     : `\nMessage du voyageur (réponds à CE message) :\n${message_content}`;
 
   const salutLine = firstName
@@ -687,6 +688,7 @@ function globalPlaybook() {
     '— ARRIVÉE ANTICIPÉE / DÉPART TARDIF (NE PAS CONFONDRE — erreur fréquente) : le check-in standard est à partir de 15h, le check-out avant 11h. Le supplément (≈10 €, voir la fiche du logement) s\'applique UNIQUEMENT dans 2 cas : (a) ARRIVÉE plus TÔT que 15h (arrivée anticipée), ou (b) DÉPART plus TARD que 11h (départ tardif, jusqu\'à 13h ou 13h30 selon le logement). En revanche, si le voyageur veut PARTIR AVANT 11h (départ anticipé / plus tôt que l\'heure de check-out) : AUCUN supplément, rien à facturer, c\'est sans aucun problème (au contraire). NE JAMAIS proposer de service payant pour un départ avant 11h. Bien distinguer « arriver tôt » (payant) de « partir tôt » (gratuit), et « partir tard » (payant) de « partir tôt » (gratuit).\n' +
     '— HORAIRES D\'ARRIVÉE : la fenêtre standard est 15h-20h (alignée sur l\'assistance téléphonique 9h-20h). Une arrivée APRÈS 20h est possible UNIQUEMENT sur demande et accord préalable — ne jamais dire « à n\'importe quelle heure » ni promettre sans confirmation. L\'arrivée est autonome (serrure digitale) mais dans la fenêtre convenue. Hors 9h-20h : messagerie, réponse dès que possible sans engagement de délai.\n' +
     '— ⚡ DEMANDE AU-DELÀ DE L\'OFFRE (pas de faux espoir) : quand le voyageur demande PLUS que ce qu\'un service permet — ex. rester dans le logement jusqu\'au soir alors que le départ tardif maximum est 13h/13h30 (≈10 €), arriver bien avant l\'heure possible, dépasser la capacité — dire CLAIREMENT et poliment que ce n\'est pas possible, et rappeler le MAXIMUM proposé avec son tarif : c\'est LA réponse. ⛔ NE JAMAIS ajouter « je regarde ce qui peut être organisé », « je vois ce que je peux faire », « je reviens vers vous » quand la limite est déjà fixée dans les infos ci-dessus — cela crée un faux espoir et une relance inutile. La limite connue = réponse ferme et définitive, pas une promesse d\'étude.\n' +
+    '— ⚡⚡ OFFRE EN SUSPENS (toujours fermer la boucle — ne JAMAIS laisser une conversation ouverte) : quand une option payante a été proposée au voyageur (départ tardif, arrivée anticipée, climatisation, navette, ménage...) et qu\'il répond de façon VAGUE sans accepter ni refuser clairement (« ok merci », « d\'accord », « on verra », « nous vous ferons savoir », « peut-être », « cela pourrait nous être utile »), le sujet n\'est PAS clos : réponds en lui demandant de CONFIRMER son intérêt LE PLUS TÔT POSSIBLE, en précisant que l\'option est SOUS RÉSERVE DE DISPONIBILITÉ et doit être organisée À L\'AVANCE — elle ne peut pas être demandée à la dernière minute ni le jour même. Processus : le voyageur confirme d\'abord son intérêt → Hakim vérifie la faisabilité → demande de paiement via la plateforme. Exemple de tournure : « Je vous en prie. Pour le départ tardif jusqu\'à 13h, merci de nous confirmer dès que possible si vous souhaitez en profiter — l\'option est sous réserve de disponibilité et doit être organisée à l\'avance, elle ne peut pas être demandée le jour même. »\n' +
     '— ⚡ RÈGLE DÉJÀ ANNONCÉE (client déçu, surpris, ou « je ne savais pas ») : quand un voyageur se plaint d\'une règle ou d\'une limite qui FIGURE sur l\'annonce ou dans les infos vérifiées du logement (piscine réservée aux moins de 14 ans, non-fumeur, capacité, horaires, suppléments...), rappeler poliment mais FACTUELLEMENT que cette information est indiquée noir sur blanc sur l\'annonce, AVANT la réservation — le voyageur y a eu accès en réservant, ce n\'est pas un manquement de l\'hôte. ⛔ NE JAMAIS écrire « je comprends que ce n\'était pas clair », « désolé pour la gêne », « je remonte votre remarque » ni aucune formule qui reconnaît un tort de notre part pour une règle déjà annoncée — il n\'y a rien à remonter ni à s\'excuser. Pour un point de règlement NON détaillé sur l\'annonce (ex. bonnet de bain obligatoire à la piscine) : le présenter comme un règlement NORMAL fixé par le syndic de la copropriété pour l\'hygiène et la sécurité, comme dans toute piscine — jamais comme un oubli de notre part. Ton : courtois et posé, jamais accusateur ni sec — factuel.\n' +
     '— ⚡⚡ ANNULATION / DEMANDE DE REMBOURSEMENT (RÈGLE ABSOLUE — vaut même en cas de raison personnelle grave : deuil, décès, maladie, urgence, imprévu, changement de plan) : les CONDITIONS D\'ANNULATION de l\'annonce s\'appliquent AUTOMATIQUEMENT et TOUJOURS, quelle que soit la raison invoquée. Un tarif non remboursable reste non remboursable, un tarif 50 % reste 50 % — le voyageur a accepté ces conditions au moment de réserver ; la raison de l\'annulation ne les modifie pas. RÉPONSE ATTENDUE (rédige-la, ne te contente PAS d\'escalader ni de dire que tu vérifies) : (1) une phrase d\'empathie COURTE et adaptée au contexte, SI la raison le justifie (ex. « Toutes mes condoléances. » en cas de décès) ; (2) indiquer clairement et poliment que les conditions d\'annulation de l\'annonce s\'appliquent automatiquement ; (3) pour toute demande de remboursement ou contestation, INVITER le voyageur à contacter l\'assistance Airbnb (ou Booking selon la plateforme), qui traite ce type de demande — ce n\'est pas l\'hôte qui gère les remboursements. ⛔ NE JAMAIS écrire « je vais voir avec l\'équipe », « je regarde les conditions et je reviens vers vous », « je vais étudier votre situation », ni AUCUNE formule laissant espérer une exception, un geste commercial ou une marge de négociation. Reste posé, courtois et ferme. CAS PARTICULIER — le voyageur RÉINSISTE après avoir reçu un message automatique (guide voyageur, formulaire de check-in envoyés par le système) : lui préciser que ce message était automatique (généré par le système) et RÉ-INDIQUER que sa demande a déjà une réponse — les conditions s\'appliquent, voir l\'assistance de la plateforme. Pour info factuelle si on demande simplement les conditions : remboursable jusqu\'à 5 jours avant l\'arrivée, non remboursable ensuite. Classe ces messages en "remboursement" (Hakim relit avant tout envoi).\n' +
     '— PAS UN SERVICE HÔTELIER : hébergement touristique meublé — pas de ménage quotidien inclus (le ménage en cours de séjour est un service payant, prix dans la fiche) ni de réception 24h/24.\n' +
@@ -947,41 +949,17 @@ function isGuestMessage(msg) {
 
 // ── Détecte un message trivial ne nécessitant pas de réponse ──
 // Retourne true → classification no_reply_needed, Claude ignoré
+// ⚡ RÈGLE HAKIM 2026-07-22 : on répond TOUJOURS au voyageur, même à un simple
+// « merci » (→ « Je vous en prie »), et un « ok merci » après une offre en
+// suspens (départ tardif...) doit déclencher une relance de confirmation.
+// L'ancien raccourci (≤15 chars / patterns « merci » → no_reply sans consulter
+// l'IA) court-circuitait cette règle et laissait des conversations ouvertes
+// (cas réel Naz Mannan). Désormais seul un message VIDE est trivial : tout
+// message réel passe par Claude, qui voit le fil et applique le playbook
+// (courtoisie brève ou relance d'offre en suspens).
 function isTrivialMessage(text) {
   var t = (text || '').trim();
-  if (!t) return true;
-
-  // Message avec question → jamais trivial (réponse potentiellement requise)
-  if (t.indexOf('?') !== -1) return false;
-
-  var tl = t.toLowerCase();
-
-  // Mots-clés d'alerte → jamais trivial même si message court
-  var alertKeywords = [
-    'problème', 'problem', 'cassé', 'broken', 'sale', 'dirty', 'froid', 'cold',
-    'chaud', 'hot', 'bruit', 'noise', 'urgent', 'aide', 'help', 'manque',
-    'panne', 'erreur', 'error', 'pas reçu', "n'ai pas", 'ne marche', "doesn't work",
-    'annul', 'rembours', 'refund', 'cancel', 'plainte', 'complaint', 'dommage',
-  ];
-  if (alertKeywords.some(function(w) { return tl.indexOf(w) !== -1; })) return false;
-
-  // Court (≤ 15 chars) et sans alerte → très probablement trivial ("merci", "ok 👍").
-  // Seuil abaissé 30→15 (2026-07-04) : « le code svp » (11c) passait trivial → ignoré.
-  // Entre 15 et 30 chars, Claude tranche (il classe no_reply_needed si vraiment trivial).
-  if (tl.length <= 15) return true;
-
-  // Patterns triviaux connus au-delà de 30 chars
-  var trivialPatterns = [
-    /^(merci (beaucoup|infiniment|bien|mille fois|pour tout|pour (votre |ta )?(réponse|aide|message|retour|info|disponibilité)))[!.,\s🙏]*$/,
-    /^(thank you (so much|very much|for (your|the) (quick )?reply|for everything|for your help))[!.,\s]*$/,
-    /^(j'?ai (bien )?trouvé|found (it|the place|the apartment|your place))[!.,\s]*$/,
-    /^(à tout à l'heure|a tout (à )?l'heure|see you( (soon|later|then))?)[!.,\s]*$/,
-    /^(bonne (journée|soirée|nuit|route|continuation|fin de semaine))[!.,!\s]*$/,
-    /^(je vous en prie|no problem|no worries|pas de problème|pas de souci|c'est normal)[!.,\s]*$/,
-    /^(d'accord (pour|c'est|je serai|on se)[ \w]{0,25})[!.,\s]*$/,
-    /^(bien reçu[.,!]?\s*(merci)?)[!.,\s]*$/,
-  ];
-  return trivialPatterns.some(function(r) { return r.test(tl); });
+  return !t;
 }
 
 // ── Calcule le nombre de jours jusqu'au check-in ─────────────
