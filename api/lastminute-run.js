@@ -60,6 +60,7 @@ const B_WIN_START_UTC = { h: 10, m: 0 };  // début fenêtre B le plus tôt poss
 const B_SAFE_END_UTC  = { h: 12, m: 45 }; // fin sûre fenêtre B
 const D_WIN_START_UTC = { h: 19, m: 0 };  // début fenêtre Départ le plus tôt possible
 const D_SAFE_END_UTC  = { h: 21, m: 30 }; // fin sûre fenêtre Départ
+const BLM_DELAY_MS    = 7 * 60 * 1000;    // B-LM ≈ 7 min après la réception (laisse le Welcome partir)
 const DEPART_DELAY_MS = 60 * 60 * 1000;   // départ ≈ 1h après le B-LM (règle Hakim)
 
 // Lancement propre : les résas créées AVANT le déploiement de l'automatisation
@@ -286,7 +287,18 @@ function firstName(voyageur) {
 
 // ── Décision par réservation et par type de message ───────────
 // Retourne { action: 'skip'|'schedule', dueAt, reason }
-function decideBlm(resa, createdUtc, now) {
+//
+// ⚠️ FUSEAU HORAIRE — CONCEPTION ROBUSTE (2026-07-23) :
+// Deux notions de temps sont volontairement séparées :
+//  • createdUtc = heure de création Smoobu (convertie Berlin→UTC) → sert UNIQUEMENT
+//    à la DÉTECTION (Smoobu a-t-il déjà envoyé ? la résa est-elle dans sa fenêtre ?).
+//    Comparaisons à large marge : une erreur de fuseau ne change pas la décision.
+//  • anchorUtc = NOTRE horloge serveur au moment où on voit la résa (webhook/scan) →
+//    sert au DÉLAI d'envoi (B-LM = anchor+7min). C'est du temps UTC absolu produit
+//    par NOTRE serveur : il ne dépend d'AUCUN fuseau (ni Maroc, ni Europe été/hiver).
+//    → Même si le Maroc ou l'Europe changent d'heure, le délai reste exact.
+function decideBlm(resa, createdUtc, now, anchorUtc) {
+  const anchor = anchorUtc || createdUtc;
   if (createdUtc < LAUNCH_EPOCH) return { action: 'skip', reason: 'pre-launch' };
   if (!resa.checkin) return { action: 'skip', reason: 'no-checkin' };
   const expiry = dayAtUtc(resa.checkin, 1, { h: 6, m: 0 }); // pertinent jusqu'au lendemain 6h UTC
@@ -299,16 +311,14 @@ function decideBlm(resa, createdUtc, now) {
     // le contrôle conversation tranchera
     return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), b1.getTime() + 10 * 60000)), reason: 'ambiguous-window' };
   }
-  // ⚠️ Correctif 2026-07-23 : +7 min après la création, pour laisser le message
-  // de bienvenue Smoobu ("Welcome", déclenché à la notification de résa, 2-5 min
-  // après) partir EN PREMIER. Cas réel ابوباسل : B-LM à 12:04, Welcome à 12:07 →
-  // ordre inversé. Avec le pg_cron toutes les 5 min, l'envoi effectif se fait
-  // ~7-12 min après la résa (cible Hakim : 10-15 min max — le client last-minute
-  // pose ses questions vite, ne pas le laisser attendre).
-  return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), createdUtc.getTime() + 7 * 60000)), reason: 'missed-window' };
+  // Délai ancré sur NOTRE horloge (réception) → +7 min : laisse le Welcome Smoobu
+  // (2-5 min après la résa) partir en premier ; avec le cron 5 min → envoi effectif
+  // ~7-12 min après la résa. 100% immunisé aux changements de fuseau.
+  return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), anchor.getTime() + BLM_DELAY_MS)), reason: 'missed-window' };
 }
 
-function decideDepart(resa, createdUtc, now) {
+function decideDepart(resa, createdUtc, now, anchorUtc) {
+  const anchor = anchorUtc || createdUtc;
   if (createdUtc < LAUNCH_EPOCH) return { action: 'skip', reason: 'pre-launch' };
   if (!resa.checkout) return { action: 'skip', reason: 'no-checkout' };
   const expiry = dayAtUtc(resa.checkout, 0, { h: 9, m: 0 }); // avant ~10h locale le jour du départ
@@ -316,8 +326,9 @@ function decideDepart(resa, createdUtc, now) {
   const d0 = dayAtUtc(resa.checkout, -1, D_WIN_START_UTC);
   const d1 = dayAtUtc(resa.checkout, -1, D_SAFE_END_UTC);
   if (createdUtc < d0) return { action: 'skip', reason: 'smoobu-in-time' };
-  // ~1h après le B-LM (≈ création), jamais avant la fin sûre de la fenêtre Smoobu
-  const dueAt = new Date(Math.max(createdUtc.getTime() + DEPART_DELAY_MS, d1.getTime(), now.getTime()));
+  // ~1h après le B-LM (ancré sur notre horloge), jamais avant la fin sûre de la
+  // fenêtre Smoobu J-1 (d1, plancher légitime qui peut être plus tard).
+  const dueAt = new Date(Math.max(anchor.getTime() + DEPART_DELAY_MS, d1.getTime(), now.getTime()));
   return { action: 'schedule', dueAt, reason: 'missed-window' };
 }
 
@@ -413,9 +424,11 @@ async function scanPhase(now, onlySid, report) {
     if (/cancel/i.test(String(booking.type || ''))) continue;
     const createdUtc = createdAtUtc(booking) || now;
 
+    // anchor = notre horloge (première fois qu'on voit la résa ≈ heure réelle de
+    // création, à quelques secondes près via webhook/scan) → délai fuseau-proof.
     const decisions = [];
-    if (needBlm)    decisions.push(['blm',    decideBlm(resa, createdUtc, now)]);
-    if (needDepart) decisions.push(['depart', decideDepart(resa, createdUtc, now)]);
+    if (needBlm)    decisions.push(['blm',    decideBlm(resa, createdUtc, now, now)]);
+    if (needDepart) decisions.push(['depart', decideDepart(resa, createdUtc, now, now)]);
 
     for (const [kind, dec] of decisions) {
       const row = {
@@ -445,7 +458,7 @@ async function scanPhase(now, onlySid, report) {
 // ── PHASE 2 : traiter les envois dus ──────────────────────────
 async function duePhase(now, dryrun, report) {
   const due = await sbGet(
-    `scheduled_messages?statut=eq.scheduled&due_at=lte.${encodeURIComponent(now.toISOString())}&select=id,smoobu_id,kind,appart,voyageur&order=due_at.asc&limit=10`
+    `scheduled_messages?statut=eq.scheduled&due_at=lte.${encodeURIComponent(now.toISOString())}&select=id,smoobu_id,kind,appart,voyageur,created_at&order=due_at.asc&limit=10`
   );
   for (const row of due || []) {
     try {
@@ -477,9 +490,12 @@ async function processDueRow(row, now, dryrun) {
     return 'cancelled';
   }
   const createdUtc = createdAtUtc(booking) || now;
+  // anchor STABLE = l'heure serveur d'insertion de la ligne (created_at), pour que
+  // la re-validation ne re-décale jamais le délai (idempotent, fuseau-proof).
+  const anchorUtc = row.created_at ? new Date(row.created_at) : createdUtc;
 
   // Recalcul avec les dates ACTUELLES (gère les modifications de dates)
-  const dec = row.kind === 'blm' ? decideBlm(resa, createdUtc, now) : decideDepart(resa, createdUtc, now);
+  const dec = row.kind === 'blm' ? decideBlm(resa, createdUtc, now, anchorUtc) : decideDepart(resa, createdUtc, now, anchorUtc);
   if (dec.action === 'skip') {
     const st = dec.reason === 'smoobu-in-time' ? 'cancelled' : 'skipped';
     await sbPatch('scheduled_messages', `id=eq.${row.id}`, { statut: st, detail: `revalidation: ${dec.reason}` });
