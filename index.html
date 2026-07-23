@@ -1318,6 +1318,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <div class="login-err hidden" id="perso-dup-err" style="text-align:left;margin-top:10px"></div>
     </div>
   </div>
+  <!-- ── Crédits accordés en cours — encart permanent, indépendant de la période, masqué si aucun ── -->
+  <div id="p-credits-block" style="display:none;margin:0 0 12px"></div>
   <div class="kg">
     <div class="kc kc-hero"><div class="kl">Dépenses courantes</div><div class="kv" style="color:var(--pu)" id="p-tot">0 MAD</div><div class="ks" id="p-cnt">0 entrées</div></div>
     <div class="kc"><div class="kl">Famille</div><div class="kv" id="p-fam">0 MAD</div></div>
@@ -3519,8 +3521,12 @@ function catLabel(c){return c==='Règlement terrain'?'Solde équipe déjà compt
 // Catégories Patrimoine / Investissement perso (VEFA…) — exclues des dépenses courantes
 var CATS_P_INVEST = ['VEFA – Avance appartement','VEFA – Frais notaire','VEFA – Frais dossier / banque','VEFA – Ameublement initial','VEFA – Travaux / finitions','Autre investissement perso'];
 function isInvestPerso(cat){ return CATS_P_INVEST.indexOf(cat) >= 0; }
+// Crédits accordés (prêts à des personnes) — exclus des dépenses courantes,
+// affichés dans l'encart « Crédits en cours » jusqu'à encaissement (encaisse_le)
+var CATS_P_CREDIT = ['Crédit accordé (prêt)'];
+function isCreditPerso(cat){ return CATS_P_CREDIT.indexOf(cat) >= 0; }
 var CATS_P_COURANT = ['Crédit personnel','Loyer perso','Pension enfants','Famille / Femme','Crèche / École','Enfant / Loisirs enfant','Abonnements','Alimentation / Grande surface','Resto / Snack / Café','Maison / Réparations / Électroménager','Charges foyer','Voiture / Entretien','Transport / Carburant','Médicaments','Compléments alimentaires','Hygiène / Bien-être','Cotisations / Assurances','Vêtements','Sport / Salle','Loisirs / Sorties','Dons / Aides','Autre perso'];
-var CATS_P  = CATS_P_COURANT.concat(CATS_P_INVEST);
+var CATS_P  = CATS_P_COURANT.concat(CATS_P_INVEST).concat(CATS_P_CREDIT);
 var CATS_S  = ['Navette aéroport','Navette ville','Ménage supplémentaire','Changement serviettes/linge','Arrivée anticipée','Départ tardif','Climatisation','Voyageur supplémentaire','Petit-déjeuner','Parking','Autre service'];
 var TYPES_R = ['RESERVATION','ANNULATION_PAYEE','ANNULATION_NON_PAYEE','RELOCATION','AIRCOVER','AJUSTEMENT','DIRECT'];
 var R_QUICK  = null;   // {from,to} preset rapide | null = nav normale
@@ -6524,8 +6530,8 @@ function exportServCSV() {
 function exportPersoCSV() {
   openExportModal('Dépenses Perso', 'perso', function(rows) {
     _csvDownload(rows,
-      ['Date','Catégorie','Description','Montant MAD','Récurrence','Statut','Prestataire','Don'],
-      ['date','cat','desc','montant','rec','statut','prest','don'],
+      ['Date','Catégorie','Description','Montant MAD','Récurrence','Statut','Prestataire','Don','Encaissement prévu','Encaissé le'],
+      ['date','cat','desc','montant','rec','statut','prest','don','date_encaissement','encaisse_le'],
       'nex-estate-perso-' + today() + '.csv');
   });
 }
@@ -7777,6 +7783,8 @@ function renderServ() {
 // ============================================================
 function renderPerso() {
   renderNav('p');
+  // Encart « Crédits en cours » — indépendant de la période et des filtres, rendu avant tout early-return
+  renderCreditsEnCours();
   // Peuple le filtre catégorie depuis CATS_P (source unique)
   var fcSel=document.getElementById('p-fcat');
   if(fcSel&&fcSel.options.length<=1){
@@ -7792,10 +7800,11 @@ function renderPerso() {
   if(fs)rows=rows.filter(function(r){return r.statut===fs;});
   if(fq)rows=rows.filter(function(r){return (r.desc||'').toLowerCase().includes(fq)||(r.prest||'').toLowerCase().includes(fq)||(r.cat||'').toLowerCase().includes(fq);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  // Séparation Patrimoine/Investissement (VEFA…) des dépenses courantes
+  // Séparation Patrimoine/Investissement (VEFA…) ET Crédits accordés des dépenses courantes
   // Le total principal du budget perso ne compte QUE les dépenses courantes.
+  // Un crédit accordé = argent qui doit revenir → jamais dans le budget du mois.
   var rowsInv  = rows.filter(function(r){return isInvestPerso(r.cat);});
-  var rowsCour = rows.filter(function(r){return !isInvestPerso(r.cat);});
+  var rowsCour = rows.filter(function(r){return !isInvestPerso(r.cat)&&!isCreditPerso(r.cat);});
   var totInvest = sum(rowsInv,'montant')+rowsInv.reduce(function(a,r){return a+(r.don||0);},0);
   var _hasDons=fcArr.indexOf('Dons / Aides')!==-1;
   var _donsOnly=fcArr.length===1&&_hasDons;
@@ -7877,9 +7886,13 @@ function renderPerso() {
   };
   var _recapCour=CATS_P_COURANT.map(function(c){return _recapCat(c,'var(--pu)');}).join('');
   var _recapInv =CATS_P_INVEST.map(function(c){return _recapCat(c,'var(--or, #d97706)');}).join('');
+  var _recapCred=CATS_P_CREDIT.map(function(c){return _recapCat(c,'var(--bl)');}).join('');
   var _recapHtml=_recapCour;
   if(_recapInv){
     _recapHtml+='<div class="rc" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px"><div><div class="rn" style="color:var(--or, #d97706);font-weight:600">🏗 Patrimoine / Investissement perso</div></div></div>'+_recapInv;
+  }
+  if(_recapCred){
+    _recapHtml+='<div class="rc" style="border-top:1px solid var(--br);margin-top:4px;padding-top:8px"><div><div class="rn" style="color:var(--bl);font-weight:600">💸 Crédits accordés (hors budget courant)</div></div></div>'+_recapCred;
   }
   set('p-recap',_recapHtml||'<div style="color:var(--td);font-size:13px">Aucune dépense</div>');
   var tb=document.getElementById('p-tb'),em=document.getElementById('p-em');
@@ -7911,6 +7924,7 @@ function renderPerso() {
           statusPill('perso',r)+
         '</div>'+
         (r.desc?'<div style="font-size:12px;color:var(--tm);font-style:italic">'+r.desc+'</div>':'')+
+        _persoCreditBadge(r,'div')+
         (r.don>0?'<div style="font-size:11px;color:var(--gr)">💝 Don : '+(r.don||0).toLocaleString('fr-MA')+' MAD</div>':'')+
         '<div class="r-card-row3">'+
           '<span class="r-card-net" style="color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</span>'+
@@ -7927,7 +7941,7 @@ function renderPerso() {
         '<td><input type="checkbox" class="pcb" data-id="'+r.id+'"'+checked+' onchange="togglePersoSel(\''+r.id+'\',this.checked)"></td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--tm)">'+r.date+'</td>'+
         '<td>'+chip(r.cat,catClass(r.cat))+'</td>'+
-        '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+(r.don>0?' <span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">💝 +'+( r.don||0).toLocaleString('fr-MA')+' MAD</span>':'')+'</td>'+
+        '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+_persoCreditBadge(r,'span')+(r.don>0?' <span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">💝 +'+( r.don||0).toLocaleString('fr-MA')+' MAD</span>':'')+'</td>'+
         '<td class="hm" style="font-size:12px;color:var(--td)">'+(r.rec||'Ponctuel')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+statusPill('perso',r)+'</td>'+
@@ -7940,6 +7954,69 @@ function renderPerso() {
   var _pAll=document.getElementById('perso-chk-all');
   if(_pAll){var _vis=window._PERSO_VISIBLE_IDS||[];var _allSel=_vis.length>0&&_vis.every(function(id){return PERSO_SEL[id];});_pAll.checked=_allSel;_pAll.indeterminate=!_allSel&&_vis.some(function(id){return PERSO_SEL[id];});}
   updatePersoSelBar();
+}
+
+// ============================================================
+// CRÉDITS ACCORDÉS — encart « en cours » + encaissement
+// ============================================================
+// Badge affiché sur les lignes crédit de la liste (t='div' mobile, 'span' tableau)
+function _persoCreditBadge(r,t){
+  if(!isCreditPerso(r.cat)) return '';
+  var inner=r.encaisse_le
+    ?'<span style="font-size:11px;color:var(--gr);background:rgba(76,175,125,.12);padding:1px 6px;border-radius:10px">✓ Encaissé le '+escHtml(r.encaisse_le)+'</span>'
+    :'<span style="font-size:11px;color:var(--bl);background:rgba(96,165,250,.12);padding:1px 6px;border-radius:10px">💸 En cours'+(r.date_encaissement?' · prévu '+escHtml(r.date_encaissement):'')+'</span>';
+  return t==='div'?'<div>'+inner+'</div>':' '+inner;
+}
+// Encart permanent en haut du bloc — liste les crédits non encaissés, quelle que soit la période
+function renderCreditsEnCours(){
+  var block=document.getElementById('p-credits-block');
+  if(!block) return;
+  var open=DB.perso.filter(function(r){return isCreditPerso(r.cat)&&!r.encaisse_le;});
+  if(!open.length){block.style.display='none';block.innerHTML='';return;}
+  // Tri : date d'encaissement prévue la plus proche d'abord, sans date à la fin
+  open.sort(function(a,b){return (a.date_encaissement||'9999').localeCompare(b.date_encaissement||'9999');});
+  var T=today();
+  var tot=sum(open,'montant');
+  var items=open.map(function(r){
+    var who=r.prest||r.desc||'(sans nom)';
+    var enc=r.date_encaissement;
+    var late=!!(enc&&enc<T);
+    var encTxt=enc?((late?'⚠️ Encaissement dépassé : ':'Encaissement prévu : ')+escHtml(enc)):'Date d\'encaissement à préciser';
+    return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--br)">'+
+      '<div style="flex:1;min-width:160px">'+
+        '<div style="font-weight:600">'+escHtml(who)+'</div>'+
+        '<div style="font-size:11px;color:'+(late?'var(--re)':'var(--td)')+'">Accordé le '+escHtml(r.date||'')+' · '+encTxt+'</div>'+
+        (r.desc&&r.prest?'<div style="font-size:11px;color:var(--tm);font-style:italic">'+escHtml(r.desc)+'</div>':'')+
+      '</div>'+
+      '<div style="font-family:\'DM Mono\',monospace;font-weight:600;color:var(--bl)">'+fmt(r.montant)+'</div>'+
+      '<div style="display:flex;gap:6px;align-items:center">'+
+        '<button class="ba" style="background:var(--gr);color:#fff;border-color:var(--gr);padding:4px 10px;font-size:12px" onclick="encaisserCredit(\''+r.id+'\')">✓ Encaissé</button>'+
+        actBtns('perso',r.id)+
+      '</div>'+
+    '</div>';
+  }).join('');
+  block.innerHTML='<div style="background:var(--s2);border:1px solid rgba(96,165,250,.4);border-left:4px solid var(--bl);border-radius:12px;padding:12px 16px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">'+
+      '<div class="sl" style="margin:0">💸 Crédits en cours</div>'+
+      '<div style="font-size:13px;color:var(--bl);font-weight:600">'+open.length+' crédit'+(open.length>1?'s':'')+' · '+fmt(tot)+' à récupérer</div>'+
+    '</div>'+items+'</div>';
+  block.style.display='';
+}
+// Marque un crédit comme encaissé (remboursé) — il quitte l'encart, reste dans l'historique
+async function encaisserCredit(id){
+  var r=DB.perso.find(function(x){return x.id===id;});
+  if(!r) return;
+  if(!confirm('Marquer ce crédit comme encaissé (remboursé) ?\n\n'+(r.prest||r.desc||'')+' · '+Math.round(r.montant||0).toLocaleString('fr-MA')+' MAD'))return;
+  var entry=Object.assign({},r,{encaisse_le:today()});
+  var ok=await upsert('perso',entry);
+  toastSaveResult(ok);
+  renderPerso();
+}
+// Affiche/masque le bloc « Suivi du crédit » du formulaire selon la catégorie choisie
+function togglePersoCreditFields(){
+  var sel=document.getElementById('fi-cat');
+  var wrap=document.getElementById('ff-credit-wrap');
+  if(sel&&wrap) wrap.style.display=isCreditPerso(sel.value)?'block':'none';
 }
 
 // ============================================================
@@ -8910,9 +8987,10 @@ function buildForm(type, editId) {
   if(type==='perso') {
     return '<div class="fg">'+
       field2('Date','fi-date','date',v('date',T))+
-      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat">'+
+      '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="togglePersoCreditFields()">'+
         '<optgroup label="── Dépenses courantes ──">'+CATS_P_COURANT.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</optgroup>'+
         '<optgroup label="── Patrimoine / Investissement ──">'+CATS_P_INVEST.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</optgroup>'+
+        '<optgroup label="── Crédits accordés ──">'+CATS_P_CREDIT.map(function(c){return '<option'+(v('cat')==c?' selected':'')+'>'+c+'</option>';}).join('')+'</optgroup>'+
       '</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Détail de la dépense')+
       field2('Montant (MAD)','fi-montant','number',v('montant',0))+
@@ -8925,6 +9003,17 @@ function buildForm(type, editId) {
           '<label class="fl">Montant don / pourboire (MAD)</label>'+
           '<input type="number" class="fi" id="fi-don" value="'+(v('don',0)||0)+'" min="0">'+
         '</div>'+
+      '</div>'+
+      '<div class="ff" id="ff-credit-wrap" style="display:'+(isCreditPerso(v('cat',''))?'block':'none')+';background:rgba(96,165,250,.07);border:1.5px solid rgba(96,165,250,.35);border-radius:8px;padding:10px 13px">'+
+        '<div style="font-size:13px;font-weight:600;color:var(--bl);margin-bottom:6px">💸 Suivi du crédit accordé</div>'+
+        '<label class="fl">Date d\'encaissement prévue (facultatif)</label>'+
+        '<input type="date" class="fi" id="fi-enc-date" value="'+escHtml(v('date_encaissement','')||'')+'">'+
+        (M_ID&&v('encaisse_le','')?
+          '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:13px;color:var(--gr)">'+
+            '<input type="checkbox" id="fi-enc-chk" checked style="width:16px;height:16px;accent-color:var(--gr);flex-shrink:0">'+
+            '<span>✅ Encaissé le '+escHtml(v('encaisse_le',''))+' — décocher pour remettre « en cours »</span>'+
+          '</label>'
+        :'<div style="font-size:11px;color:var(--td);margin-top:6px">Indiquez la personne dans « Bénéficiaire ». Ce crédit restera affiché dans « 💸 Crédits en cours » jusqu\'à son encaissement.</div>')+
       '</div>'+
       field2('Récurrence','fi-rec','select',v('rec','Ponctuel'),['Ponctuel','Hebdomadaire','Mensuel','Annuel'])+
       field2('Statut','fi-st','select',v('statut','Payé'),['Payé','En attente'])+
@@ -9524,7 +9613,20 @@ async function savePerso() {
   if(!d||!m){alert('Date et montant requis');return;}
   var donChk=document.getElementById('fi-don-chk');
   var don=(donChk&&donChk.checked)?(parseFloat(gv('fi-don'))||0):0;
-  var _okP = await upsert('perso',{id:M_ID||uid(),date:d,cat:gv('fi-cat'),desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest'),don:don});
+  var cat=gv('fi-cat');
+  var old=(M_ID?DB.perso.find(function(x){return x.id===M_ID;}):null)||{};
+  var entry={id:M_ID||uid(),date:d,cat:cat,desc:gv('fi-desc'),montant:m,rec:gv('fi-rec'),statut:gv('fi-st'),prest:gv('fi-prest'),don:don,
+    // Champs préservés depuis l'existant (jamais saisis dans ce formulaire)
+    recurring_charge_id:old.recurring_charge_id||null,recurring_month:old.recurring_month||null,
+    // Suivi crédit accordé — nettoyé si la catégorie n'est pas/plus un crédit
+    date_encaissement:null,encaisse_le:null};
+  if(isCreditPerso(cat)){
+    entry.date_encaissement=gv('fi-enc-date')||null;
+    var encChk=document.getElementById('fi-enc-chk');
+    // encaisse_le conservé sauf si la case « Encaissé » a été décochée (remise en cours)
+    entry.encaisse_le=(old.encaisse_le&&(!encChk||encChk.checked))?old.encaisse_le:null;
+  }
+  var _okP = await upsert('perso',entry);
   closeModal(); renderPerso();
   toastSaveResult(_okP);
 }
