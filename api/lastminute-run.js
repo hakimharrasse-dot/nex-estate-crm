@@ -74,10 +74,10 @@ const LAUNCH_EPOCH = new Date(Date.UTC(2026, 6, 21, 17, 0, 0)); // 2026-07-21 17
 const FALLBACK_BLM =
   'Bonjour {prenom},\n\n' +
   'Pour préparer votre arrivée, une seule étape :\n' +
-  '👉 Complétez votre check-in en ligne : {guide}\n' +
+  '👉 Complétez votre check-in en ligne : {checkin_url}\n' +
   '(Pièce d\'identité + acceptation des conditions de séjour)\n\n' +
   '🔑 Votre code d\'accès vous sera envoyé dès que le check-in est complété.\n\n' +
-  '📖 Le même lien est votre guide de séjour (accès, Wi-Fi, services).\n\n' +
+  '📖 Votre guide de séjour (accès, Wi-Fi, services) : {guide}\n\n' +
   '⏰ Arrivée entre 15h et 20h. Autre créneau ? Contactez-moi.\n\n' +
   'Hakim — Nex-Estate';
 
@@ -161,6 +161,26 @@ async function getBooking(sid) {
   const res = await smoobuFetch(`/api/reservations/${sid}`);
   if (!res.ok) return null;
   return res.json();
+}
+
+// ── Smoobu : URL du FORMULAIRE de check-in en ligne ───────────
+// ⚠️ Correctif 2026-07-23 (cas réel ابوباسل 148589056) : guest-app-url ≠ lien
+// check-in. L'API guest (/api-guest/bookings/{id}?token={t}) expose
+// onlineCheckInUrl (login.smoobu.com/<lang>/online-check-in/check-in/<hash>),
+// localisé dans la langue du voyageur. Le token = param t de guest-app-url.
+// Endpoint public invité (pas de clé API ni HMAC). Fallback : null → {guide}.
+async function getOnlineCheckInUrl(sid, guestAppUrl) {
+  try {
+    const m = String(guestAppUrl || '').match(/[?&]t=([A-Za-z0-9]+)/);
+    if (!m) return null;
+    const res = await fetch(`${SMOOBU_HOST}/api-guest/bookings/${sid}?token=${m[1]}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const url = String(data?.onlineCheckInUrl || '').trim();
+    return /^https:\/\//.test(url) ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Smoobu : messages d'une résa (paginé, host inclus) ────────
@@ -262,7 +282,12 @@ function decideBlm(resa, createdUtc, now) {
     // le contrôle conversation tranchera
     return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), b1.getTime() + 10 * 60000)), reason: 'ambiguous-window' };
   }
-  return { action: 'schedule', dueAt: now, reason: 'missed-window' };
+  // ⚠️ Correctif 2026-07-23 : +15 min après la création, pour laisser le message
+  // de bienvenue Smoobu ("Welcome", déclenché à la notification de résa, parfois
+  // ~3 min après) partir EN PREMIER. Cas réel ابوباسل : B-LM à 12:04, Welcome à
+  // 12:07 → ordre inversé. L'envoi effectif se fait au tick pg_cron suivant
+  // (10 min) → B-LM part ~15-25 min après la résa, toujours largement à temps.
+  return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), createdUtc.getTime() + 15 * 60000)), reason: 'missed-window' };
 }
 
 function decideDepart(resa, createdUtc, now) {
@@ -316,6 +341,7 @@ function fillTemplate(tpl, ctx) {
   return tpl
     .replace(/\{prenom\}/g, ctx.prenom)
     .replace(/\{date_depart\}/g, ctx.dateDepart)
+    .replace(/\{checkin_url\}/g, ctx.checkinUrl)
     .replace(/\{guide\}/g, ctx.guide);
 }
 
@@ -465,10 +491,12 @@ async function processDueRow(row, now, dryrun) {
   // 4. Construire le texte (template logement + données réelles)
   const tpls = await getTemplates(resa.appart);
   const guide = String(booking['guest-app-url'] || '').trim();
+  const checkinUrl = row.kind === 'blm' ? await getOnlineCheckInUrl(sid, guide) : null;
   const ctx = {
     prenom: firstName(resa.voyageur || booking.firstname),
     dateDepart: frDate(resa.checkout),
     guide: guide || 'le lien reçu dans votre message de bienvenue',
+    checkinUrl: checkinUrl || guide || 'le lien reçu dans votre message de bienvenue',
   };
   const text = fillTemplate(row.kind === 'blm' ? tpls.blm : tpls.depart, ctx);
 
