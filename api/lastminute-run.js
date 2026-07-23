@@ -282,12 +282,13 @@ function decideBlm(resa, createdUtc, now) {
     // le contrôle conversation tranchera
     return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), b1.getTime() + 10 * 60000)), reason: 'ambiguous-window' };
   }
-  // ⚠️ Correctif 2026-07-23 : +15 min après la création, pour laisser le message
-  // de bienvenue Smoobu ("Welcome", déclenché à la notification de résa, parfois
-  // ~3 min après) partir EN PREMIER. Cas réel ابوباسل : B-LM à 12:04, Welcome à
-  // 12:07 → ordre inversé. L'envoi effectif se fait au tick pg_cron suivant
-  // (10 min) → B-LM part ~15-25 min après la résa, toujours largement à temps.
-  return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), createdUtc.getTime() + 15 * 60000)), reason: 'missed-window' };
+  // ⚠️ Correctif 2026-07-23 : +7 min après la création, pour laisser le message
+  // de bienvenue Smoobu ("Welcome", déclenché à la notification de résa, 2-5 min
+  // après) partir EN PREMIER. Cas réel ابوباسل : B-LM à 12:04, Welcome à 12:07 →
+  // ordre inversé. Avec le pg_cron toutes les 5 min, l'envoi effectif se fait
+  // ~7-12 min après la résa (cible Hakim : 10-15 min max — le client last-minute
+  // pose ses questions vite, ne pas le laisser attendre).
+  return { action: 'schedule', dueAt: new Date(Math.max(now.getTime(), createdUtc.getTime() + 7 * 60000)), reason: 'missed-window' };
 }
 
 function decideDepart(resa, createdUtc, now) {
