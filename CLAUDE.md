@@ -1581,3 +1581,16 @@ var LABEL_STOP_WORDS = {
 | Formulaire | Select `fi-cat` scindé en 2 optgroups (courantes / patrimoine) ; charges récurrentes `rcp-cat` restreintes à CATS_P_COURANT |
 | KPIs | Hero « Dépenses courantes » (courant only) + rangée `p-kg-invest` (Investissements + Total général perso) affichée si VEFA présent |
 | Résumé catégories | Section dédiée « 🏗 Patrimoine / Investissement perso » (orange) sous les courantes |
+
+### Crédits accordés — prêts à des personnes (ajouté 2026-07-23, commit `880f121`)
+
+Demande Hakim : noter les crédits qu'il accorde à des personnes, avec affichage PERMANENT jusqu'à l'encaissement (remboursement).
+
+- **Catégorie** : `CATS_P_CREDIT = ['Crédit accordé (prêt)']` + helper `isCreditPerso(cat)` ; `CATS_P = COURANT + INVEST + CREDIT`. Optgroup « ── Crédits accordés ── » dans `fi-cat`.
+- **Migration Supabase** `add_credit_tracking_to_perso` : `perso.date_encaissement` text (date de remboursement prévue, FACULTATIVE) + `perso.encaisse_le` text (date de remboursement réel — **null = crédit en cours**).
+- **Hors budget courant** (décision Hakim) : `rowsCour` exclut `isCreditPerso` → un crédit ne gonfle jamais « Dépenses courantes » / Famille / Crédits & Loyer / En attente. Section dédiée « 💸 Crédits accordés (hors budget courant) » dans le résumé catégories.
+- **Encart `#p-credits-block`** (`renderCreditsEnCours()`, appelé en tête de `renderPerso()` AVANT le early-return liste vide) : tout en haut de la vue, **indépendant de la période et des filtres** — liste les crédits `!encaisse_le` triés par date prévue (sans date à la fin), rouge « ⚠️ Encaissement dépassé » si date < aujourd'hui, total « X à récupérer », boutons **✓ Encaissé** (`encaisserCredit(id)` : confirm → `encaisse_le=today()`) + `actBtns`. Masqué si aucun crédit en cours.
+- **Formulaire** : bloc `#ff-credit-wrap` (visible seulement si cat crédit, toggle `togglePersoCreditFields()` sur `fi-cat`) — date prévue `fi-enc-date` ; en édition d'un crédit encaissé, checkbox `fi-enc-chk` « décocher pour remettre en cours ». Personne = champ Bénéficiaire (`prest`) existant.
+- **`savePerso()`** : préserve désormais `recurring_charge_id`/`recurring_month` depuis `DB.perso` (corrige la perte en mémoire à l'édition) ; `date_encaissement`/`encaisse_le` nettoyés si la catégorie n'est pas/plus un crédit.
+- **Liste** : badge `_persoCreditBadge(r,t)` (💸 En cours · prévu X / ✓ Encaissé le X) dans tableau + cartes mobiles. Export CSV : colonnes « Encaissement prévu » + « Encaissé le ».
+- Vérifié en prod (0 erreur console, simulation rendu encart : tri, retard, exclusion encaissés, masquage OK). Une seule copie de logique (index.html) — règle des 3 copies non concernée (bloc perso).
