@@ -247,14 +247,31 @@ function dayAtUtc(ymd, dayOffset, hm) {
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + dayOffset, hm.h, hm.m, 0));
 }
 
-// created-at Smoobu 'YYYY-MM-DD HH:MM' — interprété en heure MAROC (UTC+1).
-// Interprétation la plus tardive possible → maximise la détection des cas
-// last-minute ; le contrôle anti-doublon conversation rattrape les cas limites.
+// Offset (minutes) de Europe/Berlin à un instant UTC donné : +120 en été (CEST),
+// +60 en hiver (CET). DST-safe via Intl. (Berlin = Paris comme offset.)
+function berlinOffsetMin(utcMs) {
+  const s = new Date(utcMs).toLocaleString('en-US', {
+    timeZone: 'Europe/Berlin', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const m = s.match(/(\d+)\/(\d+)\/(\d+),?\s+(\d+):(\d+):(\d+)/);
+  if (!m) return 60;
+  const asUTC = Date.UTC(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]);
+  return Math.round((asUTC - utcMs) / 60000);
+}
+
+// created-at Smoobu 'YYYY-MM-DD HH:MM' — ⚠️ FAIT STRUCTUREL (vérifié 2026-07-23) :
+// l'heure est en EUROPE/BERLIN, PAS au Maroc (ex. résa réelle à 17:47 UTC affichée
+// "19:47" = Berlin CEST UTC+2). L'ancien code soustrayait 1h fixe (Maroc UTC+1) →
+// createdUtc calculé 1h trop tard → B-LM envoyé ~1h après la résa (cas Amal/Jihane).
+// On convertit désormais Berlin→UTC avec l'offset réel de la date (DST-safe).
 function createdAtUtc(booking) {
   const raw = String(booking?.['created-at'] || '');
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
   if (!m) return null;
-  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 1, +m[5], 0));
+  const guessUTC = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], 0);
+  return new Date(guessUTC - berlinOffsetMin(guessUTC) * 60000);
 }
 
 function frDate(ymd) {
