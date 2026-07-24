@@ -140,7 +140,10 @@ function nextThursday(dateStr) {
 
 function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
   const t = new Date().toISOString().slice(0, 10);
-  if (typeNorm === 'ANNULATION_NON_PAYEE') return dateCreation || t;
+  // ANNULATION_NON_PAYEE → date_creation si connue ; sinon on applique la règle
+  // de la source (checkin+1 / jeudi après départ, plus bas) pour ancrer l'annulation
+  // dans son VRAI mois — jamais "aujourd'hui" (évite qu'elle flotte sur le mois courant).
+  if (typeNorm === 'ANNULATION_NON_PAYEE' && dateCreation) return dateCreation;
   if (src === 'Airbnb') {
     if (!ci) return dateCreation || t;
     const d = new Date(ci); d.setDate(d.getDate() + 1);

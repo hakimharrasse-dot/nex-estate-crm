@@ -9789,8 +9789,10 @@ function nextThursday(dateStr) {
 // ── Calcul date_paiement selon source et type — colonne "Payé" Smoobu ignorée ──
 function calcDatePaiement(src, typeNorm, ci, co, dateCreation) {
   var t = today();
-  // ANNULATION_NON_PAYEE → date_creation (pas de paiement attendu)
-  if (typeNorm === 'ANNULATION_NON_PAYEE') return dateCreation || t;
+  // ANNULATION_NON_PAYEE → date_creation si connue ; sinon on applique la règle
+  // de la source (checkin+1 / jeudi après départ, plus bas) pour ancrer l'annulation
+  // dans son VRAI mois — jamais "aujourd'hui" (évite qu'elle flotte sur le mois courant).
+  if (typeNorm === 'ANNULATION_NON_PAYEE' && dateCreation) return dateCreation;
   // AIRCOVER et AJUSTEMENT Airbnb → date manuelle uniquement, jamais recalculée
   if (src === 'Airbnb' && (typeNorm === 'AIRCOVER' || typeNorm === 'AJUSTEMENT')) return null;
   // Airbnb : checkin + 1j (RESERVATION et ANNULATION_PAYEE)
