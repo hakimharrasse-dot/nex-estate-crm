@@ -684,7 +684,8 @@ function globalPlaybook() {
     '— PERSONNES DÉCLARÉES : seules les personnes déclarées sur la réservation peuvent accéder au logement ; toute personne supplémentaire (ami, famille) doit être déclarée (mettre à jour le nombre de voyageurs sur la plateforme). Ne jamais dépasser la capacité de l\'annonce.\n' +
     '— CONSOMMABLES : 1 à 2 rouleaux de papier toilette sont fournis à l\'arrivée ; au-delà, le voyageur peut en racheter au supermarché à proximité.\n' +
     '— ÉQUIPEMENTS (tous les logements) : aucun aspirateur électrique, mais un balai et une raclette de sol sont disponibles. Climatisation = service optionnel à 3 €/nuit (même si l\'annonce montre la clim) : à activer sur demande après paiement. Les consignes de sécurité clim / eau chaude sont PROPRES À CHAQUE LOGEMENT : applique UNIQUEMENT celles listées dans les règles de la fiche du logement ci-dessus (ex. Touahri 11) — n\'invente pas de consigne pour les autres logements.\n' +
-    '— ⚡⚡ CLIMATISATION / TÉLÉCOMMANDE (RÈGLE ABSOLUE, tous les logements) : ne JAMAIS indiquer au voyageur où se trouve la télécommande de la climatisation, et ne jamais laisser entendre qu\'il peut l\'utiliser directement — même s\'il demande explicitement « où est la télécommande ? ». La clim est un service payant : PROCESSUS À SUIVRE = (1) expliquer que la climatisation est un service optionnel à 3 €/nuit ; (2) s\'il est intéressé, une demande de paiement lui est envoyée via la plateforme ; (3) une fois le paiement accepté et vérifié par Hakim, Hakim active la climatisation et lui indique la télécommande. Cette règle prime sur toute information d\'emplacement qui figurerait ailleurs.\n' +
+    '— ⚡⚡ CLIMATISATION / TÉLÉCOMMANDE (RÈGLE PAR DÉFAUT, tous les logements) : ne JAMAIS indiquer au voyageur où se trouve la télécommande de la climatisation, et ne jamais laisser entendre qu\'il peut l\'utiliser directement — même s\'il demande explicitement « où est la télécommande ? ». La clim est un service payant : PROCESSUS À SUIVRE = (1) expliquer que la climatisation est un service optionnel à 3 €/nuit ; (2) s\'il est intéressé, une demande de paiement lui est envoyée via la plateforme ; (3) une fois le paiement accepté et vérifié par Hakim, Hakim active la climatisation et lui indique la télécommande. Cette règle par défaut prime sur toute information d\'emplacement qui figurerait ailleurs.\n' +
+    '   ⚡ EXCEPTION — AUTORISATION EXPLICITE DE HAKIM : cette règle par défaut est SUSPENDUE quand une INSTRUCTION DE HAKIM (ci-dessous) demande explicitement d\'offrir la climatisation, de l\'activer ou d\'indiquer l\'emplacement de la télécommande (ex. « je lui offre la clim ce soir, dis-lui où est la télécommande », « active la clim », « paiement reçu, indique la télécommande »). Dans ce cas Hakim a DÉJÀ pris la décision (geste commercial ou paiement vérifié de son côté) : tu OBÉIS à sa consigne et tu indiques l\'emplacement de la télécommande. Utilise l\'emplacement précis que Hakim donne dans sa consigne ; s\'il ne le précise pas mais qu\'un champ « télécommande clim » figure dans les INFORMATIONS VÉRIFIÉES DE CE LOGEMENT ci-dessus, utilise-le ; si aucun emplacement n\'est disponible (ni dans la consigne, ni dans la fiche), rédige quand même le message d\'activation demandé et indique simplement que la télécommande de la climatisation est mise à disposition (sans inventer d\'emplacement). N\'indique JAMAIS l\'emplacement de ta propre initiative — uniquement sur cette autorisation explicite de Hakim.\n' +
     '— ARRIVÉE ANTICIPÉE / DÉPART TARDIF (NE PAS CONFONDRE — erreur fréquente) : le check-in standard est à partir de 15h, le check-out avant 11h. Le supplément (≈10 €, voir la fiche du logement) s\'applique UNIQUEMENT dans 2 cas : (a) ARRIVÉE plus TÔT que 15h (arrivée anticipée), ou (b) DÉPART plus TARD que 11h (départ tardif, jusqu\'à 13h ou 13h30 selon le logement). En revanche, si le voyageur veut PARTIR AVANT 11h (départ anticipé / plus tôt que l\'heure de check-out) : AUCUN supplément, rien à facturer, c\'est sans aucun problème (au contraire). NE JAMAIS proposer de service payant pour un départ avant 11h. Bien distinguer « arriver tôt » (payant) de « partir tôt » (gratuit), et « partir tard » (payant) de « partir tôt » (gratuit).\n' +
     '— HORAIRES D\'ARRIVÉE : la fenêtre standard est 15h-20h (alignée sur l\'assistance téléphonique 9h-20h). Une arrivée APRÈS 20h est possible UNIQUEMENT sur demande et accord préalable — ne jamais dire « à n\'importe quelle heure » ni promettre sans confirmation. L\'arrivée est autonome (serrure digitale) mais dans la fenêtre convenue. Hors 9h-20h : messagerie, réponse dès que possible sans engagement de délai.\n' +
     '— ⚡ DEMANDE AU-DELÀ DE L\'OFFRE (pas de faux espoir) : quand le voyageur demande PLUS que ce qu\'un service permet — ex. rester dans le logement jusqu\'au soir alors que le départ tardif maximum est 13h/13h30 (≈10 €), arriver bien avant l\'heure possible, dépasser la capacité — dire CLAIREMENT et poliment que ce n\'est pas possible, et rappeler le MAXIMUM proposé avec son tarif : c\'est LA réponse. ⛔ NE JAMAIS ajouter « je regarde ce qui peut être organisé », « je vois ce que je peux faire », « je reviens vers vous » quand la limite est déjà fixée dans les infos ci-dessus — cela crée un faux espoir et une relance inutile. La limite connue = réponse ferme et définitive, pas une promesse d\'étude.\n' +
@@ -1051,6 +1052,62 @@ export default async function handler(req, res) {
   // ── Health check ─────────────────────────────────────────
   if (req.method === 'GET' && req.query?.probe) {
     return res.status(200).json({ ok: true, service: 'smoobu-messages', version: '2.0' });
+  }
+
+  // ── Résolution CIBLÉE des cartes « À traiter » déjà répondues : GET ?resolvePending=1
+  // Le sync complet (?sync=1) balaie ~400 threads et n'est déclenché qu'une fois/jour
+  // (cron 8h UTC) → quand Hakim répond sur Airbnb en cours de journée, Smoobu n'envoie
+  // pas toujours de webhook pour SA réponse, donc la carte reste « pending » jusqu'au
+  // lendemain (retour terrain 2026-07-28 : Asmae, répondue à 09:14 mais carte encore
+  // pending à 16h43). Ici on ne regarde QUE les bookings ayant un pending (une poignée
+  // au plus) : on relit le fil en direct et on résout ceux où l'hôte a déjà répondu
+  // après le dernier message voyageur. Rapide (borné par le nb de pending), fiable,
+  // sans plafond AI (aucun appel Claude). Appelé à l'ouverture de la vue + sur Actualiser.
+  if (req.method === 'GET' && req.query?.resolvePending) {
+    try {
+      const pend = await sbGet(
+        'messages?statut=eq.pending&select=id,smoobu_booking_id&order=created_at.desc&limit=200'
+      );
+      if (!pend?.length) return res.status(200).json({ ok: true, resolved: 0, checked: 0 });
+      // Regrouper les pending par booking (dédup des booking_ids)
+      const byBooking = {};
+      for (const p of pend) {
+        const bid = String(p.smoobu_booking_id || '');
+        if (!bid) continue;
+        (byBooking[bid] = byBooking[bid] || []).push(p);
+      }
+      const bookingIds = Object.keys(byBooking);
+      let resolved = 0;
+      const now = new Date().toISOString();
+      for (const bid of bookingIds) {
+        try {
+          const msgData = await getSmoobuMessages(bid);
+          const raw = msgData?.messages || msgData?.data || (Array.isArray(msgData) ? msgData : []);
+          const allMessages = sortMessagesChronologically(raw);
+          const { lastGuestIdx, hostRepliedAfter } = analyzeConversation(allMessages);
+          // hostRepliedAfter = l'hôte a répondu après le DERNIER message voyageur → tout est traité.
+          // lastGuestIdx === -1 = aucun message voyageur (thread hôte/système seul) → rien à traiter.
+          if (hostRepliedAfter || lastGuestIdx === -1) {
+            for (const ep of byBooking[bid]) {
+              await sbPatch('messages', `id=eq.${encodeURIComponent(ep.id)}`, {
+                statut:     'resolved',
+                updated_at: now,
+              });
+              resolved++;
+            }
+            console.log('[resolvePending] auto-resolved', byBooking[bid].length, '— booking:', bid,
+              hostRepliedAfter ? '(host replied)' : '(no guest msg)');
+          }
+        } catch (bErr) {
+          // 404 prospect / erreur ponctuelle Smoobu : on laisse la carte, on continue.
+          console.warn('[resolvePending] booking', bid, 'skip:', bErr.message);
+        }
+      }
+      return res.status(200).json({ ok: true, resolved, checked: bookingIds.length });
+    } catch (err) {
+      console.error('[resolvePending] erreur:', err.message);
+      return res.status(500).json({ error: friendlyIaError(err.message) });
+    }
   }
 
   // ── Conversation par client : GET ?conversation=BOOKING_ID ───

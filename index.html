@@ -5081,7 +5081,7 @@ function goTo(name) {
   if (name === 'logements') { renderLogements();  return; }
   if (name === 'reconcil')  { renderReconcil();   return; }
   if (name === 'qualite')   { renderQualite();    return; }
-  if (name === 'messages')  { renderMessages();   return; }
+  if (name === 'messages')  { msgOpenView();      return; }
   if (name === 'asuivre')   { renderAsuivre();    return; }
   renderView({dash:'d',resa:'r',business:'b',taxe:'t',serv:'s',perso:'p',doublons:'dup'}[name]);
 }
@@ -15935,13 +15935,35 @@ var MSG_CLASSIF = {
   'remboursement':   { bg: 'rgba(90,159,212,.15)',  color: 'var(--bl)', label: 'Remboursement' },
 };
 
+// Passe CIBLÉE : résout les cartes « À traiter » déjà répondues (sur Airbnb/Booking).
+// Appelle GET ?resolvePending=1 (ne vérifie que les bookings ayant un pending, rapide,
+// zéro appel Claude). Renvoie le nombre résolu. Silencieux en cas d'échec réseau.
+async function resolvePendingMessages() {
+  try {
+    var r = await fetch('/api/smoobu-messages?resolvePending=1');
+    var data = await r.json().catch(function(){ return {}; });
+    return (data && data.resolved) || 0;
+  } catch (e) { return 0; }
+}
+
+// Ouverture de la vue Messages : affichage instantané, puis passe ciblée en arrière-plan
+// (résout les cartes auxquelles Hakim a déjà répondu sur la plateforme) → re-render si besoin.
+async function msgOpenView() {
+  renderMessages();
+  var n = await resolvePendingMessages();
+  if (n > 0) renderMessages();
+}
+
 // Actualiser : déclenche un vrai sync Smoobu backend puis recharge l'affichage
 // Le bouton Actualiser appelle cette fonction — renderMessages() seule ne contacte pas Smoobu.
 async function msgRefreshAndSync() {
   var btn = document.getElementById('msg-refresh-btn');
-  // 1) Rechargement INSTANTANÉ depuis Supabase (les messages arrivent déjà en
-  //    temps réel via le webhook → la liste est à jour en <1s, pas d'attente).
+  // 1) Passe CIBLÉE (rapide) : résout les cartes « À traiter » auxquelles on a déjà
+  //    répondu (sur Airbnb/Booking). Ne regarde que les bookings ayant un pending →
+  //    quelques appels Smoobu au plus, pas les 400 threads. Corrige le cas où Smoobu
+  //    n'a pas notifié notre réponse (carte qui traînait jusqu'au sync du lendemain).
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  await resolvePendingMessages();
   await renderMessages();
   if (btn) { btn.disabled = false; btn.textContent = '↻ Actualiser'; }
 
