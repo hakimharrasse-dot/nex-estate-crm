@@ -648,6 +648,10 @@ function kbBlock(kb) {
     if (kb.environs)      lines.push(`Environs / quartier & transports : ${kb.environs}`);
     if (kb.equipements)   lines.push(`Équipements : ${kb.equipements}`);
     if (kb.services)      lines.push(`Services additionnels & tarifs : ${kb.services}`);
+    // Emplacement télécommande clim = CONFIDENTIEL. Fourni ici mais ne doit être révélé
+    // au voyageur QUE sur autorisation explicite de Hakim (voir règle CLIMATISATION du
+    // playbook + son EXCEPTION). Jamais spontanément, jamais sur simple demande du client.
+    if (kb.telecommande_clim) lines.push(`⚠️ EMPLACEMENT TÉLÉCOMMANDE CLIM (CONFIDENTIEL — ne le révèle QUE si une INSTRUCTION DE HAKIM autorise explicitement à offrir/activer la clim ou à indiquer la télécommande ; JAMAIS de ta propre initiative, JAMAIS sur simple demande du voyageur) : ${kb.telecommande_clim}`);
     if (kb.regles)        lines.push(`Règles de la maison : ${kb.regles}`);
     if (kb.faq)           lines.push(`Autres infos : ${kb.faq}`);
   }
