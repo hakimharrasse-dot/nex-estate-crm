@@ -643,7 +643,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div class="ng">
     <div class="nl">Business</div>
-    <div class="ni on on-r" id="ni-resa" onclick="goTo('resa')"><span class="dot"></span>Réservations</div>
+    <div class="ni on on-r" id="ni-resa" onclick="goTo('resa')" style="position:relative"><span class="dot"></span>Réservations <span id="annul-badge" class="hidden" style="background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span></div>
     <div class="ni manager-plus" id="ni-business" onclick="goTo('business')"><span class="dot"></span>Dépenses Business</div>
     <div class="ni manager-plus" id="ni-taxe" onclick="goTo('taxe')"><span class="dot"></span>Taxe de séjour</div>
     <div class="ni manager-plus" id="ni-serv" onclick="goTo('serv')"><span class="dot"></span>Services additionnels</div>
@@ -859,6 +859,8 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
       <input type="file" id="csvfile" accept=".csv" style="display:none" onchange="handleCSV(this)">
     </div>
   </div>
+  <!-- File « Annulations à vérifier » — annulations comptées 0 MAD tant que Hakim n'a pas tranché -->
+  <div id="annul-queue"></div>
   <div class="kg">
     <div class="kc kc-hero"><div class="kl">Revenus nets</div><div class="kv" style="color:var(--gr)" id="r-net">0 MAD</div><div class="ks" id="r-cnt">0 réservations</div></div>
     <div class="kc"><div class="kl">Revenus bruts</div><div class="kv" id="r-brut">0 MAD</div></div>
@@ -6556,7 +6558,123 @@ function periodDays(k) {
 // ============================================================
 // RENDER: RÉSERVATIONS
 // ============================================================
+// ────────────────────────────────────────────────────────────
+// FILE « ANNULATIONS À VÉRIFIER » (2026-08-03)
+// Une annulation arrive toujours en ANNULATION_NON_PAYEE (0 MAD, hors CA).
+// Hakim vérifie sur la plateforme si le client a réellement été débité :
+//   ✅ Payée  → ANNULATION_PAYEE + net recalculé (COM[src]) + override_manual=true
+//   🚫 Non payée → confirmée à 0, la carte disparaît (annul_verif='done')
+// Suggestion : règle des 5 jours (annulée ≥5 j avant l'arrivée → probablement gratuite).
+// ────────────────────────────────────────────────────────────
+function updateAnnulBadge(n) {
+  var b = document.getElementById('annul-badge');
+  if (!b) return;
+  if (n == null) n = (DB.resa || []).filter(function(r){ return r.annul_verif === 'pending'; }).length;
+  b.textContent = n;
+  b.classList.toggle('hidden', !n);
+}
+
+function renderAnnulQueue() {
+  var host = document.getElementById('annul-queue');
+  if (!host) return;
+  var pend = (DB.resa || []).filter(function(r){ return r.annul_verif === 'pending'; });
+  updateAnnulBadge(pend.length);
+  if (!pend.length) { host.innerHTML = ''; return; }
+  var canW = canDo('write_resa');
+  var taux = window.EUR_MAD || 10.5;
+  var h = '<div style="border:1px solid var(--re);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--res)">'
+    + '<div style="font-weight:700;color:var(--re);margin-bottom:6px">⚠️ Annulations à vérifier · ' + pend.length + '</div>'
+    + '<div style="font-size:12px;color:var(--tm);margin-bottom:10px">Comptées à <b>0 MAD (hors CA)</b> tant que vous n\'avez pas confirmé sur la plateforme si le client a réellement été débité.</div>';
+  pend.sort(function(a,b){ return (a.checkin || '').localeCompare(b.checkin || ''); });
+  pend.forEach(function(r) {
+    var brut = r.brut || 0;
+    var net  = Math.round(brut * (1 - (COM[r.source] || 0)) * 100) / 100;
+    var annD = (r.annul_verif_at || '').slice(0, 10);
+    var sugg = '';
+    if (annD && r.checkin) {
+      var dJ = Math.round((new Date(r.checkin) - new Date(annD)) / 86400000);
+      if (dJ < 0) dJ = 0;
+      sugg = dJ >= 5
+        ? '💡 Annulée <b>' + dJ + ' j avant l\'arrivée</b> → probablement <b>gratuite</b> — à confirmer sur ' + escHtml(r.source || 'la plateforme')
+        : '💡 Annulée <b>' + dJ + ' j avant l\'arrivée</b> → probablement <b>facturée</b> — à confirmer sur ' + escHtml(r.source || 'la plateforme');
+    }
+    h += '<div style="border:1px solid var(--br);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--s)">'
+      + '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:13px">'
+      + '<b>' + escHtml(r.voyageur || '—') + '</b>'
+      + '<span style="color:var(--tm)">' + escHtml(r.appart || '—') + ' · ' + escHtml(r.source || '—') + '</span>'
+      + '<span>📅 ' + escHtml(r.checkin || '?') + ' → ' + escHtml(r.checkout || '?') + '</span>'
+      + '<span>Si facturée : <b>' + net.toFixed(2) + ' €</b> net (≈ ' + Math.round(net * taux).toLocaleString('fr-FR') + ' MAD)</span>'
+      + '</div>'
+      + (sugg ? '<div style="font-size:12px;margin-top:6px">' + sugg + '</div>' : '')
+      + (canW
+        ? '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'
+          + '<button class="ba bar" onclick="annulConfirmPaid(\'' + r.id + '\')">✅ Payée (' + net.toFixed(0) + ' €)</button>'
+          + '<button class="ba ba-ghost" onclick="annulConfirmFree(\'' + r.id + '\')">🚫 Non payée (0 €)</button>'
+          + '</div>'
+        : '')
+      + '</div>';
+  });
+  h += '</div>';
+  host.innerHTML = h;
+}
+
+async function annulConfirmPaid(id) {
+  if (!canDo('write_resa')) { showToast('⛔ Droits insuffisants'); return; }
+  var r = DB.resa.find(function(x){ return x.id === id; });
+  if (!r) return;
+  var brut   = r.brut || 0;
+  var comPct = COM[r.source] || 0;
+  var com    = Math.round(brut * comPct * 100) / 100;
+  var net    = Math.round((brut - com) * 100) / 100;
+  if (!confirm('Annulation FACTURÉE au client ?\n\n' + (r.voyageur || '') + ' — ' + net.toFixed(2) +
+    ' € net seront comptés dans le CA.\n(Vérifié sur ' + (r.source || 'la plateforme') + ')')) return;
+  var dp    = calcDatePaiement(r.source, 'ANNULATION_PAYEE', r.checkin, r.checkout, r.date_creation);
+  var nuits = diffNuits(r.checkin, r.checkout) || 0;
+  var patch = {
+    type_norm:     'ANNULATION_PAYEE',
+    com_pct:       comPct,
+    commission:    com,
+    net:           net,
+    nuits_fact:    nuits,
+    nuits_sejour:  0,
+    date_paiement: dp || r.date_paiement || null,
+    mois_kpi:      ((dp || r.date_paiement || r.checkin) || '').slice(0, 7),
+    statut:        (dp && today() >= dp) ? 'Payé' : 'En attente',
+    override_manual: true,  // verrou — la sync ne peut plus rétrograder
+    annul_verif:   'done'
+  };
+  var res = await SUPA.from('resa').update(patch).eq('id', id);
+  var ok = !res.error;
+  if (ok) Object.assign(r, patch);
+  toastSaveResult(ok);
+  renderResa();
+}
+
+async function annulConfirmFree(id) {
+  if (!canDo('write_resa')) { showToast('⛔ Droits insuffisants'); return; }
+  var r = DB.resa.find(function(x){ return x.id === id; });
+  if (!r) return;
+  if (!confirm('Annulation GRATUITE (0 €, hors CA) ?\n\n' + (r.voyageur || '') +
+    ' — confirmé sur ' + (r.source || 'la plateforme') + ' que le client n\'a pas été débité.')) return;
+  var patch = { annul_verif: 'done' };
+  // Cas hérité : si la ligne était encore ANNULATION_PAYEE non réconciliée, la neutraliser
+  if (r.type_norm === 'ANNULATION_PAYEE' && r.mad_reel == null) {
+    patch.type_norm = 'ANNULATION_NON_PAYEE';
+    patch.net = 0; patch.commission = 0; patch.com_pct = 0;
+    patch.nuits_fact = 0; patch.nuits_sejour = 0;
+    patch.statut = 'Annulé';
+    patch.date_paiement = r.date_creation || r.date_paiement || null;
+    patch.mois_kpi = ((patch.date_paiement || r.checkin) || '').slice(0, 7);
+  }
+  var res = await SUPA.from('resa').update(patch).eq('id', id);
+  var ok = !res.error;
+  if (ok) Object.assign(r, patch);
+  toastSaveResult(ok);
+  renderResa();
+}
+
 function renderResa() {
+  renderAnnulQueue();
   renderNav('r');
   var rows = filterResa(DB.resa,'r');
   var faArr=RESA_FILTERS.ap,fsrcArr=RESA_FILTERS.src,ftypeArr=RESA_FILTERS.type,fstArr=RESA_FILTERS.st;
@@ -9861,7 +9979,12 @@ function parseSmoobuRow(row, idx) {
   var isAnnule = statRaw.toLowerCase().indexOf('annul') >= 0 || statRaw.toLowerCase().indexOf('cancel') >= 0;
   var typeNorm;
   if (isAnnule) {
-    typeNorm = (prixEur > 0) ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
+    // Règle 2026-08-03 (PARITÉ avec normalizer + poll) : annulation → NON_PAYEE
+    // par défaut. Un prix > 0 ne prouve PAS que le client a été débité (bug CA
+    // août 2026 : +21k MAD de fausses annulations payées). Promotion en
+    // ANNULATION_PAYEE uniquement via la file « Annulations à vérifier » ou la
+    // réconciliation (versement réel).
+    typeNorm = 'ANNULATION_NON_PAYEE';
   } else {
     typeNorm = 'RESERVATION';
   }
@@ -10088,6 +10211,16 @@ async function confirmCSV() {
         if (!r.notes && existing.notes) r.notes = existing.notes;
         // Préserver nuits_business (correction manuelle occupation) — jamais écrasé par CSV
         if (existing.nuits_business != null) r.nuits_business = existing.nuits_business;
+        // Préserver la décision annulation (file « À vérifier ») — jamais écrasée par CSV
+        if (existing.annul_verif != null) { r.annul_verif = existing.annul_verif; r.annul_verif_at = existing.annul_verif_at; }
+        // Guard 2026-08-03 : ne jamais rétrograder une ANNULATION_PAYEE confirmée
+        // (argent réel) en ANNULATION_NON_PAYEE via un import CSV
+        if (existing.type_norm === 'ANNULATION_PAYEE' && r.type_norm === 'ANNULATION_NON_PAYEE') {
+          r.type_norm = existing.type_norm; r.statut = existing.statut;
+          r.brut = existing.brut; r.net = existing.net; r.commission = existing.commission;
+          r.com_pct = existing.com_pct; r.nuits_fact = existing.nuits_fact;
+          r.date_paiement = existing.date_paiement; r.mois_kpi = existing.mois_kpi;
+        }
         DB.resa[existingIdx] = r;
         nUpdated++;
       }

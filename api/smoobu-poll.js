@@ -241,21 +241,16 @@ function mapSmoobuBooking(b) {
   const adultes = parseInt(b.adults || 1) || 1;
   const enfants = parseInt(b.children || 0) || 0;
 
-  // Type normalisé — règle révisée (2026-05-01)
-  // Airbnb : ANNULATION_PAYEE si price-details contient "Cancellation Payout - EUR"
-  // Booking.com / VRBO / Direct : ANNULATION_NON_PAYEE par défaut
-  // (cas payés exceptionnels corrigés manuellement + override_manual)
+  // Type normalisé — règle révisée (2026-08-03) — PARITÉ EXACTE avec lib/smoobu-normalizer.js
+  // TOUTE annulation → ANNULATION_NON_PAYEE par défaut. L'ancien critère Airbnb
+  // « price-details contient "Cancellation Payout - EUR" » est PROUVÉ NON FIABLE :
+  // Smoobu affiche cette ligne (montant théorique prix − frais hôte) même pour les
+  // annulations gratuites. Promotion en ANNULATION_PAYEE UNIQUEMENT via la file
+  // « Annulations à vérifier » (décision Hakim, override_manual=true) ou la
+  // réconciliation (versement réel → mad_reel).
   const statRaw = (b.type || b.status || '').toLowerCase();
   const isAnnule = statRaw.includes('cancel') || statRaw.includes('annul');
-  let typeNorm;
-  if (isAnnule) {
-    const details = (b['price-details'] || '').toLowerCase();
-    typeNorm = (src === 'Airbnb' && details.includes('cancellation payout - eur'))
-      ? 'ANNULATION_PAYEE'
-      : 'ANNULATION_NON_PAYEE';
-  } else {
-    typeNorm = 'RESERVATION';
-  }
+  const typeNorm = isAnnule ? 'ANNULATION_NON_PAYEE' : 'RESERVATION';
 
   const nuitsFact  = (typeNorm === 'RESERVATION' || typeNorm === 'ANNULATION_PAYEE') ? nuits : 0;
   const nuitsSejou = typeNorm === 'RESERVATION' ? nuits : 0;
@@ -599,13 +594,31 @@ export default async function handler(req, res) {
             // Mise à jour complète + smoobu_id (override_manual jamais transmis par poll)
             const { id: _id, override_manual: _om, ...rest } = mapped;
             Object.assign(attachPatch, rest);
+            // Guard 2026-08-03 : ne jamais rétrograder une ANNULATION_PAYEE existante
+            // (argent confirmé) en ANNULATION_NON_PAYEE via la sync
+            if (orphan.type_norm === 'ANNULATION_PAYEE' && attachPatch.type_norm === 'ANNULATION_NON_PAYEE') {
+              ['type_norm', 'statut', 'brut', 'net', 'commission', 'com_pct', 'taxe_sejour',
+               'date_paiement', 'mois_kpi', 'nuits_fact', 'nuits_sejour'].forEach(k => delete attachPatch[k]);
+            }
+            // Transition vers annulation → file « Annulations à vérifier » (décision Hakim)
+            if (String(attachPatch.type_norm || '').indexOf('ANNULATION') === 0 &&
+                String(orphan.type_norm || '').indexOf('ANNULATION') !== 0) {
+              attachPatch.annul_verif    = 'pending';
+              attachPatch.annul_verif_at = new Date().toISOString();
+            }
           }
           await sbPatch('resa', orphan.id, attachPatch);
           stats.upserted++;
           console.log(`[poll] ORPHAN ATTACHED ${smoobuId} → id:${orphan.id} | protected:${!!orphan.override_manual}`);
         } else {
           // ── A-INSERT : vraiment nouvelle réservation ──
-          await sbUpsert('resa', { ...mapped, id: uid() });
+          const insertRow = { ...mapped, id: uid() };
+          // Nouvelle annulation → file « Annulations à vérifier » (décision Hakim)
+          if (String(insertRow.type_norm || '').indexOf('ANNULATION') === 0) {
+            insertRow.annul_verif    = 'pending';
+            insertRow.annul_verif_at = new Date().toISOString();
+          }
+          await sbUpsert('resa', insertRow);
           stats.upserted++;
           console.log(`[poll] INSERT ${smoobuId}`);
         }
@@ -706,7 +719,12 @@ export default async function handler(req, res) {
           // Smoobu peut retourner une réservation annulée comme active dans la fenêtre
           // de poll — sans ce guard, le type_norm serait écrasé en RESERVATION.
           const DOWNGRADE_PROTECTED = ['ANNULATION_PAYEE', 'ANNULATION_NON_PAYEE', 'AIRCOVER'];
-          if (DOWNGRADE_PROTECTED.includes(rec.type_norm) && mapped.type_norm === 'RESERVATION') {
+          // F3-bis (2026-08-03) : une ANNULATION_PAYEE existante (argent confirmé par
+          // réconciliation ou décision Hakim) ne peut JAMAIS être rétrogradée en
+          // ANNULATION_NON_PAYEE par la sync (nouvelle règle par défaut du mapping).
+          const isResaDowngrade  = DOWNGRADE_PROTECTED.includes(rec.type_norm) && mapped.type_norm === 'RESERVATION';
+          const isAnnulDowngrade = rec.type_norm === 'ANNULATION_PAYEE' && mapped.type_norm === 'ANNULATION_NON_PAYEE';
+          if (isResaDowngrade || isAnnulDowngrade) {
             // Guard checkout vide : si Smoobu ne fournit pas departure, préserver le checkout Supabase
             const coDown = mapped.checkout || rec.checkout || '';
             await sbPatch('resa', rec.id, {
@@ -728,7 +746,7 @@ export default async function handler(req, res) {
               //                    com_pct, taxe_sejour, date_paiement, mois_kpi
             });
             stats.upserted++;
-            console.log(`[poll] DOWNGRADE BLOQUÉ ${smoobuId} (${rec.type_norm} → RESERVATION) — partial update`);
+            console.log(`[poll] DOWNGRADE BLOQUÉ ${smoobuId} (${rec.type_norm} → ${mapped.type_norm}) — partial update`);
           } else {
             const { override_manual: _om, ...mappedData } = mapped;
 
@@ -760,6 +778,15 @@ export default async function handler(req, res) {
                 mappedData.date_paiement = rec.date_paiement;
                 mappedData.mois_kpi      = rec.date_paiement.slice(0, 7);
               }
+            }
+
+            // Transition vers annulation → file « Annulations à vérifier ».
+            // Jamais re-posé si la ligne était déjà une annulation (la décision
+            // 'done' de Hakim est conservée — colonne absente du payload sinon).
+            if (String(mappedData.type_norm || '').indexOf('ANNULATION') === 0 &&
+                String(rec.type_norm || '').indexOf('ANNULATION') !== 0) {
+              mappedData.annul_verif    = 'pending';
+              mappedData.annul_verif_at = new Date().toISOString();
             }
 
             await sbUpsert('resa', { ...mappedData, id: rec.id });

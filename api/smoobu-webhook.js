@@ -77,6 +77,18 @@ async function upsertResa(supabase, entry) {
         attachPatch.nb_personnes = entry.nb_personnes;
       } else {
         Object.assign(attachPatch, stripMeta(entry));
+        // Guard 2026-08-03 : ne jamais rétrograder une ANNULATION_PAYEE existante
+        // (argent confirmé) en ANNULATION_NON_PAYEE via la sync
+        if (orphan.type_norm === 'ANNULATION_PAYEE' && attachPatch.type_norm === 'ANNULATION_NON_PAYEE') {
+          ['type_norm', 'statut', 'brut', 'net', 'commission', 'com_pct', 'taxe_sejour',
+           'date_paiement', 'mois_kpi', 'nuits_fact', 'nuits_sejour'].forEach(k => delete attachPatch[k]);
+        }
+        // Transition vers annulation → file « Annulations à vérifier » (décision Hakim)
+        if (String(attachPatch.type_norm || '').indexOf('ANNULATION') === 0 &&
+            String(orphan.type_norm || '').indexOf('ANNULATION') !== 0) {
+          attachPatch.annul_verif    = 'pending';
+          attachPatch.annul_verif_at = new Date().toISOString();
+        }
       }
       const { error: attachErr } = await supabase
         .from('resa').update(attachPatch).eq('id', orphan.id);
@@ -123,7 +135,12 @@ async function upsertResa(supabase, entry) {
   // Smoobu peut envoyer un updateReservation après une annulation (mise à jour du voyageur,
   // du prix affiché, etc.) — sans ce guard, le type_norm serait écrasé.
   const DOWNGRADE_PROTECTED = ['ANNULATION_PAYEE', 'ANNULATION_NON_PAYEE', 'AIRCOVER'];
-  if (existing && DOWNGRADE_PROTECTED.includes(existing.type_norm) && entry.type_norm === 'RESERVATION') {
+  // F2-bis (2026-08-03) : une ANNULATION_PAYEE existante (argent confirmé par
+  // réconciliation ou décision Hakim) ne peut JAMAIS être rétrogradée en
+  // ANNULATION_NON_PAYEE par la sync (nouvelle règle par défaut du normalizer).
+  const isResaDowngrade  = existing && DOWNGRADE_PROTECTED.includes(existing.type_norm) && entry.type_norm === 'RESERVATION';
+  const isAnnulDowngrade = existing && existing.type_norm === 'ANNULATION_PAYEE' && entry.type_norm === 'ANNULATION_NON_PAYEE';
+  if (isResaDowngrade || isAnnulDowngrade) {
     const { error: patchErr } = await supabase
       .from('resa')
       .update({
@@ -145,12 +162,22 @@ async function upsertResa(supabase, entry) {
       })
       .eq('smoobu_id', sid);
     if (patchErr) throw patchErr;
-    console.log('[webhook] DOWNGRADE BLOQUÉ (', existing.type_norm, '→ RESERVATION) — partial update:', sid, '| ref:', entry.ref);
+    console.log('[webhook] DOWNGRADE BLOQUÉ (', existing.type_norm, '→', entry.type_norm, ') — partial update:', sid, '| ref:', entry.ref);
     return { ok: true, ref: entry.ref, downgrade_blocked: true, preserved: existing.type_norm };
   }
 
   // 3. Non verrouillé (ou nouveau) → UPSERT complet
   const clean = stripMeta(entry);
+
+  // File « Annulations à vérifier » (2026-08-03) : nouvelle annulation, ou
+  // transition réservation → annulation → flag pending pour décision Hakim.
+  // Jamais re-posé si la ligne était déjà une annulation (décision conservée —
+  // l'upsert ne touche pas les colonnes absentes du payload).
+  if (String(clean.type_norm || '').indexOf('ANNULATION') === 0 &&
+      (!existing || String(existing.type_norm || '').indexOf('ANNULATION') !== 0)) {
+    clean.annul_verif    = 'pending';
+    clean.annul_verif_at = new Date().toISOString();
+  }
 
   // On upsert sur smoobu_id (clé de déduplication Smoobu)
   // Supabase exige un index UNIQUE sur smoobu_id pour onConflict
@@ -203,17 +230,27 @@ async function softDeleteResa(supabase, smoobuId) {
     ? existingNotes
     : (existingNotes ? `${existingNotes} | ${suffix}` : suffix);
 
-  // type_norm : garder ANNULATION_PAYEE si brut > 0, sinon ANNULATION_NON_PAYEE
-  const newType = (existing.brut > 0) ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
+  // type_norm (règle 2026-08-03) : une ANNULATION_PAYEE confirmée le reste ;
+  // sinon ANNULATION_NON_PAYEE. brut > 0 ne prouve PAS que le client a été
+  // débité (ancien critère erroné) — la décision passe par la file « À vérifier ».
+  const newType = existing.type_norm === 'ANNULATION_PAYEE' ? 'ANNULATION_PAYEE' : 'ANNULATION_NON_PAYEE';
 
   // 2. Update partiel — on ne touche qu'aux champs nécessaires
+  const delPatch = {
+    statut:    'Annulé',
+    notes:     newNotes,
+    type_norm: newType,
+  };
+  // Transition vers annulation non payée → neutraliser le revenu + file « À vérifier »
+  if (newType === 'ANNULATION_NON_PAYEE' && String(existing.type_norm || '').indexOf('ANNULATION') !== 0) {
+    delPatch.net = 0; delPatch.commission = 0; delPatch.com_pct = 0;
+    delPatch.nuits_fact = 0; delPatch.nuits_sejour = 0;
+    delPatch.annul_verif    = 'pending';
+    delPatch.annul_verif_at = new Date().toISOString();
+  }
   const { error: updateErr } = await supabase
     .from('resa')
-    .update({
-      statut:    'Annulé',
-      notes:     newNotes,
-      type_norm: newType,
-    })
+    .update(delPatch)
     .eq('smoobu_id', sid);
 
   if (updateErr) throw updateErr;
