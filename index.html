@@ -7325,7 +7325,10 @@ function renderGainsCards() {
 // des avances caisse. AFFICHAGE UNIQUEMENT — aucun impact sur les calculs/KPIs.
 // Le mois le plus récent est déplié d'office : répondre « ce mois il a acheté quoi »
 // sans descendre filtrer dans Dépenses Business (demande Hakim 2026-08-11).
-function wkExpDetailHtml(rows) {
+function wkExpDetailHtml(rows, opts) {
+  opts = opts || {};
+  var lblPaye = opts.labelPaye || '✅ réglé';
+  var lblAtt  = opts.labelAtt  || '⏳ à rembourser';
   var rd = function(r){ return r.date_reglement || r.date; };
   var order = [], groups = {};
   rows.slice().sort(function(a,b){ return String(rd(b)||'').localeCompare(String(rd(a)||'')); })
@@ -7347,7 +7350,7 @@ function wkExpDetailHtml(rows) {
       var meta = [];
       if (ds) meta.push(escHtml(r.cat||''));       // la catégorie passe en 2e ligne quand il y a un libellé
       if (ap) meta.push(escHtml(ap));
-      meta.push(r.statut === 'Payé' ? '✅ réglé' : '⏳ à rembourser');
+      meta.push(r.statut === 'Payé' ? lblPaye : lblAtt);
       var tip = [ds, r.cat||'', ap?('Logement '+ap):'', r.fmen?('Équipe '+r.fmen):'',
                  r.paid_by?('Payé par '+r.paid_by):'', r.id?('#'+String(r.id).slice(-6)):'']
                 .filter(Boolean).join(' · ');
@@ -7370,6 +7373,36 @@ function wkExpDetailHtml(rows) {
   }).join('');
 }
 
+// Libellé lisible de la période PROPRE au bloc Récap (jamais celle des filtres du haut).
+function wkPeriodLabel() {
+  if (WK_MODE === 'semaine') {
+    var w = wkRange(wkRef);
+    return w.s.slice(8,10)+'/'+w.s.slice(5,7)+' → '+w.e.slice(8,10)+'/'+w.e.slice(5,7);
+  }
+  if (WK_MODE === 'mois') {
+    var p = WK_MO_REF.split('-');
+    return MONTHS_FR[parseInt(p[1])-1]+' '+p[0];
+  }
+  if (WK_MODE === 'perso') return (WK_FROM||'?')+' → '+(WK_TO||'?');
+  return 'en cours';
+}
+
+// Un bloc de la carte Récap : titre + montant, sous-ligne d'état, détail dépliable.
+function wkCardBlock(o) {
+  var h = '<div class="ccr" style="border-top:1px solid var(--br);margin-top:8px;padding-top:6px">'+
+      '<div class="ccl" style="font-weight:600;color:var(--td)">'+o.titre+'</div>'+
+      '<div class="ccv" style="color:'+(o.couleur||'var(--tx)')+'">'+o.montant+
+        (o.suffixe ? '<span style="font-size:11px;color:var(--td);margin-left:4px">· '+o.suffixe+'</span>' : '')+
+      '</div>'+
+    '</div>';
+  if (o.sousLigne) h += '<div style="font-size:11px;color:var(--td);padding:0 0 2px">'+o.sousLigne+'</div>';
+  if (o.lignes && o.lignes.length)
+    h += '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ '+
+           (o.lienDetail||'Voir le détail')+'</summary>'+
+         '<div style="margin-top:3px">'+wkExpDetailHtml(o.lignes, o.opts)+'</div></details>';
+  return h;
+}
+
 function renderWkCards() {
   ['semaine','mois','perso','cumul'].forEach(function(m){
     var btn=document.getElementById('wmt-'+m);
@@ -7390,169 +7423,147 @@ function renderWkCards() {
   }
 
   var cards = members.map(function(m) {
-    var name = m.name;
-    var isCleaner = m.role === 'cleaner';
+    var name      = m.name;
+    var isCumul   = (WK_MODE === 'cumul');
+    var perLbl    = wkPeriodLabel();
+    var rd        = function(r){ return r.date_reglement || r.date; };
+    var trierDesc = function(a,b){ return String(rd(b)||'').localeCompare(String(rd(a)||'')); };
 
-    // date_reglement = date de paiement réelle ; fallback sur date si absent
-    var rd = function(r){ return r.date_reglement || r.date; };
+    // ── 🧹 MÉNAGES — période PROPRE au bloc (plus jamais le filtre du haut) ──
+    var menRows     = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).sort(trierDesc);
+    var menPendRows = menRows.filter(function(r){ return r.statut!=='Payé'; });
+    var menTot      = sum(menRows,'montant');
+    var menDu       = sum(menPendRows,'montant');
+    var menPaye     = Math.round((menTot-menDu)*100)/100;
 
-    // ── Section avance caisse (tous membres) ─────────────────
-    // Avances reçues : cat='Avance caisse', bénéficiaire = fmen, statut=Payé
-    var avancesRows  = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; });
-    var avances      = sum(avancesRows, 'montant');
-    // Dépenses réalisées avec l'avance (Payé uniquement — En attente n'impacte pas la caisse)
-    //   · dépenses non-ménage où fmen=personne (Consommables, Technicien, Règlement terrain…)
-    //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
-    var depNonMenRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.statut==='Payé'; });
-    var depMenageRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name&&r.statut==='Payé'; });
-    // Achats / dépenses avancés par le membre (consommables, technicien, intervention…)
-    // AFFICHAGE UNIQUEMENT — n'entre dans aucun total, sert à répondre « tu as acheté quoi ce mois »
-    var achatRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
-    var achatTot  = sum(achatRows, 'montant');
-    var achatAtt  = sum(achatRows.filter(function(r){ return r.statut!=='Payé'; }), 'montant');
-    var hasAchats = achatRows.length > 0;
-    var depNonMen = sum(depNonMenRows, 'montant');
-    var depMenage = sum(depMenageRows, 'montant');
-    var depenses  = depNonMen + depMenage;
-    var solde     = avances - depenses;
-    var hasAvance = avances > 0;
+    // ── 🛒 ACHATS AVANCÉS DE SA POCHE ────────────────────────
+    // Ce qui a été payé avec l'avance de caisse porte paid_by = la personne
+    // → compté dans le bloc Avance de caisse, jamais ici (anti double-comptage).
+    var achatRows = DB.business.filter(function(r){
+      return inRange(rd(r))&&r.fmen===name&&r.paid_by!==name
+          && r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain';
+    }).sort(trierDesc);
+    var achatPendRows = achatRows.filter(function(r){ return r.statut!=='Payé'; });
+    var achatTot  = sum(achatRows,'montant');
+    var achatDu   = sum(achatPendRows,'montant');
+    var achatPaye = Math.round((achatTot-achatDu)*100)/100;
 
-    // ── Section ménage (femmes de ménage uniquement) ─────────
-    var men=0, adv=0, tax=0, ext=0, nbMen=0, paid=0, payers=[];
-    // Taxe et extras collectés par ce membre (tous rôles — ex: agent terrain)
-    tax = sum(DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; }), 'montant');
-    ext = sum(DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; }), 'montant');
-    if (isCleaner) {
-      var bPend = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='En attente'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
-      var menPendRows = bPend.filter(function(r){ return r.cat==='Ménage'; })
-        .sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-      men  = sum(menPendRows, 'montant');
-      // Si la personne a des avances, ses dépenses avancées sont déjà dans la section avances → évite le doublon
-      adv  = hasAvance ? 0 : sum(bPend.filter(function(r){ return r.cat!=='Ménage'; }), 'montant');
-      nbMen= DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'; }).length;
-      paid = sum(DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.statut==='Payé'&&r.cat==='Ménage'; }), 'montant');
-      // Effectué ce mois — basé sur la période Dépenses Business (clé 'b'), indépendante du cumul
-      var menBizPeriod = filterPer(DB.business, 'b').filter(function(r){ return r.fmen===name&&r.cat==='Ménage'; });
-      var menEffectue  = sum(menBizPeriod, 'montant');
-      var nbEffectue   = menBizPeriod.length;
-      // Payeurs tiers : ménages où paid_by est quelqu'un d'autre que la femme de ménage
-      DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat==='Ménage'&&r.paid_by&&r.paid_by!==name; })
-        .forEach(function(r){ if(payers.indexOf(r.paid_by)===-1) payers.push(r.paid_by); });
-    }
-    var total = men+adv, net = total-tax-ext;
-    var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
-    var lbl = net>0?'💰 À payer à '+name:net<0?'⬅️ '+name+' te doit':'✅ Soldé';
+    // ── 💰 ENCAISSÉ POUR NEX-ESTATE (se déduit de ce qu'on lui doit) ──
+    var taxRows  = DB.taxe.filter(function(r){ return inRange(r.date)&&r.col===name&&r.rev==='Non reversé'; });
+    var servRows = DB.serv.filter(function(r){ return inRange(r.date)&&r.col===name&&r.statut!=='Payé'; });
+    var tax = sum(taxRows,'montant');
+    var ext = sum(servRows,'montant');
+    var encRows = taxRows.map(function(r){
+        return { id:r.id, date:r.date, cat:'Taxe de séjour', desc:(r.voy||''), appart:r.appart, montant:r.montant, statut:'En attente' };
+      }).concat(servRows.map(function(r){
+        return { id:r.id, date:r.date, cat:(r.svc||'Service additionnel'), desc:(r.voy||''), appart:r.appart, montant:r.montant, statut:'En attente' };
+      })).sort(trierDesc);
 
-    var hasMenage   = isCleaner && (men>0||adv>0||nbMen>0||paid>0);
-    var hasCollected = (tax > 0 || ext > 0);
-    if (!hasMenage && !hasAvance && !hasCollected) return '';
+    // ── 🏦 AVANCE DE CAISSE — compte PERMANENT, JAMAIS filtré par période ──
+    // Une avance non justifiée reste visible quel que soit le mois affiché (demande Hakim).
+    // « Justifié » = dépense explicitement marquée payée avec la caisse (paid_by = la personne).
+    // ⚠️ Ne JAMAIS retomber sur fmen : les ménages d'une personne ne sont pas des dépenses de caisse.
+    var avRows     = DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }).sort(trierDesc);
+    var justifRows = DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }).sort(trierDesc);
+    var avRecu  = sum(avRows,'montant');
+    var avJust  = sum(justifRows,'montant');
+    var avReste = Math.round((avRecu-avJust)*100)/100;
+    var hasAvance = avRows.length > 0 && Math.abs(avReste) > 0.009;
 
+    // ── SOLDE FINAL : ce qu'on lui verse aujourd'hui ─────────
+    var net = Math.round((menDu + achatDu - tax - ext)*100)/100;
+
+    // En mode « En cours » : la carte ne montre QUE ce qui n'est pas soldé, sans limite de date
+    var hasAny = isCumul
+      ? (menDu>0 || achatDu>0 || tax>0 || ext>0 || hasAvance)
+      : (menRows.length>0 || achatRows.length>0 || tax>0 || ext>0 || hasAvance);
+    if (!hasAny) return '';
+
+    var nbTete = isCumul ? menPendRows.length : menRows.length;
     var html = '<div class="cc">'+
-      '<div class="ccn '+colClass(name)+'">'+name+
-        (nbMen ? '<span class="ccnt">'+nbMen+' intervention'+(nbMen>1?'s':'')+'</span>' : '')+
-      '</div>';
+      '<div class="ccn '+colClass(name)+'">'+escHtml(name)+
+        (nbTete ? '<span class="ccnt">'+nbTete+' passage'+(nbTete>1?'s':'')+(isCumul?' en attente':'')+'</span>' : '')+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--td);padding:0 0 2px">📅 '+escHtml(perLbl)+'</div>';
 
-    if (hasMenage) {
-      html +=
-        (menEffectue > 0 || nbEffectue > 0
-          ? '<div class="ccr" style="background:var(--s2);border-radius:6px;padding:4px 6px;margin-bottom:4px"><div class="ccl" style="color:var(--td)">Effectué (période)</div><div class="ccv" style="color:var(--tx)">'+fmt(menEffectue)+'<span style="font-size:11px;color:var(--td);margin-left:4px">· '+nbEffectue+' passage'+(nbEffectue>1?'s':'')+'</span></div></div>'
-          : '')+
-        '<div class="ccr"><div class="ccl">Ménage (en attente)</div><div class="ccv">'+fmt(men)+
-          (menPendRows.length?'<span style="font-size:11px;color:var(--td);margin-left:4px">· '+menPendRows.length+' passage'+(menPendRows.length>1?'s':'')+'</span>':'')+
-        '</div></div>'+
-        (menPendRows.length
-          ? '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ Voir les passages en attente</summary>'+
-            '<div style="margin-top:3px">'+menPendRows.map(function(r){
-              return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--tm);padding:2px 0;border-bottom:1px solid var(--br)">'+
-                '<span style="white-space:nowrap">'+(r.date||'—')+'</span>'+
-                '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(aptShort(r.appart||'')||r.appart||'—')+'</span>'+
-                '<span style="font-family:\'DM Mono\',monospace;color:var(--or);white-space:nowrap">'+fmt(r.montant)+'</span>'+
-              '</div>';
-            }).join('')+'</div></details>'
-          : '')+
-        (payers.length ? '<div class="ccr"><div class="ccl" style="color:var(--bl)">Payé par</div><div class="ccv" style="color:var(--bl)">'+payers.map(escHtml).join(', ')+'</div></div>' : '')+
-        (adv>0 ? '<div class="ccr"><div class="ccl">Avancé</div><div class="ccv" style="color:var(--bl)">+'+fmt(adv)+'</div></div>' : '')+
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:4px;padding-top:6px">'+
-          '<div class="ccl" style="font-weight:600">Total dû</div><div class="ccv" style="font-weight:600">'+fmt(total)+'</div>'+
-        '</div>'+
-        (tax>0 ? '<div class="ccr"><div class="ccl">− Taxe</div><div class="ccv" style="color:var(--te)">−'+fmt(tax)+'</div></div>' : '')+
-        (ext>0 ? '<div class="ccr"><div class="ccl">− Extras</div><div class="ccv" style="color:var(--go)">−'+fmt(ext)+'</div></div>' : '')+
-        '<div class="cct"><div class="cctl">'+lbl+'</div><div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>'+
-        (paid>0 ? '<div class="ccpaid"><span>✓ Déjà réglé</span><span>'+fmt(paid)+'</span></div>' : '');
+    // 🧹 Ménages — en mode « En cours », rien à afficher si tout est déjà réglé
+    if (isCumul ? menDu > 0 : menRows.length > 0) {
+      var mLignes = isCumul ? menPendRows : menRows;
+      html += wkCardBlock({
+        titre: '🧹 Ménages',
+        montant: fmt(isCumul ? menDu : menTot),
+        suffixe: mLignes.length+' passage'+(mLignes.length>1?'s':''),
+        couleur: isCumul ? 'var(--or)' : 'var(--tx)',
+        sousLigne: isCumul ? '' : '✅ Réglé '+fmt(menPaye)+' · ⏳ En attente '+fmt(menDu),
+        lienDetail: isCumul ? 'Voir les passages en attente' : 'Voir les passages',
+        lignes: mLignes,
+        opts: { labelAtt:'⏳ à payer' }
+      });
     }
 
-    // Collectés terrain (membres non-ménage : agent, chauffeur, etc.)
-    // Pour les cleaners, cette section est déjà intégrée dans hasMenage via − Taxe / − Extras
-    if (!hasMenage && hasCollected) {
-      var dueTerrain = tax + ext;
-      html +=
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:0;padding-top:6px">'+
-          '<div class="ccl" style="font-weight:600;color:var(--td)">💵 Collectés terrain</div></div>'+
-        (tax>0 ? '<div class="ccr"><div class="ccl">Taxe (non reversée)</div><div class="ccv" style="color:var(--or)">'+fmt(tax)+'</div></div>' : '')+
-        (ext>0 ? '<div class="ccr"><div class="ccl">Extras (non payés)</div><div class="ccv" style="color:var(--go)">'+fmt(ext)+'</div></div>' : '')+
-        '<div class="cct"><div class="cctl">⬅️ '+escHtml(name)+' te doit</div><div class="cctv" style="color:var(--te)">'+fmt(dueTerrain)+'</div></div>';
+    // 🛒 Achats avancés de sa poche — idem, masqué si tout est déjà remboursé
+    if (isCumul ? achatDu > 0 : achatRows.length > 0) {
+      var aLignes = isCumul ? achatPendRows : achatRows;
+      html += wkCardBlock({
+        titre: '🛒 Achats avancés',
+        montant: fmt(isCumul ? achatDu : achatTot),
+        suffixe: aLignes.length+' ligne'+(aLignes.length>1?'s':''),
+        couleur: isCumul ? 'var(--or)' : 'var(--tx)',
+        sousLigne: isCumul ? '' : '✅ Remboursé '+fmt(achatPaye)+' · ⏳ À rembourser '+fmt(achatDu),
+        lienDetail: isCumul ? 'Voir les achats à rembourser' : 'Voir le détail des achats',
+        lignes: aLignes
+      });
     }
 
-    // Achats & dépenses hors ménage — détail par mois, replié.
-    // Non affiché si la personne a une avance caisse : ses achats sont déjà
-    // détaillés dans « Détail Utilisé » ci-dessous (pas de double affichage).
-    if (hasAchats && !hasAvance) {
-      html +=
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+((hasMenage||hasCollected)?'8':'0')+'px;padding-top:6px">'+
-          '<div class="ccl" style="font-weight:600;color:var(--td)">🛒 Achats & dépenses</div>'+
-          '<div class="ccv" style="color:var(--tx)">'+fmt(achatTot)+
-            '<span style="font-size:11px;color:var(--td);margin-left:4px">· '+achatRows.length+' ligne'+(achatRows.length>1?'s':'')+'</span>'+
-          '</div>'+
-        '</div>'+
-        '<div class="ccr"><div class="ccl" style="font-size:11px">✅ Réglé</div>'+
-          '<div class="ccv" style="font-size:11px;color:var(--gr)">'+fmt(achatTot-achatAtt)+'</div></div>'+
-        (achatAtt>0
-          ? '<div class="ccr"><div class="ccl" style="font-size:11px">⏳ À rembourser</div>'+
-            '<div class="ccv" style="font-size:11px;color:var(--or)">'+fmt(achatAtt)+'</div></div>'
-          : '')+
-        '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ Voir le détail des achats</summary>'+
-          '<div style="margin-top:3px">'+wkExpDetailHtml(achatRows)+'</div>'+
-        '</details>';
+    // 💰 Encaissé pour Nex-Estate (taxe de séjour + services additionnels)
+    if (tax > 0 || ext > 0) {
+      html += wkCardBlock({
+        titre: '💰 Encaissé pour toi',
+        montant: '−'+fmt(tax+ext),
+        suffixe: encRows.length+' ligne'+(encRows.length>1?'s':''),
+        couleur: 'var(--te)',
+        sousLigne: (tax>0?'Taxe de séjour '+fmt(tax):'')+((tax>0&&ext>0)?' · ':'')+(ext>0?'Services additionnels '+fmt(ext):''),
+        lienDetail: 'Voir le détail des encaissements',
+        lignes: encRows,
+        opts: { labelAtt:'💰 encaissé, non reversé' }
+      });
     }
 
+    // 🏦 Avance de caisse — affichée tant qu'elle n'est pas justifiée/soldée
     if (hasAvance) {
-      var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
-      var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
-      // Détail Utilisé — toutes les lignes incluses dans le calcul
-      var allDepRows = depNonMenRows.concat(depMenageRows);
-      allDepRows.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-      // Détail groupé par mois (mois courant déplié) — les infos techniques
-      // (équipe, payé par, id) restent accessibles en survol de chaque ligne.
-      var detailHtml = allDepRows.length
-        ? '<details style="margin:4px 0 0"><summary style="font-size:11px;color:var(--bl);cursor:pointer;list-style:none;padding:3px 0">▸ Détail Utilisé ('+allDepRows.length+' ligne'+(allDepRows.length>1?'s':'')+')</summary>'+
-          '<div style="margin-top:3px">'+wkExpDetailHtml(allDepRows)+'</div></details>'
-        : '<div style="font-size:11px;color:var(--td);font-style:italic;padding:2px 0">Aucune dépense payée trouvée</div>';
-      // Solde global réel = Reçu + collecté terrain non reversé − Utilisé
-      var soldeGlobal = avances + tax + ext - depenses;
-      var sgCol = soldeGlobal>0?'var(--or)':soldeGlobal<0?'var(--re)':'var(--gr)';
-      var sgLbl = soldeGlobal>0?'🌐 Solde global à justifier':soldeGlobal<0?'⚠️ Dépenses > total reçu':'✅ Soldé globalement';
-      html +=
-        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+((hasMenage||hasCollected)?'8':'0')+'px;padding-top:6px">'+
-          '<div class="ccl" style="font-weight:600;color:var(--td)">🏦 Avances caisse</div></div>'+
-        '<div class="ccr"><div class="ccl">Reçu</div><div class="ccv" style="color:var(--gr)">'+fmt(avances)+'</div></div>'+
-        '<div class="ccr"><div class="ccl">Utilisé</div><div class="ccv" style="color:var(--re)">−'+fmt(depenses)+'</div></div>'+
-        '<div style="padding:0 0 4px">'+detailHtml+'</div>'+
-        '<div class="cct"><div class="cctl">'+soldeLbl+'</div><div class="cctv" style="color:'+soldeCol+'">'+fmt(Math.abs(solde))+'</div></div>'+
-        ((tax>0||ext>0) ?
-          '<div class="ccr" style="margin-top:6px;padding-top:4px;border-top:1px dashed var(--br)">'+
-            '<div class="ccl" style="font-size:11px;color:var(--td)">+ Collecté non reversé</div>'+
-            '<div class="ccv" style="color:var(--or);font-size:11px">+'+fmt(tax+ext)+'</div>'+
-          '</div>'+
-          '<div class="cct" style="background:var(--s2)">'+
-            '<div class="cctl">'+sgLbl+'</div>'+
-            '<div class="cctv" style="color:'+sgCol+'">'+fmt(Math.abs(soldeGlobal))+'</div>'+
-          '</div>'
-        : '');
+      var avDate  = avRows.length ? String(rd(avRows[0])||'') : '';
+      var avJours = avDate ? Math.round((new Date(today()) - new Date(avDate))/86400000) : null;
+      var avLignes = avRows.map(function(r){
+          return { id:r.id, date:rd(r), cat:'➕ Avance reçue', desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé' };
+        }).concat(justifRows.map(function(r){
+          return { id:r.id, date:rd(r), cat:'➖ '+(r.cat||''), desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé' };
+        })).sort(trierDesc);
+      html += wkCardBlock({
+        titre: '🏦 Avance de caisse',
+        montant: fmt(avRecu),
+        suffixe: avDate ? ('remise le '+avDate.slice(8,10)+'/'+avDate.slice(5,7)) : '',
+        couleur: 'var(--gr)',
+        sousLigne: 'Justifié '+fmt(avJust)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--re)')+'">'+
+                   (avReste>0 ? 'Reste '+fmt(avReste)+' à justifier' : 'Dépassement de '+fmt(Math.abs(avReste)))+'</b>'+
+                   ((avJours!=null&&avJours>0&&avReste>0) ? ' <span style="color:var(--td)">· depuis '+avJours+' j</span>' : ''),
+        lienDetail: 'Voir le détail de l\'avance',
+        lignes: avLignes,
+        opts: { labelPaye:'mouvement de caisse' }
+      });
     }
 
-    // Bouton Solder — cleaner uniquement, net positif
-    if (hasMenage && net > 0) {
-      html += '<div style="padding:8px 0 2px;text-align:right">'+
+    // ── Solde final : un seul montant, tout compris ──
+    var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
+    var lbl = net>0?'💰 À payer à '+escHtml(name):net<0?'⬅️ '+escHtml(name)+' te doit':'✅ Soldé';
+    html += '<div class="cct" style="margin-top:8px"><div class="cctl">'+lbl+'</div>'+
+            '<div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>';
+
+    if (net > 0) {
+      html += (!isCumul
+          ? '<div style="font-size:10px;color:var(--or);padding:4px 0 0">⚠️ Limité à '+escHtml(perLbl)+
+            ' — passe en « En cours » pour solder tout ce qui reste dû.</div>'
+          : '')+
+        '<div style="padding:8px 0 2px;text-align:right">'+
         '<button class="ba bab" style="font-size:11px;padding:5px 14px" '+
         'data-solde="'+escHtml(name)+'" onclick="openSoldeModal(this.dataset.solde)">💳 Solder</button>'+
         '</div>';
@@ -7561,8 +7572,24 @@ function renderWkCards() {
     return html + '</div>';
   }).filter(Boolean);
 
+  // Bandeau permanent des avances de caisse non justifiées — visible dans TOUS les modes,
+  // sans filtre de période : un cash remis il y a 3 mois doit continuer à se rappeler à nous.
+  var avAlert = members.map(function(m){
+    var reste = sum(DB.business.filter(function(r){ return r.fmen===m.name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }),'montant')
+              - sum(DB.business.filter(function(r){ return r.paid_by===m.name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }),'montant');
+    return reste > 0.009 ? { nom:m.name, reste:reste } : null;
+  }).filter(Boolean);
+  var WK_BANNER = avAlert.length
+    ? '<div style="background:var(--s2);border-left:3px solid var(--or);border-radius:6px;padding:7px 10px;margin:0 0 10px;font-size:12px">'+
+        '<b style="color:var(--or)">⚠️ Avance'+(avAlert.length>1?'s':'')+' de caisse en cours</b> — '+
+        avAlert.map(function(a){ return escHtml(a.nom)+' <b>'+fmt(a.reste)+'</b>'; }).join(' · ')+
+        '<span style="color:var(--td)"> · reste affiché tant que ce n\'est pas justifié</span>'+
+      '</div>'
+    : '';
+
   if (!cards.length) {
-    set('wk-cards', '<div style="color:var(--td);font-size:13px;padding:8px 0">Aucune donnée sur cette période</div>');
+    set('wk-cards', WK_BANNER + '<div style="color:var(--td);font-size:13px;padding:8px 0">'+
+      (WK_MODE==='cumul' ? '✅ Rien en attente — tout le monde est soldé' : 'Aucune donnée sur cette période')+'</div>');
     return;
   }
 
@@ -7572,7 +7599,7 @@ function renderWkCards() {
   // (mobile : toujours le carrousel 1 carte ci-dessous — demande Hakim 2026-06-12)
   if (!isMobile() && total <= 5) {
     var cols = (total === 5) ? 3 : total; // 5 → 3+2 : cartes à ~375px, propre et lisible
-    set('wk-cards', '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'
+    set('wk-cards', WK_BANNER + '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'
       + cards.join('') + '</div>');
     var recapSumEl2 = document.getElementById('recap-summary');
     if (recapSumEl2 && WB_COLLAPSED['recap']) recapSumEl2.textContent = getWbSummary('recap');
@@ -7601,7 +7628,7 @@ function renderWkCards() {
     + '<button class="nb2"'+btnStyle+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Membre suivant">→</button>'
     + '</div>';
 
-  set('wk-cards', grid + nav);
+  set('wk-cards', WK_BANNER + grid + nav);
   var recapSumEl = document.getElementById('recap-summary');
   if (recapSumEl && WB_COLLAPSED['recap']) recapSumEl.textContent = getWbSummary('recap');
 }
@@ -7620,8 +7647,10 @@ function getSoldeData(name) {
   var rd = function(r){ return r.date_reglement || r.date; };
 
   // Business en attente (hors Avance caisse et Règlement terrain)
+  // `paid_by !== name` : ce qui a été payé avec l'avance de caisse relève du compte
+  // d'avance, pas du règlement — MÊME FILTRE que la carte (cohérence carte ↔ modale).
   var bizPend = DB.business.filter(function(r){
-    return inRange(rd(r)) && r.fmen===name && r.statut==='En attente'
+    return inRange(rd(r)) && r.fmen===name && r.statut==='En attente' && r.paid_by!==name
         && r.cat!=='Avance caisse' && r.cat!=='Règlement terrain';
   });
   var bizIds = bizPend.map(function(r){ return r.id; });
