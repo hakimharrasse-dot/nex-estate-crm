@@ -7320,6 +7320,56 @@ function renderGainsCards() {
   if (gainsSumEl && WB_COLLAPSED['gains']) gainsSumEl.textContent = getWbSummary('gains');
 }
 
+// ── Détail des dépenses d'un membre, groupé par mois (Récap équipe) ──────────
+// Utilisé par le bloc « Achats & dépenses » des cartes et par le « Détail Utilisé »
+// des avances caisse. AFFICHAGE UNIQUEMENT — aucun impact sur les calculs/KPIs.
+// Le mois le plus récent est déplié d'office : répondre « ce mois il a acheté quoi »
+// sans descendre filtrer dans Dépenses Business (demande Hakim 2026-08-11).
+function wkExpDetailHtml(rows) {
+  var rd = function(r){ return r.date_reglement || r.date; };
+  var order = [], groups = {};
+  rows.slice().sort(function(a,b){ return String(rd(b)||'').localeCompare(String(rd(a)||'')); })
+    .forEach(function(r){
+      var ym = String(rd(r)||'').slice(0,7) || '?';
+      if (!groups[ym]) { groups[ym] = []; order.push(ym); }
+      groups[ym].push(r);
+    });
+  return order.map(function(ym, gi){
+    var g = groups[ym];
+    var lbl = /^\d{4}-\d{2}$/.test(ym)
+      ? new Date(ym+'-01T12:00:00').toLocaleDateString('fr-FR',{month:'long',year:'numeric'})
+      : 'Sans date';
+    var body = g.map(function(r){
+      var d    = String(rd(r)||'');
+      var jour = d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7) : '—';
+      var ds   = String(r.desc||'').trim();
+      var ap   = r.appart ? (aptShort(r.appart)||r.appart) : '';
+      var meta = [];
+      if (ds) meta.push(escHtml(r.cat||''));       // la catégorie passe en 2e ligne quand il y a un libellé
+      if (ap) meta.push(escHtml(ap));
+      meta.push(r.statut === 'Payé' ? '✅ réglé' : '⏳ à rembourser');
+      var tip = [ds, r.cat||'', ap?('Logement '+ap):'', r.fmen?('Équipe '+r.fmen):'',
+                 r.paid_by?('Payé par '+r.paid_by):'', r.id?('#'+String(r.id).slice(-6)):'']
+                .filter(Boolean).join(' · ');
+      return '<div style="padding:3px 0;border-bottom:1px solid var(--br)">'+
+          '<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px">'+
+            '<span style="color:var(--td);white-space:nowrap">'+jour+'</span>'+
+            '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tm)" title="'+escHtml(tip)+'">'+escHtml(ds||r.cat||'—')+'</span>'+
+            '<span style="font-family:\'DM Mono\',monospace;color:var(--or);white-space:nowrap">'+fmt(r.montant)+'</span>'+
+          '</div>'+
+          '<div style="font-size:10px;color:var(--td);margin-top:1px">'+meta.join(' · ')+'</div>'+
+        '</div>';
+    }).join('');
+    return '<details'+(gi===0?' open':'')+' style="margin:3px 0 0">'+
+      '<summary style="font-size:11px;color:var(--tm);cursor:pointer;list-style:none;padding:2px 0;display:flex;justify-content:space-between;gap:6px">'+
+        '<span>▸ '+lbl+'<span style="color:var(--td)"> · '+g.length+' ligne'+(g.length>1?'s':'')+'</span></span>'+
+        '<span style="font-family:\'DM Mono\',monospace;font-weight:600">'+fmt(sum(g,'montant'))+'</span>'+
+      '</summary>'+
+      '<div style="padding-left:4px">'+body+'</div>'+
+    '</details>';
+  }).join('');
+}
+
 function renderWkCards() {
   ['semaine','mois','perso','cumul'].forEach(function(m){
     var btn=document.getElementById('wmt-'+m);
@@ -7355,6 +7405,12 @@ function renderWkCards() {
     //   · dépenses ménage : paid_by si renseigné, sinon fmen (fallback rétrocompatible)
     var depNonMenRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.statut==='Payé'; });
     var depMenageRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.cat==='Ménage'&&(r.paid_by||r.fmen)===name&&r.statut==='Payé'; });
+    // Achats / dépenses avancés par le membre (consommables, technicien, intervention…)
+    // AFFICHAGE UNIQUEMENT — n'entre dans aucun total, sert à répondre « tu as acheté quoi ce mois »
+    var achatRows = DB.business.filter(function(r){ return inRange(rd(r))&&r.fmen===name&&r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
+    var achatTot  = sum(achatRows, 'montant');
+    var achatAtt  = sum(achatRows.filter(function(r){ return r.statut!=='Payé'; }), 'montant');
+    var hasAchats = achatRows.length > 0;
     var depNonMen = sum(depNonMenRows, 'montant');
     var depMenage = sum(depMenageRows, 'montant');
     var depenses  = depNonMen + depMenage;
@@ -7437,38 +7493,39 @@ function renderWkCards() {
         '<div class="cct"><div class="cctl">⬅️ '+escHtml(name)+' te doit</div><div class="cctv" style="color:var(--te)">'+fmt(dueTerrain)+'</div></div>';
     }
 
+    // Achats & dépenses hors ménage — détail par mois, replié.
+    // Non affiché si la personne a une avance caisse : ses achats sont déjà
+    // détaillés dans « Détail Utilisé » ci-dessous (pas de double affichage).
+    if (hasAchats && !hasAvance) {
+      html +=
+        '<div class="ccr" style="border-top:1px solid var(--br);margin-top:'+((hasMenage||hasCollected)?'8':'0')+'px;padding-top:6px">'+
+          '<div class="ccl" style="font-weight:600;color:var(--td)">🛒 Achats & dépenses</div>'+
+          '<div class="ccv" style="color:var(--tx)">'+fmt(achatTot)+
+            '<span style="font-size:11px;color:var(--td);margin-left:4px">· '+achatRows.length+' ligne'+(achatRows.length>1?'s':'')+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<div class="ccr"><div class="ccl" style="font-size:11px">✅ Réglé</div>'+
+          '<div class="ccv" style="font-size:11px;color:var(--gr)">'+fmt(achatTot-achatAtt)+'</div></div>'+
+        (achatAtt>0
+          ? '<div class="ccr"><div class="ccl" style="font-size:11px">⏳ À rembourser</div>'+
+            '<div class="ccv" style="font-size:11px;color:var(--or)">'+fmt(achatAtt)+'</div></div>'
+          : '')+
+        '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ Voir le détail des achats</summary>'+
+          '<div style="margin-top:3px">'+wkExpDetailHtml(achatRows)+'</div>'+
+        '</details>';
+    }
+
     if (hasAvance) {
       var soldeCol = solde>0?'var(--or)':solde<0?'var(--re)':'var(--gr)';
       var soldeLbl = solde>0?'💼 Solde à justifier':solde<0?'⚠️ Dépenses > avances':'✅ Soldé';
       // Détail Utilisé — toutes les lignes incluses dans le calcul
       var allDepRows = depNonMenRows.concat(depMenageRows);
       allDepRows.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-      var detailRows = allDepRows.map(function(r){
-        return '<tr style="font-size:10px;color:var(--td);border-bottom:1px solid var(--br)">' +
-          '<td style="padding:2px 4px;white-space:nowrap">'+(r.date||'—')+'</td>'+
-          '<td style="padding:2px 4px">'+escHtml(r.cat||'')+'</td>'+
-          '<td style="padding:2px 4px">'+escHtml(r.fmen||'—')+'</td>'+
-          '<td style="padding:2px 4px;color:var(--bl)">'+(r.paid_by?escHtml(r.paid_by):'<span style="opacity:.5">—</span>')+'</td>'+
-          '<td style="padding:2px 4px;text-align:right;font-weight:600;color:var(--re);font-family:\'DM Mono\',monospace">'+fmt(r.montant)+'</td>'+
-          '<td style="padding:2px 4px">'+(r.statut==='Payé'?'✅':'⏳')+'</td>'+
-          '<td style="padding:2px 4px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(r.desc||'')+'">'+escHtml((r.desc||'').slice(0,30))+'</td>'+
-          '<td style="padding:2px 4px;opacity:.4;font-size:9px">'+escHtml((r.id||'').slice(-6))+'</td>'+
-        '</tr>';
-      }).join('');
+      // Détail groupé par mois (mois courant déplié) — les infos techniques
+      // (équipe, payé par, id) restent accessibles en survol de chaque ligne.
       var detailHtml = allDepRows.length
         ? '<details style="margin:4px 0 0"><summary style="font-size:11px;color:var(--bl);cursor:pointer;list-style:none;padding:3px 0">▸ Détail Utilisé ('+allDepRows.length+' ligne'+(allDepRows.length>1?'s':'')+')</summary>'+
-          '<div style="overflow-x:auto;margin-top:4px"><table style="width:100%;border-collapse:collapse">'+
-            '<thead><tr style="font-size:9px;color:var(--td);text-transform:uppercase">'+
-              '<th style="padding:2px 4px;text-align:left">Date</th>'+
-              '<th style="padding:2px 4px;text-align:left">Catégorie</th>'+
-              '<th style="padding:2px 4px;text-align:left">fmen</th>'+
-              '<th style="padding:2px 4px;text-align:left">paid_by</th>'+
-              '<th style="padding:2px 4px;text-align:right">Montant</th>'+
-              '<th style="padding:2px 4px;text-align:left">St.</th>'+
-              '<th style="padding:2px 4px;text-align:left">Desc.</th>'+
-              '<th style="padding:2px 4px;text-align:left">ID</th>'+
-            '</tr></thead><tbody>'+detailRows+'</tbody>'+
-          '</table></div></details>'
+          '<div style="margin-top:3px">'+wkExpDetailHtml(allDepRows)+'</div></details>'
         : '<div style="font-size:11px;color:var(--td);font-style:italic;padding:2px 0">Aucune dépense payée trouvée</div>';
       // Solde global réel = Reçu + collecté terrain non reversé − Utilisé
       var soldeGlobal = avances + tax + ext - depenses;
