@@ -1748,6 +1748,15 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
     <div class="mt" id="solde-title">💳 Solder</div>
     <div id="solde-recap" style="margin-bottom:12px"></div>
     <div style="font-size:11px;color:var(--td);font-style:italic;margin-bottom:14px" id="solde-ops"></div>
+    <div id="solde-avance-wrap" style="display:none;margin-bottom:14px;background:var(--s2);border-left:3px solid var(--or);border-radius:6px;padding:8px 10px">
+      <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:12px">
+        <input type="checkbox" id="solde-avance-chk" onchange="soldeRefreshNet()" style="margin-top:2px">
+        <span id="solde-avance-lbl"></span>
+      </label>
+      <div style="font-size:10px;color:var(--td);margin-top:4px;padding-left:22px">
+        Décoché, elle garde son avance de caisse pour continuer à acheter.
+      </div>
+    </div>
     <div class="ff" style="margin-bottom:18px">
       <label class="fl">Réglé par</label>
       <select class="fse" id="solde-payeur"></select>
@@ -1857,7 +1866,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
 var SUPA_URL = 'https://zjultuaqkzjupiiewxhy.supabase.co';
 var SUPA_KEY = 'sb_publishable_r106TzPRWMQ9xfDavbiDIA_FQF1Nz2E';
 var SUPA = null;
-var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso', team:'team_members', recur:'recurring_charges', logements:'logements'};
+var TABLE = {resa:'resa', business:'business', taxe:'taxe', serv:'serv', perso:'perso', team:'team_members', recur:'recurring_charges', logements:'logements', reglements:'reglements'};
 
 function initSupabase() {
   if (typeof supabase === 'undefined') { setDBStatus(false, 'SDK non chargé'); return false; }
@@ -1921,7 +1930,7 @@ async function deleteOne(k, id) {
 }
 
 // DB in-memory
-var DB = { resa:[], business:[], taxe:[], serv:[], perso:[], team:[], recur:[], logements:[], logements_par_mois:{} };
+var DB = { resa:[], business:[], taxe:[], serv:[], perso:[], team:[], recur:[], logements:[], reglements:[], logements_par_mois:{} };
 var ROLE = null;          // 'admin' | 'manager' | 'user'
 var CURRENT_USER = null;  // { id, email, full_name, role, active }
 
@@ -7405,7 +7414,56 @@ function wkCardBlock(o) {
     h += '<details style="margin:2px 0 4px"><summary style="font-size:11px;color:var(--or);cursor:pointer;list-style:none;padding:2px 0">▸ '+
            (o.lienDetail||'Voir le détail')+'</summary>'+
          '<div style="margin-top:3px">'+wkExpDetailHtml(o.lignes, o.opts)+'</div></details>';
+  if (o.actions) h += o.actions;
   return h;
+}
+
+// Journal des règlements — « soldé quand, combien, sur combien de passages ».
+function wkReglementsHtml(limite) {
+  var rows = (DB.reglements||[]).slice().sort(function(a,b){
+    return String(b.date||'').localeCompare(String(a.date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));
+  }).slice(0, limite||12);
+  if (!rows.length) return '';
+  var lignes = rows.map(function(r){
+    var d = String(r.date||'');
+    var det = [];
+    if (r.nb_menage)       det.push(r.nb_menage+' passage'+(r.nb_menage>1?'s':'')+' ('+fmt(r.tot_menage)+')');
+    if (r.nb_achats)       det.push(r.nb_achats+' achat'+(r.nb_achats>1?'s':'')+' ('+fmt(r.tot_achats)+')');
+    if (r.tot_taxe>0)      det.push('− taxe '+fmt(r.tot_taxe));
+    if (r.tot_extras>0)    det.push('− extras '+fmt(r.tot_extras));
+    if (r.avance_recuperee>0) det.push('− avance récupérée '+fmt(r.avance_recuperee));
+    return '<div style="padding:4px 0;border-bottom:1px solid var(--br)">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">'+
+        '<span><b>'+escHtml(r.personne||'')+'</b> <span style="color:var(--td)">· '+(d.length>=10?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):d)+'</span></span>'+
+        '<span style="font-family:\'DM Mono\',monospace;color:var(--gr);white-space:nowrap">'+fmt(r.montant)+'</span>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--td);margin-top:1px">'+
+        (det.length?escHtml(det.join(' · ')):'—')+
+        (r.payeur&&r.payeur!=='Hakim' ? ' · réglé par '+escHtml(r.payeur) : '')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  return '<details style="margin:12px 0 0"><summary style="font-size:12px;font-weight:600;color:var(--tm);cursor:pointer;list-style:none;padding:4px 0">'+
+      '🧾 Derniers règlements ('+rows.length+')</summary>'+
+      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:6px 10px">'+lignes+'</div></details>';
+}
+
+// Clôture d'une avance de caisse : écriture inverse datée, le compte revient à zéro.
+async function cloturerAvance(name) {
+  var recu = sum(DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }),'montant');
+  var just = sum(DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }),'montant');
+  var reste = Math.round((recu-just)*100)/100;
+  if (Math.abs(reste) < 0.009) { showToast('Rien à clôturer — avance déjà justifiée'); return; }
+  if (!confirm('Clôturer l\'avance de caisse de '+name+' ?\n\n'+fmt(reste)+' non justifiés.\n\n'+
+      'À valider uniquement si '+name+' t\'a rendu ce cash (ou si tu le passes en perte).\n'+
+      'Si l\'argent a servi à un achat, saisis plutôt la dépense avec « Payé avec l\'avance de caisse de '+name+' ».')) return;
+  var ok = await upsert('business', {
+    id: uid(), cat: 'Avance caisse', fmen: name, montant: -reste,
+    date: today(), statut: 'Payé', scope: 'global', appart: null,
+    desc: 'Clôture de l\'avance de caisse (cash restitué)'
+  });
+  toastSaveResult(ok);
+  if (ok) { renderBiz(); }
 }
 
 function renderWkCards() {
@@ -7553,15 +7611,33 @@ function renderWkCards() {
                    ((avJours!=null&&avJours>0&&avReste>0) ? ' <span style="color:var(--td)">· depuis '+avJours+' j</span>' : ''),
         lienDetail: 'Voir le détail de l\'avance',
         lignes: avLignes,
-        opts: { labelPaye:'mouvement de caisse' }
+        opts: { labelPaye:'mouvement de caisse' },
+        actions: (avReste > 0.009 && canDo('write_business'))
+          ? '<div style="text-align:right;padding:0 0 2px"><button class="ba" style="font-size:10px;padding:3px 9px" '+
+            'data-cav="'+escHtml(name)+'" onclick="cloturerAvance(this.dataset.cav)">🏦 Clôturer l\'avance</button></div>'
+          : ''
       });
     }
+
+    // Rappel du dernier règlement (journal) — « soldé quand, combien »
+    var lastReg = (DB.reglements||[]).filter(function(r){ return r.personne===name; })
+      .sort(function(a,b){ return String(b.date||'').localeCompare(String(a.date||'')); })[0];
 
     // ── Solde final : un seul montant, tout compris ──
     var col = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
     var lbl = net>0?'💰 À payer à '+escHtml(name):net<0?'⬅️ '+escHtml(name)+' te doit':'✅ Soldé';
     html += '<div class="cct" style="margin-top:8px"><div class="cctl">'+lbl+'</div>'+
             '<div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>';
+
+    if (lastReg) {
+      var lrd = String(lastReg.date||'');
+      html += '<div style="font-size:10px;color:var(--td);padding:4px 0 0">🧾 Dernier règlement : '+
+        (lrd.length>=10 ? lrd.slice(8,10)+'/'+lrd.slice(5,7)+'/'+lrd.slice(0,4) : escHtml(lrd))+
+        ' · <b>'+fmt(lastReg.montant)+'</b>'+
+        (lastReg.nb_menage ? ' · '+lastReg.nb_menage+' passage'+(lastReg.nb_menage>1?'s':'') : '')+
+        (lastReg.nb_achats ? ' · '+lastReg.nb_achats+' achat'+(lastReg.nb_achats>1?'s':'') : '')+
+      '</div>';
+    }
 
     if (net > 0) {
       html += (!isCumul
@@ -7605,7 +7681,7 @@ function renderWkCards() {
   if (!isMobile() && total <= 5) {
     var cols = (total === 5) ? 3 : total; // 5 → 3+2 : cartes à ~375px, propre et lisible
     set('wk-cards', WK_BANNER + '<div class="cg" style="grid-template-columns:repeat('+cols+',minmax(0,1fr));">'
-      + cards.join('') + '</div>');
+      + cards.join('') + '</div>' + wkReglementsHtml());
     var recapSumEl2 = document.getElementById('recap-summary');
     if (recapSumEl2 && WB_COLLAPSED['recap']) recapSumEl2.textContent = getWbSummary('recap');
     return;
@@ -7633,7 +7709,7 @@ function renderWkCards() {
     + '<button class="nb2"'+btnStyle+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Membre suivant">→</button>'
     + '</div>';
 
-  set('wk-cards', WK_BANNER + grid + nav);
+  set('wk-cards', WK_BANNER + grid + nav + wkReglementsHtml());
   var recapSumEl = document.getElementById('recap-summary');
   if (recapSumEl && WB_COLLAPSED['recap']) recapSumEl.textContent = getWbSummary('recap');
 }
@@ -7672,8 +7748,15 @@ function getSoldeData(name) {
   var servIds  = servRows.map(function(r){ return r.id; });
   var ext      = sum(servRows, 'montant');
 
+  // Avance de caisse non justifiée — compte PERMANENT, hors période (cf. renderWkCards)
+  var avRecu = sum(DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }), 'montant');
+  var avJust = sum(DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }), 'montant');
+  var avReste = Math.round((avRecu - avJust) * 100) / 100;
+
+  var nbMen = bizPend.filter(function(r){ return r.cat==='Ménage'; }).length;
   var net = Math.round((men + adv - tax - ext) * 100) / 100;
-  return { bizIds:bizIds, taxeIds:taxeIds, servIds:servIds, men:men, adv:adv, tax:tax, ext:ext, net:net };
+  return { bizIds:bizIds, taxeIds:taxeIds, servIds:servIds, men:men, adv:adv, tax:tax, ext:ext,
+           net:net, nbMen:nbMen, nbAch:bizIds.length-nbMen, avReste:avReste };
 }
 
 function openSoldeModal(name) {
@@ -7690,14 +7773,32 @@ function openSoldeModal(name) {
 
   // Récap montants
   var rows = '';
-  if (d.men > 0) rows += '<div class="ccr"><div class="ccl">Ménages en attente</div><div class="ccv">'+fmt(d.men)+'</div></div>';
-  if (d.adv > 0) rows += '<div class="ccr"><div class="ccl">Consommables / avancés</div><div class="ccv" style="color:var(--bl)">'+fmt(d.adv)+'</div></div>';
+  if (d.men > 0) rows += '<div class="ccr"><div class="ccl">🧹 Ménages en attente'+(d.nbMen?' ('+d.nbMen+')':'')+'</div><div class="ccv">'+fmt(d.men)+'</div></div>';
+  if (d.adv > 0) rows += '<div class="ccr"><div class="ccl">🛒 Achats avancés'+(d.nbAch?' ('+d.nbAch+')':'')+'</div><div class="ccv" style="color:var(--bl)">'+fmt(d.adv)+'</div></div>';
   if (d.tax > 0) rows += '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(d.tax)+'</div></div>';
   if (d.ext > 0) rows += '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(d.ext)+'</div></div>';
-  var netCol = d.net>0?'var(--re)':d.net<0?'var(--te)':'var(--gr)';
-  rows += '<div class="cct" style="margin-top:8px"><div class="cctl">💰 Net à régler</div><div class="cctv" style="color:'+netCol+'">'+fmt(Math.abs(d.net))+'</div></div>';
+  rows += '<div id="solde-av-row"></div>'+
+    '<div class="cct" style="margin-top:8px"><div class="cctl">💰 Net à régler</div>'+
+    '<div class="cctv" id="solde-net-val">'+fmt(Math.abs(d.net))+'</div></div>';
   var recapEl = document.getElementById('solde-recap');
   if (recapEl) recapEl.innerHTML = rows;
+
+  // Avance de caisse en cours : proposée en option, jamais déduite d'office
+  // (l'avance est un fonds de roulement, pas une dette de paiement — décision Hakim 2026-08-11)
+  var avWrap = document.getElementById('solde-avance-wrap');
+  var avChk  = document.getElementById('solde-avance-chk');
+  if (avChk) avChk.checked = false;
+  if (avWrap) {
+    if (d.avReste > 0.009) {
+      avWrap.style.display = 'block';
+      var avLbl = document.getElementById('solde-avance-lbl');
+      if (avLbl) avLbl.innerHTML = 'Récupérer aussi l\'<b>avance de caisse non justifiée</b> — '+
+        '<b style="color:var(--or)">'+fmt(d.avReste)+'</b> (déduits du montant à verser, avance clôturée)';
+    } else {
+      avWrap.style.display = 'none';
+    }
+  }
+  soldeRefreshNet();
 
   // Résumé des opérations
   var ops = [];
@@ -7724,6 +7825,24 @@ function openSoldeModal(name) {
 
   var ov = document.getElementById('solde-ov');
   if (ov) ov.classList.remove('hidden');
+}
+
+// Recalcule le net affiché selon la case « récupérer l'avance ».
+function soldeRefreshNet() {
+  var d = SOLDE_DATA; if (!d) return;
+  var chk = document.getElementById('solde-avance-chk');
+  var prend = !!(chk && chk.checked && d.avReste > 0.009);
+  var net = Math.round((d.net - (prend ? d.avReste : 0)) * 100) / 100;
+  var rowEl = document.getElementById('solde-av-row');
+  if (rowEl) rowEl.innerHTML = prend
+    ? '<div class="ccr"><div class="ccl">− Avance de caisse récupérée</div>'+
+      '<div class="ccv" style="color:var(--or)">−'+fmt(d.avReste)+'</div></div>'
+    : '';
+  var valEl = document.getElementById('solde-net-val');
+  if (valEl) {
+    valEl.textContent = fmt(Math.abs(net)) + (net < 0 ? ' (elle te doit)' : '');
+    valEl.style.color = net>0?'var(--re)':net<0?'var(--te)':'var(--gr)';
+  }
 }
 
 function closeSoldeModal() {
@@ -7767,22 +7886,50 @@ async function confirmSolde() {
       var si  = DB.serv.findIndex(function(x){ return x.id===sid; });
       if (si >= 0) { DB.serv[si].statut = 'Payé'; await saveOne('serv', DB.serv[si]); }
     }
-    // ④ Règlement terrain si payeur ≠ Hakim et net positif
-    if (payeur !== 'Hakim' && d.net > 0) {
-      var range  = getWkRange();
-      var perLbl = range ? range.s + ' → ' + range.e : 'cumulé';
-      var reg = {
+    var range  = getWkRange();
+    var perLbl = range ? range.s + ' → ' + range.e : 'tout ce qui restait dû';
+
+    // ④ Avance de caisse récupérée : écriture inverse (montant négatif) qui
+    //    remet le compte d'avance à zéro et laisse une trace datée en base.
+    var avChk   = document.getElementById('solde-avance-chk');
+    var avPrise = !!(avChk && avChk.checked && d.avReste > 0.009);
+    var netFinal = Math.round((d.net - (avPrise ? d.avReste : 0)) * 100) / 100;
+    if (avPrise) {
+      await upsert('business', {
+        id: uid(), cat: 'Avance caisse', fmen: nameCapture,
+        montant: -d.avReste, date: today(), statut: 'Payé',
+        scope: 'global', appart: null,
+        desc: 'Clôture de l\'avance de caisse — récupérée au règlement du ' + today()
+      });
+    }
+
+    // ⑤ Règlement terrain si payeur ≠ Hakim et net positif
+    if (payeur !== 'Hakim' && netFinal > 0) {
+      await upsert('business', {
         id: uid(), cat: 'Règlement terrain', fmen: payeur,
-        montant: d.net, date: today(), statut: 'Payé',
+        montant: netFinal, date: today(), statut: 'Payé',
         scope: 'global', appart: null,
         desc: 'Règlement ' + nameCapture + ' — ' + perLbl
-      };
-      await upsert('business', reg);
+      });
     }
+
+    // ⑥ JOURNAL DES RÈGLEMENTS — trace horodatée (qui, quand, combien, sur quoi).
+    //    Best-effort : si l'écriture échoue, le solde reste valide.
+    try {
+      await upsert('reglements', {
+        id: uid(), personne: nameCapture, date: today(), montant: netFinal,
+        payeur: payeur, periode: perLbl,
+        nb_menage: d.nbMen||0, tot_menage: d.men||0,
+        nb_achats: d.nbAch||0, tot_achats: d.adv||0,
+        tot_taxe: d.tax||0, tot_extras: d.ext||0,
+        avance_recuperee: avPrise ? d.avReste : 0,
+        ids: { business: d.bizIds, taxe: d.taxeIds, serv: d.servIds }
+      });
+    } catch(eJ) { console.error('journal règlement:', eJ); }
 
     closeSoldeModal();
     var msg = '✅ ' + nameCapture + ' soldé(e)';
-    if (d.net > 0) msg += ' — ' + fmt(d.net) + ' réglés par ' + payeur;
+    if (netFinal > 0) msg += ' — ' + fmt(netFinal) + ' réglés par ' + payeur;
     showToast(msg);
     renderBiz(); renderTaxe(); renderServ();
   } catch(e) {
