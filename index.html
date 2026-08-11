@@ -4706,7 +4706,12 @@ function onBizCatChange(sel) {
   var isAvance = cat === 'Avance caisse';
   var showFmen = CATS_WITH_PAYEUR.indexOf(cat) !== -1;
   ffFmen.style.display = showFmen ? 'block' : 'none';
-  if (ffPaidBy) ffPaidBy.style.display = isMenage ? 'block' : 'none';
+  // « Payé par » visible sur toutes les catégories à payeur SAUF l'avance elle-même :
+  // c'est ce champ qui permet de dire « cet achat a été réglé avec l'avance de caisse
+  // de X » → seule façon de justifier une avance (avant, réservé au Ménage).
+  if (ffPaidBy) ffPaidBy.style.display = (showFmen && !isAvance) ? 'block' : 'none';
+  var lblPaidBy = document.getElementById('lbl-paid-by');
+  if (lblPaidBy) lblPaidBy.textContent = isMenage ? 'Payé par' : 'Payé avec l\'avance de caisse de';
   if (lblFmen) lblFmen.textContent = isAvance ? 'Bénéficiaire' : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
   if (fiFmen) fiFmen.innerHTML = isMenage ? buildCleanerOptions(fiFmen.value||'') : buildFmenOptions(fiFmen.value||'');
 }
@@ -9108,7 +9113,7 @@ function buildForm(type, editId) {
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option value="'+escHtml(c)+'"'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';}).join('')+'</select></div>'+
       '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
-      '<div class="ff" id="ff-paid-by" style="display:'+(v('cat',CATS_B[0])==='Ménage'?'block':'none')+'"><label class="fl">Payé par</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
+      '<div class="ff" id="ff-paid-by" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1&&v('cat',CATS_B[0])!=='Avance caisse'?'block':'none')+'"><label class="fl" id="lbl-paid-by">'+(v('cat',CATS_B[0])==='Ménage'?'Payé par':'Payé avec l\'avance de caisse de')+'</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       '<div class="ff"><label class="fl">Charge récurrente liée <span style="font-size:11px;color:var(--td)">(optionnel — pour le suivi budget)</span></label>'+
       '<select class="fse" id="fi-recur-charge">'+
