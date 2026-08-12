@@ -4733,6 +4733,41 @@ function onBizCatChange(sel) {
   if (lblPaidBy) lblPaidBy.textContent = isMenage ? 'Payé par' : 'Payé avec l\'avance de caisse de';
   if (lblFmen) lblFmen.textContent = isAvance ? 'Bénéficiaire' : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
   if (fiFmen) fiFmen.innerHTML = isMenage ? buildCleanerOptions(fiFmen.value||'') : buildFmenOptions(fiFmen.value||'');
+  bizAvanceAutoLink();
+}
+
+// ── RATTACHEMENT AUTOMATIQUE À L'AVANCE DE CAISSE ────────────────────────────
+// Règle : si la personne détient encore du cash de la caisse, son achat en est
+// déduit D'OFFICE — Hakim saisit sa dépense normalement, le rattachement se fait
+// tout seul. Il garde la main : choisir « — Hakim (direct) — » veut dire qu'elle
+// a payé de sa poche (montant remboursé au prochain règlement).
+// Ne s'applique JAMAIS au Ménage (là, « Payé par » = qui a réglé la prestation)
+// ni à la catégorie « Avance caisse » elle-même.
+// Marqueurs sur le select : data-touched = Hakim a choisi à la main,
+//                           data-saved   = valeur déjà enregistrée en base.
+function bizAvanceAutoLink() {
+  var selCat  = document.getElementById('fi-cat');
+  var selFmen = document.getElementById('fi-fmen');
+  var selPaid = document.getElementById('fi-paid-by');
+  var hint    = document.getElementById('paid-by-hint');
+  if (!selCat || !selFmen || !selPaid || !hint) return;
+  var cat  = selCat.value;
+  var name = selFmen.value;
+  var eligible = CATS_WITH_PAYEUR.indexOf(cat) !== -1 && cat !== 'Avance caisse' && cat !== 'Ménage' && !!name;
+  var av = eligible ? avanceCaisse(name) : null;
+
+  if (!av || av.aJustifier <= 0) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+
+  var fige = selPaid.dataset.touched === '1' || selPaid.dataset.saved === '1';
+  if (!fige) selPaid.value = name;
+  var lie = selPaid.value === name;
+  hint.style.display = '';
+  hint.innerHTML = lie
+    ? '🏦 Rattaché automatiquement — <b>'+escHtml(name)+'</b> détient <b>'+fmt(av.aJustifier)+
+      '</b> d\'avance de caisse, cet achat en sera déduit. '+
+      '<span style="color:var(--td)">Choisis « Hakim (direct) » si elle a payé de sa poche.</span>'
+    : '🏦 <b>'+escHtml(name)+'</b> détient '+fmt(av.aJustifier)+' d\'avance de caisse, mais tu as indiqué '+
+      '« payé de sa poche » : le montant lui sera <b>remboursé</b> au prochain règlement.';
 }
 // ───────────────────────────────────────────────────────────
 
@@ -7428,12 +7463,69 @@ function wkCardBlock(o) {
   return h;
 }
 
+// ── AVANCE DE CAISSE — SOURCE UNIQUE DE VÉRITÉ ───────────────────────────────
+// Reçu     = cash remis à la personne (cat='Avance caisse', bénéficiaire = elle).
+// Justifié = dépenses explicitement marquées payées avec cette caisse (paid_by = elle).
+// ⚠️ Ne JAMAIS retomber sur fmen : les ménages d'une personne ne sont pas des
+//    dépenses de caisse (c'est ce repli qui avait produit la fausse dette du 11/08).
+// Deux sens possibles :
+//   reste > 0        → il lui reste du cash à justifier (elle nous doit des justificatifs)
+//   dépassement > 0  → elle a dépensé au-delà du cash détenu → on lui doit la différence.
+// Tout ce qui lit l'avance de caisse (cartes, bandeau, modale Solder, clôture,
+// formulaire) DOIT passer par ici — sinon les copies divergent.
+function avanceCaisse(name) {
+  var recuRows = DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; });
+  var justRows = DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
+  var recu  = sum(recuRows,'montant');
+  var just  = sum(justRows,'montant');
+  var reste = Math.round((recu-just)*100)/100;
+  return {
+    recuRows: recuRows, justRows: justRows,
+    recu: recu, just: just, reste: reste,
+    aJustifier:  reste >  0.009 ? reste  : 0,   // cash encore entre ses mains
+    depassement: reste < -0.009 ? -reste : 0,   // avancé de sa poche → à lui rembourser
+    actif: recuRows.length > 0 && Math.abs(reste) > 0.009
+  };
+}
+
 // Journal des règlements — « soldé quand, combien, sur combien de passages ».
 function wkReglementsHtml(limite) {
-  var rows = (DB.reglements||[]).slice().sort(function(a,b){
+  var all = (DB.reglements||[]).slice().sort(function(a,b){
     return String(b.date||'').localeCompare(String(a.date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));
-  }).slice(0, limite||12);
-  if (!rows.length) return '';
+  });
+
+  // État vide : on l'affiche quand même, sinon Hakim cherche un bloc qui n'existe pas.
+  if (!all.length) {
+    return '<div style="margin:12px 0 0;background:var(--s2);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--td)">'+
+      '🧾 <b style="color:var(--tm)">Historique des règlements</b> — vide pour l\'instant. '+
+      'Chaque clic sur <b>💳 Solder</b> y écrira automatiquement : la personne, la date, '+
+      'le montant versé, le nombre de passages et d\'achats. Les règlements faits avant le 11/08/2026 '+
+      'n\'ont laissé aucune trace en base et ne peuvent pas être reconstitués.</div>';
+  }
+
+  // Récap par personne : combien de règlements, total versé, moyenne, dernier.
+  var parPers = {};
+  all.forEach(function(r){
+    var p = r.personne||'—';
+    if (!parPers[p]) parPers[p] = { n:0, tot:0, last:'' };
+    parPers[p].n++;
+    parPers[p].tot += (parseFloat(r.montant)||0);
+    if (String(r.date||'') > parPers[p].last) parPers[p].last = String(r.date||'');
+  });
+  var noms = Object.keys(parPers).sort(function(a,b){ return parPers[b].tot - parPers[a].tot; });
+  var totGlobal = all.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
+  var recap = noms.map(function(p){
+    var s = parPers[p], moy = s.n ? s.tot/s.n : 0, ld = s.last;
+    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;border-bottom:1px solid var(--br)">'+
+      '<span><b>'+escHtml(p)+'</b> <span style="color:var(--td)">· '+s.n+' règlement'+(s.n>1?'s':'')+
+        (ld.length>=10?' · dernier le '+ld.slice(8,10)+'/'+ld.slice(5,7):'')+'</span></span>'+
+      '<span style="white-space:nowrap;font-family:\'DM Mono\',monospace">'+
+        '<span style="color:var(--gr)">'+fmt(s.tot)+'</span>'+
+        '<span style="color:var(--td)"> · moy. '+fmt(moy)+'</span></span>'+
+    '</div>';
+  }).join('');
+
+  var rows = all.slice(0, limite||20);
   var lignes = rows.map(function(r){
     var d = String(r.date||'');
     var det = [];
@@ -7442,6 +7534,7 @@ function wkReglementsHtml(limite) {
     if (r.tot_taxe>0)      det.push('− taxe '+fmt(r.tot_taxe));
     if (r.tot_extras>0)    det.push('− extras '+fmt(r.tot_extras));
     if (r.avance_recuperee>0) det.push('− avance récupérée '+fmt(r.avance_recuperee));
+    if (r.avance_depassement>0) det.push('+ achats hors avance '+fmt(r.avance_depassement));
     return '<div style="padding:4px 0;border-bottom:1px solid var(--br)">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">'+
         '<span><b>'+escHtml(r.personne||'')+'</b> <span style="color:var(--td)">· '+(d.length>=10?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):d)+'</span></span>'+
@@ -7454,15 +7547,20 @@ function wkReglementsHtml(limite) {
     '</div>';
   }).join('');
   return '<details style="margin:12px 0 0"><summary style="font-size:12px;font-weight:600;color:var(--tm);cursor:pointer;list-style:none;padding:4px 0">'+
-      '🧾 Derniers règlements ('+rows.length+')</summary>'+
-      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:6px 10px">'+lignes+'</div></details>';
+      '🧾 Historique des règlements — '+all.length+' règlement'+(all.length>1?'s':'')+' · '+fmt(totGlobal)+' versés au total'+
+      '</summary>'+
+      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding-bottom:3px">Par personne</div>'+
+        recap+
+        '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding:9px 0 3px">'+
+          'Détail'+(all.length>rows.length ? ' — '+rows.length+' derniers sur '+all.length : '')+'</div>'+
+        lignes+
+      '</div></details>';
 }
 
 // Clôture d'une avance de caisse : écriture inverse datée, le compte revient à zéro.
 async function cloturerAvance(name) {
-  var recu = sum(DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }),'montant');
-  var just = sum(DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }),'montant');
-  var reste = Math.round((recu-just)*100)/100;
+  var reste = avanceCaisse(name).reste;
   if (Math.abs(reste) < 0.009) { showToast('Rien à clôturer — avance déjà justifiée'); return; }
   if (!confirm('Clôturer l\'avance de caisse de '+name+' ?\n\n'+fmt(reste)+' non justifiés.\n\n'+
       'À valider uniquement si '+name+' t\'a rendu ce cash (ou si tu le passes en perte).\n'+
@@ -7536,15 +7634,17 @@ function renderWkCards() {
     // Une avance non justifiée reste visible quel que soit le mois affiché (demande Hakim).
     // « Justifié » = dépense explicitement marquée payée avec la caisse (paid_by = la personne).
     // ⚠️ Ne JAMAIS retomber sur fmen : les ménages d'une personne ne sont pas des dépenses de caisse.
-    var avRows     = DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }).sort(trierDesc);
-    var justifRows = DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }).sort(trierDesc);
-    var avRecu  = sum(avRows,'montant');
-    var avJust  = sum(justifRows,'montant');
-    var avReste = Math.round((avRecu-avJust)*100)/100;
-    var hasAvance = avRows.length > 0 && Math.abs(avReste) > 0.009;
+    var _av        = avanceCaisse(name);
+    var avRows     = _av.recuRows.slice().sort(trierDesc);
+    var justifRows = _av.justRows.slice().sort(trierDesc);
+    var avRecu = _av.recu, avJust = _av.just, avReste = _av.reste;
+    var avDep  = _av.depassement;   // dépensé au-delà du cash détenu → on lui doit
+    var hasAvance = _av.actif;
 
     // ── SOLDE FINAL : ce qu'on lui verse aujourd'hui ─────────
-    var net = Math.round((menDu + achatDu - tax - ext)*100)/100;
+    // avDep inclus : sans lui, un achat de 200 réglé avec une caisse de 60 ferait
+    // disparaître 140 MAD dus à la personne (elle les a sortis de sa poche).
+    var net = Math.round((menDu + achatDu + avDep - tax - ext)*100)/100;
 
     // En mode « En cours » : la carte ne montre QUE ce qui n'est pas soldé, sans limite de date
     var hasAny = isCumul
@@ -7616,8 +7716,9 @@ function renderWkCards() {
         montant: fmt(avRecu),
         suffixe: avDate ? ('remise le '+avDate.slice(8,10)+'/'+avDate.slice(5,7)) : '',
         couleur: 'var(--gr)',
-        sousLigne: 'Justifié '+fmt(avJust)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--re)')+'">'+
-                   (avReste>0 ? 'Reste '+fmt(avReste)+' à justifier' : 'Dépassement de '+fmt(Math.abs(avReste)))+'</b>'+
+        sousLigne: 'Justifié '+fmt(avJust)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--bl)')+'">'+
+                   (avReste>0 ? 'Reste '+fmt(avReste)+' à justifier'
+                              : 'A avancé '+fmt(avDep)+' de sa poche → ajouté au solde')+'</b>'+
                    ((avJours!=null&&avJours>0&&avReste>0) ? ' <span style="color:var(--td)">· depuis '+avJours+' j</span>' : ''),
         lienDetail: 'Voir le détail de l\'avance',
         lignes: avLignes,
@@ -7666,9 +7767,8 @@ function renderWkCards() {
   // Bandeau permanent des avances de caisse non justifiées — visible dans TOUS les modes,
   // sans filtre de période : un cash remis il y a 3 mois doit continuer à se rappeler à nous.
   var avAlert = members.map(function(m){
-    var reste = sum(DB.business.filter(function(r){ return r.fmen===m.name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }),'montant')
-              - sum(DB.business.filter(function(r){ return r.paid_by===m.name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }),'montant');
-    return reste > 0.009 ? { nom:m.name, reste:reste } : null;
+    var a = avanceCaisse(m.name);
+    return a.aJustifier > 0 ? { nom:m.name, reste:a.aJustifier } : null;
   }).filter(Boolean);
   var WK_BANNER = avAlert.length
     ? '<div style="background:var(--s2);border-left:3px solid var(--or);border-radius:6px;padding:7px 10px;margin:0 0 10px;font-size:12px">'+
@@ -7679,8 +7779,11 @@ function renderWkCards() {
     : '';
 
   if (!cards.length) {
+    // Le journal reste affiché même quand tout est soldé — c'est justement à ce
+    // moment-là que Hakim veut relire ce qu'il a versé.
     set('wk-cards', WK_BANNER + '<div style="color:var(--td);font-size:13px;padding:8px 0">'+
-      (WK_MODE==='cumul' ? '✅ Rien en attente — tout le monde est soldé' : 'Aucune donnée sur cette période')+'</div>');
+      (WK_MODE==='cumul' ? '✅ Rien en attente — tout le monde est soldé' : 'Aucune donnée sur cette période')+'</div>'+
+      wkReglementsHtml());
     return;
   }
 
@@ -7758,15 +7861,15 @@ function getSoldeData(name) {
   var servIds  = servRows.map(function(r){ return r.id; });
   var ext      = sum(servRows, 'montant');
 
-  // Avance de caisse non justifiée — compte PERMANENT, hors période (cf. renderWkCards)
-  var avRecu = sum(DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; }), 'montant');
-  var avJust = sum(DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; }), 'montant');
-  var avReste = Math.round((avRecu - avJust) * 100) / 100;
+  // Avance de caisse — compte PERMANENT, hors période (cf. renderWkCards)
+  var _av = avanceCaisse(name);
+  var avReste = _av.aJustifier;      // cash encore détenu (option « récupérer »)
+  var avDep   = _av.depassement;     // avancé de sa poche au-delà de la caisse → dû
 
   var nbMen = bizPend.filter(function(r){ return r.cat==='Ménage'; }).length;
-  var net = Math.round((men + adv - tax - ext) * 100) / 100;
+  var net = Math.round((men + adv + avDep - tax - ext) * 100) / 100;
   return { bizIds:bizIds, taxeIds:taxeIds, servIds:servIds, men:men, adv:adv, tax:tax, ext:ext,
-           net:net, nbMen:nbMen, nbAch:bizIds.length-nbMen, avReste:avReste };
+           net:net, nbMen:nbMen, nbAch:bizIds.length-nbMen, avReste:avReste, avDep:avDep };
 }
 
 function openSoldeModal(name) {
@@ -7785,6 +7888,7 @@ function openSoldeModal(name) {
   var rows = '';
   if (d.men > 0) rows += '<div class="ccr"><div class="ccl">🧹 Ménages en attente'+(d.nbMen?' ('+d.nbMen+')':'')+'</div><div class="ccv">'+fmt(d.men)+'</div></div>';
   if (d.adv > 0) rows += '<div class="ccr"><div class="ccl">🛒 Achats avancés'+(d.nbAch?' ('+d.nbAch+')':'')+'</div><div class="ccv" style="color:var(--bl)">'+fmt(d.adv)+'</div></div>';
+  if (d.avDep > 0) rows += '<div class="ccr"><div class="ccl">🛒 Achats au-delà de son avance de caisse</div><div class="ccv" style="color:var(--bl)">'+fmt(d.avDep)+'</div></div>';
   if (d.tax > 0) rows += '<div class="ccr"><div class="ccl">− Taxe collectée</div><div class="ccv" style="color:var(--te)">−'+fmt(d.tax)+'</div></div>';
   if (d.ext > 0) rows += '<div class="ccr"><div class="ccl">− Extras collectés</div><div class="ccv" style="color:var(--go)">−'+fmt(d.ext)+'</div></div>';
   rows += '<div id="solde-av-row"></div>'+
@@ -7913,6 +8017,18 @@ async function confirmSolde() {
       });
     }
 
+    // ④bis Achats faits AU-DELÀ de l'avance de caisse : le net versé les rembourse,
+    //      on remet donc le compte de caisse à zéro par une entrée symétrique
+    //      (le cash versé couvre ce qui avait déjà été dépensé de sa poche).
+    if (d.avDep > 0.009) {
+      await upsert('business', {
+        id: uid(), cat: 'Avance caisse', fmen: nameCapture,
+        montant: d.avDep, date: today(), statut: 'Payé',
+        scope: 'global', appart: null,
+        desc: 'Remboursement des achats au-delà de l\'avance de caisse — règlement du ' + today()
+      });
+    }
+
     // ⑤ Règlement terrain si payeur ≠ Hakim et net positif
     if (payeur !== 'Hakim' && netFinal > 0) {
       await upsert('business', {
@@ -7933,6 +8049,7 @@ async function confirmSolde() {
         nb_achats: d.nbAch||0, tot_achats: d.adv||0,
         tot_taxe: d.tax||0, tot_extras: d.ext||0,
         avance_recuperee: avPrise ? d.avReste : 0,
+        avance_depassement: d.avDep || 0,
         ids: { business: d.bizIds, taxe: d.taxeIds, serv: d.servIds }
       });
     } catch(eJ) { console.error('journal règlement:', eJ); }
@@ -9106,6 +9223,9 @@ function openModal(type, id) {
   document.getElementById('modal-save').onclick=saveEntry;
   document.getElementById('modal-body').innerHTML=buildForm(type, id);
   document.getElementById('modal-overlay').classList.remove('hidden');
+  // Rattachement auto à l'avance de caisse dès l'ouverture (nouvelle entrée ET
+  // ancienne dépense encore non rattachée) — cf. bizAvanceAutoLink.
+  if(type==='business') bizAvanceAutoLink();
   if(type==='resa') {
     ['fi-ci','fi-co','fi-np','fi-brut','fi-app','fi-com'].forEach(function(fid){
       var el=document.getElementById(fid);
@@ -9269,8 +9389,9 @@ function buildForm(type, editId) {
       '<div class="ff" id="global-info-row" style="display:'+(isGlobal?'block':'none')+'">'+
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option value="'+escHtml(c)+'"'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';}).join('')+'</select></div>'+
-      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
-      '<div class="ff" id="ff-paid-by" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1&&v('cat',CATS_B[0])!=='Avance caisse'?'block':'none')+'"><label class="fl" id="lbl-paid-by">'+(v('cat',CATS_B[0])==='Ménage'?'Payé par':'Payé avec l\'avance de caisse de')+'</label><select class="fse" id="fi-paid-by"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select></div>'+
+      '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen" onchange="bizAvanceAutoLink()">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
+      '<div class="ff" id="ff-paid-by" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1&&v('cat',CATS_B[0])!=='Avance caisse'?'block':'none')+'"><label class="fl" id="lbl-paid-by">'+(v('cat',CATS_B[0])==='Ménage'?'Payé par':'Payé avec l\'avance de caisse de')+'</label><select class="fse" id="fi-paid-by" data-saved="'+(rec&&rec.paid_by?'1':'0')+'" onchange="this.dataset.touched=\'1\';bizAvanceAutoLink()"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select>'+
+      '<div id="paid-by-hint" style="display:none;font-size:11px;color:var(--bl);background:var(--s2);border-radius:6px;padding:6px 9px;margin-top:5px;line-height:1.45"></div></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       '<div class="ff"><label class="fl">Charge récurrente liée <span style="font-size:11px;color:var(--td)">(optionnel — pour le suivi budget)</span></label>'+
       '<select class="fse" id="fi-recur-charge">'+
