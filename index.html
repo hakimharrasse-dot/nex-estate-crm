@@ -3933,18 +3933,28 @@ function resaPer(n)    { R_PER=parseInt(n)||20; R_PAGE=1; renderResa(); }
 function bizFilter()   { B_PAGE=1; saveBlockFilters('biz'); renderBiz(); refreshFbToggles(); }
 
 // ── Composant multi-select Catégorie ─────────────────────────────────────────
-var MS_CATS_HIDDEN = ['Avance caisse','Règlement terrain'];
+// Mouvements internes de trésorerie : ce ne sont pas des dépenses (exclus des KPIs),
+// mais ils DOIVENT rester filtrables — sans quoi impossible de retrouver une avance
+// de caisse ou un règlement terrain dans la liste. Affichés à part, sous un séparateur.
+var MS_CATS_INTERNES = ['Avance caisse','Règlement terrain'];
 
 function msCatBuild() {
   var drop = document.getElementById('ms-cat-drop');
   if (!drop) return;
-  var cats = CATS_B.filter(function(c){ return MS_CATS_HIDDEN.indexOf(c) === -1; });
+  var cats = CATS_B.filter(function(c){ return MS_CATS_INTERNES.indexOf(c) === -1; });
+  var internes = CATS_B.filter(function(c){ return MS_CATS_INTERNES.indexOf(c) !== -1; });
+  function msCatItem(c) {
+    return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msCatCheck(this)">'+escHtml(c)+'</label>';
+  }
   drop.innerHTML =
     '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" id="ms-cat-all" onchange="msCatAll(this.checked)"><span style="color:var(--td);font-size:12px">Toutes catégories</span></label>' +
     '<div class="ms-sep"></div>' +
-    cats.map(function(c){
-      return '<label class="ms-item" onclick="event.stopPropagation()"><input type="checkbox" value="'+escHtml(c)+'" onchange="msCatCheck(this)">'+escHtml(c)+'</label>';
-    }).join('') +
+    cats.map(msCatItem).join('') +
+    (internes.length
+      ? '<div class="ms-sep"></div>' +
+        '<div style="padding:6px 10px 2px;font-size:11px;color:var(--td)">── Mouvements internes ──</div>' +
+        internes.map(msCatItem).join('')
+      : '') +
     '<div class="ms-sep"></div>' +
     '<button class="ms-reset" onclick="msCatReset()">✕ Tout effacer</button>';
 }
@@ -9700,7 +9710,10 @@ async function saveBiz() {
   var fmenName=gv('fi-fmen')||'';
   var fmenMember=DB.team.find(function(m){return m.name===fmenName&&m.active;});
   var fmenId=fmenMember?fmenMember.id:null;
-  var paidByName=(cat==='Ménage')?(gv('fi-paid-by')||''):'';
+  // « Payé par » / « Payé avec l'avance de caisse de » : MÊME condition que l'affichage
+  // du champ (onBizCatChange) — sinon le choix fait à l'écran est jeté à l'enregistrement
+  // et aucune avance de caisse ne peut être justifiée.
+  var paidByName=(CATS_WITH_PAYEUR.indexOf(cat)!==-1&&cat!=='Avance caisse')?(gv('fi-paid-by')||''):'';
   var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName&&m.active;}):null;
   var paidById=paidByMember?paidByMember.id:null;
   var scope = gv('fi-scope') || 'property';
