@@ -7075,14 +7075,29 @@ function renderBiz() {
   if(fq)rows=rows.filter(function(r){return (r.paid_by||'').toLowerCase().includes(fq)||(r.fmen||'').toLowerCase().includes(fq)||(r.desc||'').toLowerCase().includes(fq);});
   if(fq2)rows=rows.filter(function(r){return (r.appart||'').toLowerCase().includes(fq2)||(r.cat||'').toLowerCase().includes(fq2)||(r.desc||'').toLowerCase().includes(fq2);});
   rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var tot=sum(rows,'montant'), men=sum(rows.filter(function(r){return r.cat==='Ménage';}), 'montant');
-  var chg=sum(rows.filter(function(r){return r.cat!=='Ménage';}), 'montant');
-  var att=sum(rows.filter(function(r){return r.statut==='En attente';}), 'montant');
+  // ── MOUVEMENTS INTERNES EXCLUS DES TOTAUX (corrigé 2026-08-13) ───────────────
+  // « Avance caisse » et « Règlement terrain » ne sont PAS des dépenses :
+  //   · le cash remis en avance est déjà compté le jour où la personne l'utilise
+  //     (c'est l'ACHAT qui est la dépense) → le compter aussi = double comptage ;
+  //   · un règlement terrain ne fait que payer des lignes déjà comptées.
+  // C'est la règle §13, appliquée depuis toujours aux KPIs du Dashboard
+  // (`bizRows`/`bizPeriod`/`bPend`) mais JAMAIS aux totaux de cet écran.
+  // Constaté sur août 2026 : 24 499 MAD affichés pour 24 459 MAD de vraies dépenses.
+  // Les lignes restent VISIBLES dans la liste (et retrouvables via le filtre
+  // Catégorie) — seuls les totaux les excluent, avec une mention explicite.
+  var rowsTot = rows.filter(function(r){ return r.cat!=='Avance caisse' && r.cat!=='Règlement terrain'; });
+  var nbInt   = rows.length - rowsTot.length;
+  var totInt  = Math.round((sum(rows,'montant') - sum(rowsTot,'montant'))*100)/100;
+  var tot=sum(rowsTot,'montant'), men=sum(rowsTot.filter(function(r){return r.cat==='Ménage';}), 'montant');
+  var chg=sum(rowsTot.filter(function(r){return r.cat!=='Ménage';}), 'montant');
+  var att=sum(rowsTot.filter(function(r){return r.statut==='En attente';}), 'montant');
   set('b-tot',fmt(tot)); set('b-cnt',rows.length+' entrée'+(rows.length>1?'s':''));
   set('b-men',fmt(men)); set('b-chg',fmt(chg)); set('b-att',fmt(att));
   // Découpage du Total par état de paiement (payé = total − en attente) — toujours cohérent avec b-tot
   var _bPaye=tot-att, _bSplit=document.getElementById('b-split');
-  if(_bSplit) _bSplit.innerHTML='<span style="color:var(--gr)">✅ '+Math.round(_bPaye).toLocaleString('fr-MA')+' payé</span> · <span style="color:var(--re)">⏳ '+Math.round(att).toLocaleString('fr-MA')+' en attente</span>';
+  if(_bSplit) _bSplit.innerHTML='<span style="color:var(--gr)">✅ '+Math.round(_bPaye).toLocaleString('fr-MA')+' payé</span> · <span style="color:var(--re)">⏳ '+Math.round(att).toLocaleString('fr-MA')+' en attente</span>'+
+    (nbInt ? '<div style="font-weight:400;color:var(--td);margin-top:2px" title="Une avance de caisse n\'est pas une dépense : c\'est l\'achat qu\'elle finance qui en est une. Un règlement terrain paie des lignes déjà comptées. Les deux restent visibles dans la liste.">↔️ hors '+
+      Math.round(totInt).toLocaleString('fr-MA')+' MAD de mouvements internes ('+nbInt+' ligne'+(nbInt>1?'s':'')+')</div>' : '');
   var _bpl = bizPeriodLabel();
   var _bklTot = document.getElementById('b-kl-tot');
   if (_bklTot) _bklTot.textContent = 'Total — ' + _bpl;
@@ -9910,6 +9925,13 @@ async function saveBiz() {
   // Ne concerne PAS le Ménage, où `paid_by` = qui a réglé la prestation (autre sens).
   var statutSaisi = gv('fi-st');
   var statutBiz   = (paidByName && cat !== 'Ménage') ? 'Payé' : statutSaisi;
+  // ── Cohérence « qui a fait l'achat » (corrigé 2026-08-13) ────────────────────
+  // Si l'achat a été réglé avec l'avance de caisse de X, c'est X qui l'a fait :
+  // on renseigne `fmen` d'office s'il est vide. Sans ça la ligne n'est rattachée
+  // à personne dans le filtre Équipe, la recherche « Lié à » et l'historique —
+  // et surtout, si Hakim retire ensuite le rattachement, la dépense n'apparaît
+  // plus dans AUCUNE carte (elle ne serait remboursée à personne).
+  if (paidByName && cat !== 'Ménage' && !fmenName) { fmenName = paidByName; fmenId = paidById; }
   var scope = gv('fi-scope') || 'property';
   var _existBiz = M_ID ? DB.business.find(function(x){return x.id===M_ID;}) : null;
   var _recurChargeEl = document.getElementById('fi-recur-charge');
