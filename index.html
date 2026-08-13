@@ -7578,6 +7578,35 @@ function wkRegPerson(n) {
 }
 function wkRegMore(tout) { WK_REG_N = tout ? 1e9 : WK_REG_N + 20; wkRegBodyRefresh(); }
 
+// Export CSV du journal — exporte ce qui est À L'ÉCRAN (donc filtré par la recherche
+// si elle est active, sinon tout l'historique). Réutilise `_csvDownload` (BOM UTF-8 +
+// séparateur `;` → s'ouvre directement dans Excel FR sans réglage).
+function wkRegExportCsv() {
+  var rows = wkRegAll().filter(wkRegMatch);
+  if (!rows.length) { showToast('Aucun règlement à exporter'); return; }
+  var d2 = function(d){ d = String(d||''); return d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4) : d; };
+  var n  = function(v){ return String(Math.round((parseFloat(v)||0)*100)/100).replace('.', ','); };  // décimale FR
+  _csvDownload(rows,
+    ['Date','Personne','Montant versé (MAD)','Payeur','Période','Nb passages','Total ménages',
+     'Nb achats','Total achats','Taxe déduite','Extras déduits','Avance récupérée','Achats hors avance','Enregistré le'],
+    [ function(r){ return d2(r.date); },
+      function(r){ return r.personne||''; },
+      function(r){ return n(r.montant); },
+      function(r){ return r.payeur||''; },
+      function(r){ return r.periode||''; },
+      function(r){ return r.nb_menage||0; },
+      function(r){ return n(r.tot_menage); },
+      function(r){ return r.nb_achats||0; },
+      function(r){ return n(r.tot_achats); },
+      function(r){ return n(r.tot_taxe); },
+      function(r){ return n(r.tot_extras); },
+      function(r){ return n(r.avance_recuperee); },
+      function(r){ return n(r.avance_depassement); },
+      function(r){ return String(r.created_at||'').slice(0,16).replace('T',' '); } ],
+    'nex-estate-reglements-'+today()+(WK_REG_Q ? '-filtre' : '')+'.csv');
+  showToast(rows.length+' règlement'+(rows.length>1?'s':'')+' exporté'+(rows.length>1?'s':'')+' en CSV');
+}
+
 // Journal des règlements — « soldé quand, combien, sur combien de passages ».
 function wkReglementsHtml(limite) {
   var all = wkRegAll();
@@ -7596,10 +7625,14 @@ function wkReglementsHtml(limite) {
       '🧾 Historique des règlements — '+all.length+' règlement'+(all.length>1?'s':'')+' · '+fmt(totGlobal)+' versés au total'+
       '</summary>'+
       '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:8px 10px">'+
-        '<input id="wk-reg-q" value="'+escHtml(WK_REG_Q)+'" oninput="wkRegFilter(this.value)" '+
-          'placeholder="🔍 Chercher un règlement — nom, mois (2026-08), montant…" '+
-          'style="width:100%;box-sizing:border-box;background:var(--s);border:1px solid var(--br);border-radius:6px;'+
-          'color:var(--tx);font-size:12px;padding:5px 8px;margin-bottom:7px">'+
+        '<div style="display:flex;gap:6px;margin-bottom:7px">'+
+          '<input id="wk-reg-q" value="'+escHtml(WK_REG_Q)+'" oninput="wkRegFilter(this.value)" '+
+            'placeholder="🔍 Chercher un règlement — nom, mois (2026-08), montant…" '+
+            'style="flex:1;min-width:0;box-sizing:border-box;background:var(--s);border:1px solid var(--br);border-radius:6px;'+
+            'color:var(--tx);font-size:12px;padding:5px 8px">'+
+          '<button class="ba" onclick="wkRegExportCsv()" style="font-size:11px;padding:4px 10px;white-space:nowrap" '+
+            'title="Télécharger l\'historique en CSV (ouvrable dans Excel). Si une recherche est active, seuls les règlements affichés sont exportés.">⬇️ CSV</button>'+
+        '</div>'+
         '<div id="wk-reg-body">'+wkRegBodyHtml()+'</div>'+
       '</div></details>';
 }
