@@ -1854,6 +1854,19 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
 </div>
 
+<!-- Fenêtre « Historique des règlements » — le bloc Récap n'en garde qu'un résumé -->
+<div id="reg-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:906;overflow-y:auto;padding:24px 16px"
+     onclick="if(event.target===this)closeRegModal()">
+  <div style="max-width:720px;margin:0 auto;background:var(--s);border-radius:14px;border:1px solid var(--br);padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700;color:var(--tx)">🧾 Historique des règlements</div>
+      <button onclick="closeRegModal()"
+        style="background:var(--s2);border:1px solid var(--br);color:var(--tm);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Fermer</button>
+    </div>
+    <div id="reg-modal-body"></div>
+  </div>
+</div>
+
 <!-- Modal logements (séparé du modal principal) -->
 <div class="ov hidden" id="log-modal-ov" onclick="if(event.target===this)closeLogementModal()"></div>
 
@@ -5218,6 +5231,7 @@ document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
     var ck=document.getElementById('cmdk-overlay'); if(ck&&ck.style.display!=='none'){ closeCmdK(); return; }
     var cv=document.getElementById('conv-ov'); if(cv&&cv.style.display!=='none'){ convClose(); return; }
+    var rg=document.getElementById('reg-ov'); if(rg&&rg.style.display!=='none'){ closeRegModal(); return; }
     var h=document.getElementById('kbd-help'); if(h){ h.remove(); return; }
     var ov=document.getElementById('modal-overlay');
     if(ov&&!ov.classList.contains('hidden')){ closeModal(); }
@@ -7541,8 +7555,12 @@ function avanceCaisse(name) {
 // ── JOURNAL DES RÈGLEMENTS — recherche + pagination (2026-08-13) ─────────────
 // Le journal est PERMANENT (rien n'est jamais supprimé de la table `reglements`).
 // À l'écran on n'en montre qu'une tranche : sans recherche il grossirait sans fin.
+// Le bloc Récap manque de place (surtout mobile, où c'est un carrousel) : il ne garde
+// qu'un résumé de 2 lignes, et TOUT le journal vit dans une fenêtre dédiée paginée
+// (décision Hakim 2026-08-13, après proposition de 3 options).
 var WK_REG_Q = '';    // recherche libre (personne, date, montant, période)
-var WK_REG_N = 20;    // nb de lignes de détail affichées (« Afficher plus » = +20)
+var WK_REG_PAGE = 1;  // page courante du détail (10 par page, 5 sur mobile)
+function wkRegPageSize() { return isMobile() ? 5 : 10; }
 
 function wkRegNorm(s) {
   return String(s||'').toLowerCase()
@@ -7568,15 +7586,38 @@ function wkRegBodyRefresh() {
   var el = document.getElementById('wk-reg-body');
   if (el) el.innerHTML = wkRegBodyHtml();
 }
-function wkRegFilter(v) { WK_REG_Q = v||''; WK_REG_N = 20; wkRegBodyRefresh(); }
+function wkRegFilter(v) { WK_REG_Q = v||''; WK_REG_PAGE = 1; wkRegBodyRefresh(); }
 function wkRegPerson(n) {
   var inp = document.getElementById('wk-reg-q');
   WK_REG_Q = (WK_REG_Q === n) ? '' : n;     // reclic sur la même personne = on enlève le filtre
-  WK_REG_N = 20;
+  WK_REG_PAGE = 1;
   if (inp) inp.value = WK_REG_Q;
   wkRegBodyRefresh();
 }
-function wkRegMore(tout) { WK_REG_N = tout ? 1e9 : WK_REG_N + 20; wkRegBodyRefresh(); }
+function wkRegGo(p) { WK_REG_PAGE = p; wkRegBodyRefresh(); }
+
+// ── Fenêtre dédiée « Historique complet » ────────────────────────────────────
+function openRegModal() {
+  var ov = document.getElementById('reg-ov'), bd = document.getElementById('reg-modal-body');
+  if (!ov || !bd) return;
+  WK_REG_Q = ''; WK_REG_PAGE = 1;           // on ouvre toujours sur une vue propre
+  bd.innerHTML =
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<input id="wk-reg-q" oninput="wkRegFilter(this.value)" '+
+        'placeholder="🔍 Chercher — nom, mois (2026-08), montant…" '+
+        'style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--br);'+
+        'border-radius:8px;color:var(--tx);font-size:13px;padding:8px 10px">'+
+      '<button class="ba" onclick="wkRegExportCsv()" style="font-size:12px;padding:6px 12px;white-space:nowrap" '+
+        'title="Télécharger en CSV. Si une recherche est active, seuls les règlements affichés sont exportés.">⬇️ CSV</button>'+
+    '</div>'+
+    '<div id="wk-reg-body">'+wkRegBodyHtml()+'</div>';
+  ov.style.display = 'block';
+}
+function closeRegModal() {
+  var ov = document.getElementById('reg-ov');
+  if (ov) ov.style.display = 'none';
+  WK_REG_Q = ''; WK_REG_PAGE = 1;           // le bouton CSV du bloc exporte alors bien TOUT
+}
 
 // Export CSV du journal — exporte ce qui est À L'ÉCRAN (donc filtré par la recherche
 // si elle est active, sinon tout l'historique). Réutilise `_csvDownload` (BOM UTF-8 +
@@ -7620,21 +7661,24 @@ function wkReglementsHtml(limite) {
       'n\'ont laissé aucune trace en base et ne peuvent pas être reconstitués.</div>';
   }
 
+  // ── Résumé COMPACT dans le bloc (2 lignes) — tout le reste est dans la fenêtre ──
   var totGlobal = all.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
-  return '<details'+(WK_REG_Q?' open':'')+' style="margin:12px 0 0"><summary style="font-size:12px;font-weight:600;color:var(--tm);cursor:pointer;list-style:none;padding:4px 0">'+
-      '🧾 Historique des règlements — '+all.length+' règlement'+(all.length>1?'s':'')+' · '+fmt(totGlobal)+' versés au total'+
-      '</summary>'+
-      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:8px 10px">'+
-        '<div style="display:flex;gap:6px;margin-bottom:7px">'+
-          '<input id="wk-reg-q" value="'+escHtml(WK_REG_Q)+'" oninput="wkRegFilter(this.value)" '+
-            'placeholder="🔍 Chercher un règlement — nom, mois (2026-08), montant…" '+
-            'style="flex:1;min-width:0;box-sizing:border-box;background:var(--s);border:1px solid var(--br);border-radius:6px;'+
-            'color:var(--tx);font-size:12px;padding:5px 8px">'+
-          '<button class="ba" onclick="wkRegExportCsv()" style="font-size:11px;padding:4px 10px;white-space:nowrap" '+
-            'title="Télécharger l\'historique en CSV (ouvrable dans Excel). Si une recherche est active, seuls les règlements affichés sont exportés.">⬇️ CSV</button>'+
-        '</div>'+
-        '<div id="wk-reg-body">'+wkRegBodyHtml()+'</div>'+
-      '</div></details>';
+  var derniers = all.slice(0,3).map(function(r){
+    var d = String(r.date||'');
+    return (d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7) : d)+' <b style="color:var(--tm)">'+escHtml(r.personne||'')+'</b> '+fmt(r.montant);
+  }).join(' <span style="color:var(--br)">·</span> ');
+  return '<div style="margin:12px 0 0;background:var(--s2);border-radius:8px;padding:8px 11px">'+
+      '<div style="font-size:12px;font-weight:600;color:var(--tm)">'+
+        '🧾 Historique des règlements <span style="font-weight:400;color:var(--td)">— '+all.length+' règlement'+(all.length>1?'s':'')+
+        ' · '+fmt(totGlobal)+' versés au total</span></div>'+
+      '<div style="font-size:11px;color:var(--td);margin-top:4px;line-height:1.6">'+derniers+
+        (all.length>3 ? ' <span style="color:var(--br)">·</span> …' : '')+'</div>'+
+      '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:7px">'+
+        '<button class="ba" onclick="openRegModal()" style="font-size:11px;padding:4px 11px">📜 Historique complet</button>'+
+        '<button class="ba" onclick="wkRegExportCsv()" style="font-size:11px;padding:4px 11px" '+
+          'title="Télécharger tout l\'historique en CSV (ouvrable dans Excel)">⬇️ CSV</button>'+
+      '</div>'+
+    '</div>';
 }
 
 // Corps du journal : récap par personne + détail, filtrés par la recherche.
@@ -7673,7 +7717,12 @@ function wkRegBodyHtml() {
     '</div>';
   }).join('');
 
-  var rows = flt.slice(0, WK_REG_N);
+  var taille  = wkRegPageSize();
+  var nbPages = Math.max(1, Math.ceil(flt.length / taille));
+  if (WK_REG_PAGE > nbPages) WK_REG_PAGE = nbPages;   // le filtre a réduit la liste
+  if (WK_REG_PAGE < 1) WK_REG_PAGE = 1;
+  var debut = (WK_REG_PAGE - 1) * taille;
+  var rows  = flt.slice(debut, debut + taille);
   var lignes = rows.map(function(r){
     var d = String(r.date||'');
     var det = [];
@@ -7695,22 +7744,36 @@ function wkRegBodyHtml() {
     '</div>';
   }).join('');
 
-  var reste = flt.length - rows.length;
   var totFlt = flt.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
+
+  // Pagination : ‹ Préc · pages numérotées (fenêtre glissante de 5) · Suiv ›
+  var nav = '';
+  if (nbPages > 1) {
+    var btn = function(txt, page, actif, off) {
+      if (off) return '<span style="font-size:11px;color:var(--br);padding:3px 7px">'+txt+'</span>';
+      return '<button class="ba" onclick="wkRegGo('+page+')" style="font-size:11px;padding:3px 9px'+
+        (actif ? ';background:var(--or);color:#fff;border-color:var(--or);font-weight:600' : '')+'">'+txt+'</button>';
+    };
+    var deb = Math.max(1, Math.min(WK_REG_PAGE - 2, nbPages - 4));
+    var fin = Math.min(nbPages, deb + 4);
+    var nums = '';
+    if (deb > 1) nums += btn('1', 1, false)+'<span style="color:var(--td);font-size:11px">…</span>';
+    for (var p = deb; p <= fin; p++) nums += btn(String(p), p, p === WK_REG_PAGE)+' ';
+    if (fin < nbPages) nums += '<span style="color:var(--td);font-size:11px">…</span>'+btn(String(nbPages), nbPages, false);
+    nav = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;padding:10px 0 2px">'+
+        btn('‹ Préc.', WK_REG_PAGE-1, false, WK_REG_PAGE<=1)+nums+btn('Suiv. ›', WK_REG_PAGE+1, false, WK_REG_PAGE>=nbPages)+
+      '</div>'+
+      '<div style="text-align:center;font-size:10px;color:var(--td)">Page '+WK_REG_PAGE+' sur '+nbPages+'</div>';
+  }
+
   return '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding-bottom:3px">'+
       'Par personne'+(WK_REG_Q ? ' — '+flt.length+' règlement'+(flt.length>1?'s':'')+' trouvé'+(flt.length>1?'s':'')+' · '+fmt(totFlt) : '')+
     '</div>'+
     recap+
-    '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding:9px 0 3px">'+
-      'Détail'+(reste>0 ? ' — '+rows.length+' plus récents sur '+flt.length : '')+'</div>'+
+    '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding:11px 0 3px">'+
+      'Détail'+(nbPages>1 ? ' — '+(debut+1)+' à '+(debut+rows.length)+' sur '+flt.length : ' — '+flt.length+' règlement'+(flt.length>1?'s':''))+'</div>'+
     lignes+
-    // Rien n'est jamais perdu : ce qui n'est pas affiché reste accessible ici.
-    (reste>0
-      ? '<div style="text-align:center;padding:7px 0 1px">'+
-          '<button class="ba" style="font-size:10px;padding:3px 10px" onclick="wkRegMore()">▾ Afficher '+Math.min(20,reste)+' de plus</button>'+
-          (reste>20 ? ' <button class="ba" style="font-size:10px;padding:3px 10px" onclick="wkRegMore(1)">Tout afficher ('+flt.length+')</button>' : '')+
-        '</div>'
-      : '');
+    nav;
 }
 
 // Clôture d'une avance de caisse : écriture inverse datée, le compte revient à zéro.
