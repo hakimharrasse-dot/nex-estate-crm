@@ -7384,10 +7384,17 @@ function renderGainsCards() {
 // des avances caisse. AFFICHAGE UNIQUEMENT — aucun impact sur les calculs/KPIs.
 // Le mois le plus récent est déplié d'office : répondre « ce mois il a acheté quoi »
 // sans descendre filtrer dans Dépenses Business (demande Hakim 2026-08-11).
+// ⚠️ MODE RELEVÉ (`opts.signe`) — pour l'avance de caisse UNIQUEMENT : les lignes mélangent
+// des ENTRÉES (cash remis) et des SORTIES (achats). Additionner leurs montants bruts donne un
+// total qui ne veut rien dire (40 reçus + 6 dépensés = « 46 » alors que le reste est 34 —
+// retour Hakim 2026-08-13). En mode relevé, chaque ligne porte `sens` (+1 entrée / −1 sortie),
+// s'affiche signée et colorée, et le sous-total du mois est le NET du mois.
 function wkExpDetailHtml(rows, opts) {
   opts = opts || {};
   var lblPaye = opts.labelPaye || '✅ réglé';
   var lblAtt  = opts.labelAtt  || '⏳ à rembourser';
+  var signe   = !!opts.signe;
+  var mtOf    = function(r){ return (r.montant||0) * (signe ? (r.sens||1) : 1); };
   var rd = function(r){ return r.date_reglement || r.date; };
   var order = [], groups = {};
   rows.slice().sort(function(a,b){ return String(rd(b)||'').localeCompare(String(rd(a)||'')); })
@@ -7396,7 +7403,7 @@ function wkExpDetailHtml(rows, opts) {
       if (!groups[ym]) { groups[ym] = []; order.push(ym); }
       groups[ym].push(r);
     });
-  return order.map(function(ym, gi){
+  var corps = order.map(function(ym, gi){
     var g = groups[ym];
     var lbl = /^\d{4}-\d{2}$/.test(ym)
       ? new Date(ym+'-01T12:00:00').toLocaleDateString('fr-FR',{month:'long',year:'numeric'})
@@ -7413,23 +7420,32 @@ function wkExpDetailHtml(rows, opts) {
       var tip = [ds, r.cat||'', ap?('Logement '+ap):'', r.fmen?('Équipe '+r.fmen):'',
                  r.paid_by?('Payé par '+r.paid_by):'', r.id?('#'+String(r.id).slice(-6)):'']
                 .filter(Boolean).join(' · ');
+      var mt  = mtOf(r);
+      var mtx = signe ? (mt >= 0 ? '+ ' : '− ') + fmt(Math.abs(mt)) : fmt(r.montant);
+      var mtc = signe ? (mt >= 0 ? 'var(--gr)' : 'var(--re)') : 'var(--or)';
       return '<div style="padding:3px 0;border-bottom:1px solid var(--br)">'+
           '<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px">'+
             '<span style="color:var(--td);white-space:nowrap">'+jour+'</span>'+
             '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tm)" title="'+escHtml(tip)+'">'+escHtml(ds||r.cat||'—')+'</span>'+
-            '<span style="font-family:\'DM Mono\',monospace;color:var(--or);white-space:nowrap">'+fmt(r.montant)+'</span>'+
+            '<span style="font-family:\'DM Mono\',monospace;color:'+mtc+';white-space:nowrap">'+mtx+'</span>'+
           '</div>'+
           '<div style="font-size:10px;color:var(--td);margin-top:1px">'+meta.join(' · ')+'</div>'+
         '</div>';
     }).join('');
+    var net = g.reduce(function(s,r){ return s + mtOf(r); }, 0);
+    var netTxt = signe ? (net >= 0 ? '+ ' : '− ') + fmt(Math.abs(net)) : fmt(net);
     return '<details'+(gi===0?' open':'')+' style="margin:3px 0 0">'+
       '<summary style="font-size:11px;color:var(--tm);cursor:pointer;list-style:none;padding:2px 0;display:flex;justify-content:space-between;gap:6px">'+
-        '<span>▸ '+lbl+'<span style="color:var(--td)"> · '+g.length+' ligne'+(g.length>1?'s':'')+'</span></span>'+
-        '<span style="font-family:\'DM Mono\',monospace;font-weight:600">'+fmt(sum(g,'montant'))+'</span>'+
+        '<span>▸ '+lbl+'<span style="color:var(--td)"> · '+g.length+
+          (signe ? (' mouvement'+(g.length>1?'s':'')) : (' ligne'+(g.length>1?'s':'')))+'</span></span>'+
+        '<span style="font-family:\'DM Mono\',monospace;font-weight:600'+
+          (signe ? ';color:'+(net>=0?'var(--gr)':'var(--re)') : '')+'">'+netTxt+
+          (signe ? '<span style="font-size:9px;color:var(--td);font-weight:400"> net</span>' : '')+'</span>'+
       '</summary>'+
       '<div style="padding-left:4px">'+body+'</div>'+
     '</details>';
   }).join('');
+  return (opts.entete || '') + corps;
 }
 
 // Libellé lisible de la période PROPRE au bloc Récap (jamais celle des filtres du haut).
@@ -7707,14 +7723,29 @@ function renderWkCards() {
       var avDate  = avRows.length ? String(rd(avRows[0])||'') : '';
       var avJours = avDate ? Math.round((new Date(today()) - new Date(avDate))/86400000) : null;
       var avLignes = avRows.map(function(r){
-          return { id:r.id, date:rd(r), cat:'➕ Avance reçue', desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé' };
+          return { id:r.id, date:rd(r), cat:'➕ Avance reçue', desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé', sens:1 };
         }).concat(justifRows.map(function(r){
-          return { id:r.id, date:rd(r), cat:'➖ '+(r.cat||''), desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé' };
+          return { id:r.id, date:rd(r), cat:'➖ '+(r.cat||''), desc:r.desc, appart:r.appart, montant:r.montant, statut:'Payé', sens:-1 };
         })).sort(trierDesc);
+      // Récap en tête du détail : la seule lecture qui ne prête pas à confusion —
+      // ce qu'on a donné, ce qui a été dépensé, ce qu'il reste (demande Hakim 2026-08-13).
+      var avL = function(t, v, c, b){
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0'+
+          (b?';border-top:1px solid var(--br);margin-top:2px;padding-top:4px;font-weight:600':'')+'">'+
+          '<span style="color:var(--tm)">'+t+'</span>'+
+          '<span style="font-family:\'DM Mono\',monospace;color:'+c+'">'+v+'</span></div>';
+      };
+      var avEntete = '<div style="background:var(--s2);border-radius:6px;padding:6px 9px;margin:0 0 5px;font-size:11px">'+
+          avL('💵 Cash remis au total', fmt(avRecu), 'var(--gr)')+
+          avL('🛒 Dépensé avec cette avance', '− '+fmt(avJust), 'var(--re)')+
+          (avReste > 0
+            ? avL('= Reste en caisse chez '+escHtml(name), fmt(avReste), 'var(--or)', true)
+            : avL('= A avancé de sa poche', fmt(avDep)+' → à lui rembourser', 'var(--bl)', true))+
+        '</div>';
       html += wkCardBlock({
         titre: '🏦 Avance de caisse',
         montant: fmt(avRecu),
-        suffixe: avDate ? ('remise le '+avDate.slice(8,10)+'/'+avDate.slice(5,7)) : '',
+        suffixe: 'remis'+(avDate ? (' le '+avDate.slice(8,10)+'/'+avDate.slice(5,7)) : ''),
         couleur: 'var(--gr)',
         sousLigne: 'Justifié '+fmt(avJust)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--bl)')+'">'+
                    (avReste>0 ? 'Reste '+fmt(avReste)+' à justifier'
@@ -7722,7 +7753,7 @@ function renderWkCards() {
                    ((avJours!=null&&avJours>0&&avReste>0) ? ' <span style="color:var(--td)">· depuis '+avJours+' j</span>' : ''),
         lienDetail: 'Voir le détail de l\'avance',
         lignes: avLignes,
-        opts: { labelPaye:'mouvement de caisse' },
+        opts: { labelPaye:'mouvement de caisse', signe:true, entete:avEntete },
         actions: (avReste > 0.009 && canDo('write_business'))
           ? '<div style="text-align:right;padding:0 0 2px"><button class="ba" style="font-size:10px;padding:3px 9px" '+
             'data-cav="'+escHtml(name)+'" onclick="cloturerAvance(this.dataset.cav)">🏦 Clôturer l\'avance</button></div>'
