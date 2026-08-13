@@ -20,7 +20,10 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const EXPORT_TOKEN = process.env.EXPORT_TOKEN || '';
 
 // Tables de donnees metier a exporter (pas les backups/technique/auth).
-const TABLES = ['resa', 'serv', 'business', 'perso', 'taxe', 'team_members', 'recurring_charges', 'messages'];
+// `reglements` (journal des soldes verses a l'equipe, cree le 2026-08-11) fait partie de
+// l'historique financier : sans lui, « soldé quand, combien » serait perdu a la restauration.
+// Volontairement EXCLUES : scheduled_messages / sync_heartbeat (etat operationnel, se reconstruit).
+const TABLES = ['resa', 'serv', 'business', 'perso', 'taxe', 'team_members', 'recurring_charges', 'messages', 'reglements'];
 
 // Lecture d'une table entiere via PostgREST (pagination par 1000 lignes).
 async function sbGetAll(table) {
