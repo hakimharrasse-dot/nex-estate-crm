@@ -7538,11 +7538,49 @@ function avanceCaisse(name) {
   };
 }
 
-// Journal des règlements — « soldé quand, combien, sur combien de passages ».
-function wkReglementsHtml(limite) {
-  var all = (DB.reglements||[]).slice().sort(function(a,b){
+// ── JOURNAL DES RÈGLEMENTS — recherche + pagination (2026-08-13) ─────────────
+// Le journal est PERMANENT (rien n'est jamais supprimé de la table `reglements`).
+// À l'écran on n'en montre qu'une tranche : sans recherche il grossirait sans fin.
+var WK_REG_Q = '';    // recherche libre (personne, date, montant, période)
+var WK_REG_N = 20;    // nb de lignes de détail affichées (« Afficher plus » = +20)
+
+function wkRegNorm(s) {
+  return String(s||'').toLowerCase()
+    .replace(/[àâä]/g,'a').replace(/[éèêë]/g,'e').replace(/[îï]/g,'i')
+    .replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c');
+}
+function wkRegAll() {
+  return (DB.reglements||[]).slice().sort(function(a,b){
     return String(b.date||'').localeCompare(String(a.date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));
   });
+}
+// Recherche par MOTS : « rabiaa 08 » trouve les règlements de Rabiaa en août.
+function wkRegMatch(r) {
+  var q = wkRegNorm(WK_REG_Q).trim();
+  if (!q) return true;
+  var d = String(r.date||'');
+  var dfr = d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4) : d;
+  var hay = wkRegNorm([r.personne, d, dfr, r.periode, r.payeur, Math.round(r.montant||0)].join(' '));
+  return q.split(/\s+/).every(function(t){ return hay.indexOf(t) !== -1; });
+}
+// Re-rendu du CORPS seulement : le champ de recherche garde le focus et le curseur.
+function wkRegBodyRefresh() {
+  var el = document.getElementById('wk-reg-body');
+  if (el) el.innerHTML = wkRegBodyHtml();
+}
+function wkRegFilter(v) { WK_REG_Q = v||''; WK_REG_N = 20; wkRegBodyRefresh(); }
+function wkRegPerson(n) {
+  var inp = document.getElementById('wk-reg-q');
+  WK_REG_Q = (WK_REG_Q === n) ? '' : n;     // reclic sur la même personne = on enlève le filtre
+  WK_REG_N = 20;
+  if (inp) inp.value = WK_REG_Q;
+  wkRegBodyRefresh();
+}
+function wkRegMore(tout) { WK_REG_N = tout ? 1e9 : WK_REG_N + 20; wkRegBodyRefresh(); }
+
+// Journal des règlements — « soldé quand, combien, sur combien de passages ».
+function wkReglementsHtml(limite) {
+  var all = wkRegAll();
 
   // État vide : on l'affiche quand même, sinon Hakim cherche un bloc qui n'existe pas.
   if (!all.length) {
@@ -7553,9 +7591,33 @@ function wkReglementsHtml(limite) {
       'n\'ont laissé aucune trace en base et ne peuvent pas être reconstitués.</div>';
   }
 
+  var totGlobal = all.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
+  return '<details'+(WK_REG_Q?' open':'')+' style="margin:12px 0 0"><summary style="font-size:12px;font-weight:600;color:var(--tm);cursor:pointer;list-style:none;padding:4px 0">'+
+      '🧾 Historique des règlements — '+all.length+' règlement'+(all.length>1?'s':'')+' · '+fmt(totGlobal)+' versés au total'+
+      '</summary>'+
+      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:8px 10px">'+
+        '<input id="wk-reg-q" value="'+escHtml(WK_REG_Q)+'" oninput="wkRegFilter(this.value)" '+
+          'placeholder="🔍 Chercher un règlement — nom, mois (2026-08), montant…" '+
+          'style="width:100%;box-sizing:border-box;background:var(--s);border:1px solid var(--br);border-radius:6px;'+
+          'color:var(--tx);font-size:12px;padding:5px 8px;margin-bottom:7px">'+
+        '<div id="wk-reg-body">'+wkRegBodyHtml()+'</div>'+
+      '</div></details>';
+}
+
+// Corps du journal : récap par personne + détail, filtrés par la recherche.
+function wkRegBodyHtml() {
+  var all  = wkRegAll();
+  var flt  = all.filter(wkRegMatch);
+
+  if (!flt.length) {
+    return '<div style="font-size:11px;color:var(--td);padding:6px 0">Aucun règlement ne correspond à « '+
+      escHtml(WK_REG_Q)+' ». <a href="#" onclick="wkRegFilter(\'\');document.getElementById(\'wk-reg-q\').value=\'\';return false;" '+
+      'style="color:var(--or)">Tout afficher</a></div>';
+  }
+
   // Récap par personne : combien de règlements, total versé, moyenne, dernier.
   var parPers = {};
-  all.forEach(function(r){
+  flt.forEach(function(r){
     var p = r.personne||'—';
     if (!parPers[p]) parPers[p] = { n:0, tot:0, last:'' };
     parPers[p].n++;
@@ -7563,11 +7625,14 @@ function wkReglementsHtml(limite) {
     if (String(r.date||'') > parPers[p].last) parPers[p].last = String(r.date||'');
   });
   var noms = Object.keys(parPers).sort(function(a,b){ return parPers[b].tot - parPers[a].tot; });
-  var totGlobal = all.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
   var recap = noms.map(function(p){
     var s = parPers[p], moy = s.n ? s.tot/s.n : 0, ld = s.last;
-    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;border-bottom:1px solid var(--br)">'+
-      '<span><b>'+escHtml(p)+'</b> <span style="color:var(--td)">· '+s.n+' règlement'+(s.n>1?'s':'')+
+    var actif = wkRegNorm(WK_REG_Q) === wkRegNorm(p);
+    // Clic sur une personne = filtre sur elle (reclic = retour à tout le monde).
+    return '<div onclick="wkRegPerson(this.dataset.p)" data-p="'+escHtml(p)+'" title="Voir uniquement ses règlements" '+
+      'style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 4px;border-bottom:1px solid var(--br);'+
+      'cursor:pointer;border-radius:4px'+(actif?';background:var(--ors)':'')+'">'+
+      '<span>'+(actif?'✓ ':'')+'<b>'+escHtml(p)+'</b> <span style="color:var(--td)">· '+s.n+' règlement'+(s.n>1?'s':'')+
         (ld.length>=10?' · dernier le '+ld.slice(8,10)+'/'+ld.slice(5,7):'')+'</span></span>'+
       '<span style="white-space:nowrap;font-family:\'DM Mono\',monospace">'+
         '<span style="color:var(--gr)">'+fmt(s.tot)+'</span>'+
@@ -7575,7 +7640,7 @@ function wkReglementsHtml(limite) {
     '</div>';
   }).join('');
 
-  var rows = all.slice(0, limite||20);
+  var rows = flt.slice(0, WK_REG_N);
   var lignes = rows.map(function(r){
     var d = String(r.date||'');
     var det = [];
@@ -7596,16 +7661,23 @@ function wkReglementsHtml(limite) {
       '</div>'+
     '</div>';
   }).join('');
-  return '<details style="margin:12px 0 0"><summary style="font-size:12px;font-weight:600;color:var(--tm);cursor:pointer;list-style:none;padding:4px 0">'+
-      '🧾 Historique des règlements — '+all.length+' règlement'+(all.length>1?'s':'')+' · '+fmt(totGlobal)+' versés au total'+
-      '</summary>'+
-      '<div style="margin-top:4px;background:var(--s2);border-radius:8px;padding:8px 10px">'+
-        '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding-bottom:3px">Par personne</div>'+
-        recap+
-        '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding:9px 0 3px">'+
-          'Détail'+(all.length>rows.length ? ' — '+rows.length+' derniers sur '+all.length : '')+'</div>'+
-        lignes+
-      '</div></details>';
+
+  var reste = flt.length - rows.length;
+  var totFlt = flt.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
+  return '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding-bottom:3px">'+
+      'Par personne'+(WK_REG_Q ? ' — '+flt.length+' règlement'+(flt.length>1?'s':'')+' trouvé'+(flt.length>1?'s':'')+' · '+fmt(totFlt) : '')+
+    '</div>'+
+    recap+
+    '<div style="font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.4px;padding:9px 0 3px">'+
+      'Détail'+(reste>0 ? ' — '+rows.length+' plus récents sur '+flt.length : '')+'</div>'+
+    lignes+
+    // Rien n'est jamais perdu : ce qui n'est pas affiché reste accessible ici.
+    (reste>0
+      ? '<div style="text-align:center;padding:7px 0 1px">'+
+          '<button class="ba" style="font-size:10px;padding:3px 10px" onclick="wkRegMore()">▾ Afficher '+Math.min(20,reste)+' de plus</button>'+
+          (reste>20 ? ' <button class="ba" style="font-size:10px;padding:3px 10px" onclick="wkRegMore(1)">Tout afficher ('+flt.length+')</button>' : '')+
+        '</div>'
+      : '');
 }
 
 // Clôture d'une avance de caisse : écriture inverse datée, le compte revient à zéro.
