@@ -4731,6 +4731,14 @@ function onBizCatChange(sel) {
   if (ffPaidBy) ffPaidBy.style.display = (showFmen && !isAvance) ? 'block' : 'none';
   var lblPaidBy = document.getElementById('lbl-paid-by');
   if (lblPaidBy) lblPaidBy.textContent = isMenage ? 'Payé par' : 'Payé avec l\'avance de caisse de';
+  // Libellé de l'option vide : hors Ménage, « — Hakim (direct) — » ne disait pas ce que
+  // ça veut dire pour la personne. C'est le cas NORMAL de Hakim (elle avance de sa poche,
+  // il rembourse au règlement) → il doit être lisible sans réfléchir.
+  var selPaidBy = document.getElementById('fi-paid-by');
+  if (selPaidBy && selPaidBy.options.length)
+    selPaidBy.options[0].textContent = isMenage
+      ? '— Hakim (direct) —'
+      : '— Non : payé de sa poche (à lui rembourser) —';
   if (lblFmen) lblFmen.textContent = isAvance ? 'Bénéficiaire' : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
   if (fiFmen) fiFmen.innerHTML = isMenage ? buildCleanerOptions(fiFmen.value||'') : buildFmenOptions(fiFmen.value||'');
   bizAvanceAutoLink();
@@ -4764,10 +4772,13 @@ function bizAvanceAutoLink() {
   hint.style.display = '';
   hint.innerHTML = lie
     ? '🏦 Rattaché automatiquement — <b>'+escHtml(name)+'</b> détient <b>'+fmt(av.aJustifier)+
-      '</b> d\'avance de caisse, cet achat en sera déduit. '+
-      '<span style="color:var(--td)">Choisis « Hakim (direct) » si elle a payé de sa poche.</span>'
+      '</b> d\'avance de caisse, cet achat en sera déduit et la ligne sera enregistrée '+
+      '<b>« Payé »</b> (l\'argent est déjà sorti de la caisse) : <b>tu ne lui dois rien de plus</b>.<br>'+
+      '<span style="color:var(--td)">Si elle a payé de sa poche, choisis « Non : payé de sa poche » '+
+      'juste au-dessus — c\'est le cas le plus courant.</span>'
     : '🏦 <b>'+escHtml(name)+'</b> détient '+fmt(av.aJustifier)+' d\'avance de caisse, mais tu as indiqué '+
-      '« payé de sa poche » : le montant lui sera <b>remboursé</b> au prochain règlement.';
+      '« payé de sa poche » : le montant s\'ajoute à ce que tu lui dois et lui sera <b>remboursé</b> '+
+      'au prochain règlement (l\'avance de caisse, elle, ne bouge pas).';
 }
 // ───────────────────────────────────────────────────────────
 
@@ -7490,8 +7501,16 @@ function wkCardBlock(o) {
 // Tout ce qui lit l'avance de caisse (cartes, bandeau, modale Solder, clôture,
 // formulaire) DOIT passer par ici — sinon les copies divergent.
 function avanceCaisse(name) {
+  // « Reçu » exige statut='Payé' : une avance non remise n'est pas du cash (règle 2026-05-03).
   var recuRows = DB.business.filter(function(r){ return r.fmen===name&&r.cat==='Avance caisse'&&r.statut==='Payé'; });
-  var justRows = DB.business.filter(function(r){ return r.paid_by===name&&r.statut==='Payé'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
+  // ⚠️ « Justifié » ne regarde PAS le statut (corrigé 2026-08-13, test réel de Hakim) :
+  // `paid_by = la personne` signifie « payé avec le cash de la caisse » → l'argent EST
+  // déjà sorti, quel que soit le statut affiché. Avec l'ancienne condition `statut='Payé'`,
+  // une dépense rattachée et laissée « En attente » n'était comptée NULLE PART :
+  // ni ici (statut ≠ Payé), ni dans « Achats avancés » (qui exclut paid_by === personne)
+  // → le montant disparaissait du solde. Aucun risque de double comptage : les deux
+  // blocs restent mutuellement exclusifs sur le seul critère `paid_by`.
+  var justRows = DB.business.filter(function(r){ return r.paid_by===name&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
   var recu  = sum(recuRows,'montant');
   var just  = sum(justRows,'montant');
   var reste = Math.round((recu-just)*100)/100;
@@ -9868,6 +9887,13 @@ async function saveBiz() {
   var paidByName=(CATS_WITH_PAYEUR.indexOf(cat)!==-1&&cat!=='Avance caisse')?(gv('fi-paid-by')||''):'';
   var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName&&m.active;}):null;
   var paidById=paidByMember?paidByMember.id:null;
+  // ── Cohérence « payé avec l'avance de caisse » → forcément DÉJÀ PAYÉ ──────────
+  // Si la dépense a été réglée avec le cash de la caisse, l'argent est sorti le jour
+  // où l'avance a été remise : « En attente » n'a aucun sens ici (on ne doit plus rien
+  // à personne pour cette ligne) et laissait un état contradictoire à l'écran.
+  // Ne concerne PAS le Ménage, où `paid_by` = qui a réglé la prestation (autre sens).
+  var statutSaisi = gv('fi-st');
+  var statutBiz   = (paidByName && cat !== 'Ménage') ? 'Payé' : statutSaisi;
   var scope = gv('fi-scope') || 'property';
   var _existBiz = M_ID ? DB.business.find(function(x){return x.id===M_ID;}) : null;
   var _recurChargeEl = document.getElementById('fi-recur-charge');
@@ -9877,14 +9903,14 @@ async function saveBiz() {
   var _recurMo  = _existBiz ? (_existBiz.recurring_month    || null) : null;
   var _okB = true;
   if(scope === 'global') {
-    _okB = await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
+    _okB = await upsert('business',{id:M_ID||uid(),date:date,date_reglement:dateReg,appart:null,scope:'global',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:montant,statut:statutBiz,recurring_charge_id:_recurId,recurring_month:_recurMo});
   } else {
     var appts=getSelectedAppts();
     if(!appts.length){alert('Sélectionne au moins un appartement');return;}
     var mpp=montant/appts.length;
     for(var _i=0;_i<appts.length;_i++){
       var _ap=appts[_i], _id=(_i===0&&M_ID)?M_ID:uid();
-      var _ok1 = await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:gv('fi-st'),recurring_charge_id:_recurId,recurring_month:_recurMo});
+      var _ok1 = await upsert('business',{id:_id,date:date,date_reglement:dateReg,appart:_ap,scope:'property',cat:cat,fmen:fmenName,fmen_id:fmenId,paid_by:paidByName||null,paid_by_id:paidById,desc:gv('fi-desc'),montant:mpp,statut:statutBiz,recurring_charge_id:_recurId,recurring_month:_recurMo});
       if(!_ok1) _okB = false;
     }
   }
