@@ -7758,17 +7758,17 @@ function renderWkCards() {
           avL('💵 Cash remis au total', fmt(avRecu), 'var(--gr)')+
           avL('🛒 Dépensé avec cette avance', '− '+fmt(avJust), 'var(--re)')+
           (avReste > 0
-            ? avL('= Reste en caisse chez '+escHtml(name), fmt(avReste), 'var(--or)', true)
-            : avL('= A avancé de sa poche', fmt(avDep)+' → à lui rembourser', 'var(--bl)', true))+
+            ? avL('= Il lui reste de ta caisse', fmt(avReste), 'var(--or)', true)
+            : avL('= Elle a payé de sa poche', fmt(avDep)+' → à lui rembourser', 'var(--bl)', true))+
         '</div>';
       html += wkCardBlock({
         titre: '🏦 Avance de caisse',
         montant: fmt(avRecu),
         suffixe: 'remis'+(avDate ? (' le '+avDate.slice(8,10)+'/'+avDate.slice(5,7)) : ''),
         couleur: 'var(--gr)',
-        sousLigne: 'Justifié '+fmt(avJust)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--bl)')+'">'+
-                   (avReste>0 ? 'Reste '+fmt(avReste)+' à justifier'
-                              : 'A avancé '+fmt(avDep)+' de sa poche → ajouté au solde')+'</b>'+
+        sousLigne: 'Dépensé '+Math.round(avJust).toLocaleString('fr-MA')+' sur '+fmt(avRecu)+' · <b style="color:'+(avReste>0?'var(--or)':'var(--bl)')+'">'+
+                   (avReste>0 ? 'Il lui reste '+fmt(avReste)+' de ta caisse'
+                              : 'Elle a mis '+fmt(avDep)+' de sa poche → ajouté à ce que tu lui dois')+'</b>'+
                    ((avJours!=null&&avJours>0&&avReste>0) ? ' <span style="color:var(--td)">· depuis '+avJours+' j</span>' : ''),
         lienDetail: 'Voir le détail de l\'avance',
         lignes: avLignes,
@@ -7789,6 +7789,22 @@ function renderWkCards() {
     var lbl = net>0?'💰 À payer à '+escHtml(name):net<0?'⬅️ '+escHtml(name)+' te doit':'✅ Soldé';
     html += '<div class="cct" style="margin-top:8px"><div class="cctl">'+lbl+'</div>'+
             '<div class="cctv" style="color:'+col+'">'+fmt(Math.abs(net))+'</div></div>';
+
+    // ── D'OÙ SORT CE MONTANT — le calcul en toutes lettres, sur une ligne ──
+    // Demande Hakim (13/08) : « le plus simple des calculs, facile à lire ». Le détail
+    // existait bloc par bloc, mais rien ne disait comment ils s'additionnent.
+    var plus = [], moins = [];
+    if (menDu   > 0.009) plus.push(fmt(menDu)+' de ménages');
+    if (achatDu > 0.009) plus.push(fmt(achatDu)+' d\'achats avancés');
+    if (avDep   > 0.009) plus.push(fmt(avDep)+' payés de sa poche au-delà de ta caisse');
+    if (tax     > 0.009) moins.push(fmt(tax)+' de taxe de séjour');
+    if (ext     > 0.009) moins.push(fmt(ext)+' de services encaissés');
+    if (plus.length + moins.length > 1) {
+      html += '<div style="font-size:10px;color:var(--td);padding:3px 0 0;line-height:1.5">🧮 '+
+        plus.join(' + ')+
+        (moins.length ? ' <span style="color:var(--te)">− '+moins.join(' − ')+' (déjà encaissés pour toi)</span>' : '')+
+      '</div>';
+    }
 
     if (lastReg) {
       var lrd = String(lastReg.date||'');
