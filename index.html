@@ -7346,7 +7346,16 @@ function renderBiz() {
         '<td>'+(r.scope==='global'?'<span style="background:var(--ors);color:var(--or);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">🌐 Global</span>':'<span class="apt">'+aptShort(r.appart||'')+'</span>')+'</td>'+
         '<td>'+chip(catLabel(r.cat),catClass(r.cat))+'</td>'+
         '<td>'+(r.fmen?chip(r.fmen,colClass(r.fmen)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>'+
-        (function(){var pb=r.paid_by||(r.cat!=='Ménage'?r.fmen:'')||'Hakim';return '<td class="hm">'+(pb?chip(pb,colClass(pb)):'<span style="color:var(--td);font-size:12px">—</span>')+'</td>';})() +
+        // ⚠️ « Payé par » affiche la VRAIE valeur de `paid_by`, jamais un repli (corrigé 2026-08-14).
+        // L'ancien code faisait `paid_by || fmen || 'Hakim'` : sur une ligne non rattachée il
+        // ré-affichait la colonne « Femme ménage » d'à côté — donc une avance de caisse non
+        // justifiée avait l'air rattachée à la personne (cas Ayman Lesfer : 4 avances affichées
+        // « Payé par Ayman » alors que `paid_by` est NULL en base). Même piège que la fausse dette
+        // du 11/08 : `paid_by` ne doit JAMAIS retomber sur `fmen`, à l'écran comme au calcul.
+        // La carte mobile était déjà correcte (badge 💳 seulement si `paid_by` existe).
+        '<td class="hm">'+(r.paid_by
+          ? chip(r.paid_by,colClass(r.paid_by))
+          : '<span style="color:var(--td);font-size:12px" title="Pas de rattachement : réglé directement par Hakim, ou avancé de sa poche et remboursé au règlement.">—</span>')+'</td>' +
         '<td class="hm" style="color:var(--tm)">'+(r.desc||'—')+'</td>'+
         '<td style="font-family:\'DM Mono\',monospace;font-weight:500;color:var(--re)">'+r.montant.toLocaleString('fr-MA')+' MAD</td>'+
         '<td>'+statusPill('business',r)+'</td>'+
