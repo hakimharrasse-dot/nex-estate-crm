@@ -512,6 +512,16 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   .dec-row{flex-direction:column;}
   .ap-perf-row{grid-template-columns:1fr;}
   .cg{grid-template-columns:1fr;}
+  /* « À suivre » — la ligne unique (nom + appart + source + date + montant + bouton)
+     demande ~407px AVANT le nom : impossible à 375px, et `overflow-x:clip` la COUPAIT
+     au lieu de la rendre défilable (retour Hakim 2026-08-14, testé sur son téléphone).
+     Sur mobile on passe en 2 rangées : identité + action en haut, détail + montant en bas. */
+  .as-row{display:grid!important;grid-template-columns:auto auto minmax(0,1fr) auto;
+          grid-template-areas:"cb dot nom btn" "meta meta meta amt";
+          column-gap:8px;row-gap:3px;align-items:center;}
+  .as-cb{grid-area:cb;} .as-dot{grid-area:dot;} .as-nom{grid-area:nom;} .as-btn{grid-area:btn;}
+  .as-meta{grid-area:meta;white-space:normal!important;line-height:1.4;}
+  .as-amt{grid-area:amt;justify-self:end;}
   /* Tables masquées, cartes affichées */
   #vw-resa .tw,#vw-business .tw,#vw-taxe .tw,#vw-serv .tw,#vw-perso .tw,#vw-doublons .tw{display:none!important;}
   .r-cards,.b-cards,.t-cards,.s-cards,.p-cards,.dup-cards{display:flex;}
@@ -6217,32 +6227,46 @@ function renderAsuivre() {
   var d    = getAsuivreData();
   var html = '';
 
+  // ── Rendu COMMUN d'une ligne « À suivre » (réservation, taxe ou service) ─────
+  // Les 3 infos secondaires (appartement · source/mode · date) sont regroupées dans UN
+  // seul `.as-meta` : sur desktop la ligne reste identique, et sur mobile la grille
+  // (media query <700px) peut les basculer proprement sur une 2e rangée avec le montant.
+  // Avant, c'étaient 3 spans `nowrap` séparés → impossible à replier, ligne coupée.
+  function asRow(o) {
+    return '<div class="as-row" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br)" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
+      (o.cbId ? '<input type="checkbox" class="as-cb" id="'+o.cbId+'" style="flex-shrink:0;cursor:pointer;width:15px;height:15px">' : '')+
+      '<span class="as-dot" style="width:8px;height:8px;border-radius:50%;background:'+o.color+';flex-shrink:0"></span>'+
+      '<span class="as-nom" style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(o.nom||'—')+'</span>'+
+      '<span class="as-meta" style="font-size:11px;color:var(--td);white-space:nowrap">'+o.meta+'</span>'+
+      '<span class="as-amt" style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;'+(o.amtColor?'color:'+o.amtColor+';':'')+'white-space:nowrap">'+o.amt+'</span>'+
+      '<button class="as-btn" onclick="'+o.action+'" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
+    '</div>';
+  }
+  // Assemble « appart · info · date » en sautant les morceaux vides.
+  function asMeta(parts, color) {
+    return parts.filter(Boolean).map(function(p, i){
+      return (i === parts.filter(Boolean).length-1 && color)
+        ? '<b style="color:'+color+'">'+p+'</b>' : p;
+    }).join(' <span style="color:var(--br)">·</span> ');
+  }
+
   // ── Ligne réservation (action individuelle uniquement) ───────
   function rowResa(r, color) {
-    var montant = Math.round(rNetMAD(r));
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br)" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
-      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
-      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voyageur||'—')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+escHtml(r.source||'')+'</span>'+
-      '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+escHtml(r.date_paiement||'')+'</span>'+
-      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;color:var(--gr);white-space:nowrap">'+montant.toLocaleString('fr-MA')+' MAD</span>'+
-      '<button onclick="openModal(\'resa\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
-    '</div>';
+    return asRow({
+      color: color, nom: r.voyageur,
+      meta: asMeta([aptShort(r.appart||''), escHtml(r.source||''), escHtml(r.date_paiement||'')], color),
+      amt: Math.round(rNetMAD(r)).toLocaleString('fr-MA')+' MAD', amtColor: 'var(--gr)',
+      action: 'openModal(\'resa\',\''+r.id+'\')'
+    });
   }
 
   // ── Ligne sélectionnable (taxe / serv) ───────────────────────
   function rowSel(type, r, color, amtHtml, extra1, extra2) {
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--br)" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'+
-      '<input type="checkbox" id="as-cb-'+type+'-'+r.id+'" style="flex-shrink:0;cursor:pointer;width:15px;height:15px">'+
-      '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
-      '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.voy||'—')+'</span>'+
-      '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+aptShort(r.appart||'')+'</span>'+
-      (extra1 ? '<span style="font-size:11px;color:var(--td);white-space:nowrap">'+extra1+'</span>' : '')+
-      (extra2 ? '<span style="font-size:11px;color:'+color+';font-weight:600;white-space:nowrap">'+extra2+'</span>' : '')+
-      '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:600;white-space:nowrap">'+amtHtml+'</span>'+
-      '<button onclick="openModal(\''+type+'\',\''+r.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--br);background:var(--s2);color:var(--t);border-radius:5px;cursor:pointer;flex-shrink:0">Modifier</button>'+
-    '</div>';
+    return asRow({
+      cbId: 'as-cb-'+type+'-'+r.id, color: color, nom: r.voy,
+      meta: asMeta([aptShort(r.appart||''), extra1, extra2], extra2 ? color : null),
+      amt: amtHtml, action: 'openModal(\''+type+'\',\''+r.id+'\')'
+    });
   }
 
   // ── Bloc réservations (sans sélection) ───────────────────────
