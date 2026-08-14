@@ -983,7 +983,7 @@ tbody .tr-ann:hover>td{background:rgba(224,82,82,.11)!important;}
   </div>
   <div id="b-pgbar" class="r-pgbar"></div>
   <div class="tw"><table>
-    <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Femme ménage</th><th class="hm">Payé par</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th style="width:32px"><input type="checkbox" class="gcb" id="biz-chk-all" onchange="toggleBizAll(this.checked)" title="Tout sélectionner"></th><th>Date</th><th>Appart</th><th>Catégorie</th><th>Équipe</th><th class="hm">Payé par</th><th class="hm">Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
     <tbody id="b-tb"></tbody>
   </table><div class="empty hidden" id="b-em"><div style="font-size:26px;opacity:.4;margin-bottom:8px">📋</div>Aucune dépense<div style="font-size:12px;color:var(--td);margin-top:6px">Vérifie la période ou les filtres actifs</div><div style="margin-top:12px"><button class="ba ba-ghost manager-plus" onclick="openModal('business')">+ Ajouter une dépense</button></div></div></div>
   <div id="b-cards" class="b-cards"></div>
@@ -2320,12 +2320,11 @@ function renderTeamAdmin() {
     return;
   }
   if (em) em.classList.add('hidden');
-  var roleLabels = { cleaner:'Femme de ménage', manager:'Manager', technician:'Technicien', driver:'Chauffeur', field_agent:'Agent terrain', customer_support:'Support client', other:'Autre' };
   tb.innerHTML = list.map(function(m){
     var cc = colClass(m.name);
     return '<tr style="opacity:'+(m.active?1:.5)+'">'+
       '<td><span class="ch '+cc+'" style="font-size:13px;padding:3px 9px">'+escHtml(m.name)+'</span></td>'+
-      '<td style="font-size:12px;color:var(--td)">'+escHtml(roleLabels[m.role]||m.role)+'</td>'+
+      '<td style="font-size:12px;color:var(--td)">'+escHtml(roleLabel(m.role))+'</td>'+
       '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(m.phone||'—')+'</td>'+
       '<td class="hm" style="font-size:12px;color:var(--td)">'+escHtml(m.email||'—')+'</td>'+
       '<td><span class="ch '+(m.active?'ch-ok':'ch-att')+'" style="font-size:12px">'+
@@ -4645,14 +4644,49 @@ function getCleaners(onlyActive) {
   return list;
 }
 
-function buildFmenOptions(selectedName) {
-  var opts = '<option value="">— Non applicable —</option>';
-  var members = DB.team.filter(function(m){ return m.active; });
-  members.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-  members.forEach(function(m){
-    opts += '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(m.name)+'</option>';
+// ── RÔLES DE L'ÉQUIPE — source unique (2026-08-14) ───────────────────────────
+// Les rôles existent en base (`team_members.role`) et sont saisis depuis la fiche
+// Équipe DEPUIS LE DÉBUT — ils n'étaient simplement affichés NULLE PART ailleurs.
+// D'où le malentendu : la colonne s'appelait « Femme ménage » et Hakim croyait
+// devoir y ranger un agent de terrain. Le libellé est désormais lu partout d'ici.
+var ROLE_LABELS = { cleaner:'Femme de ménage', field_agent:'Agent terrain', technician:'Technicien',
+                    driver:'Chauffeur', manager:'Manager', customer_support:'Support client', other:'Autre' };
+var ROLE_ORDER  = ['cleaner','field_agent','technician','driver','manager','customer_support','other'];
+function roleLabel(r){ return ROLE_LABELS[r] || r || 'Autre'; }
+// « Amal — Femme de ménage » : le rôle est un SUFFIXE d'affichage, jamais la valeur
+// enregistrée (`option value` reste le nom seul — sinon on casserait toutes les données).
+function memberLabel(m){ return m.name + ' — ' + roleLabel(m.role) + (m.active ? '' : ' (ancien)'); }
+
+// Options d'un select de personnes, GROUPÉES PAR MÉTIER.
+// `opts.inactifs` : inclure les anciens membres sous un séparateur (filtres, historique).
+function buildMemberOptions(selectedName, opts) {
+  opts = opts || {};
+  var out = '';
+  var pool = (DB.team||[]).filter(function(m){ return m.active || opts.inactifs; });
+  // Un nom déjà enregistré mais absent de l'équipe (membre supprimé) doit rester
+  // sélectionné, sinon l'ouverture d'une vieille ligne effacerait silencieusement la valeur.
+  if (selectedName && !pool.some(function(m){ return m.name === selectedName; }))
+    out += '<option value="'+escHtml(selectedName)+'" selected>'+escHtml(selectedName)+'</option>';
+  ROLE_ORDER.forEach(function(role){
+    var grp = pool.filter(function(m){ return (m.role||'other') === role && m.active; })
+                  .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+    if (!grp.length) return;
+    out += '<optgroup label="── '+escHtml(roleLabel(role))+' ──">'+
+      grp.map(function(m){ return '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(memberLabel(m))+'</option>'; }).join('')+
+      '</optgroup>';
   });
-  return opts;
+  if (opts.inactifs) {
+    var anciens = pool.filter(function(m){ return !m.active; })
+                      .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+    if (anciens.length) out += '<optgroup label="── Anciens membres ──">'+
+      anciens.map(function(m){ return '<option value="'+escHtml(m.name)+'"'+(m.name===selectedName?' selected':'')+'>'+escHtml(memberLabel(m))+'</option>'; }).join('')+
+      '</optgroup>';
+  }
+  return out;
+}
+
+function buildFmenOptions(selectedName) {
+  return '<option value="">— Non applicable —</option>' + buildMemberOptions(selectedName);
 }
 
 function buildCleanerOptions(selectedName) {
@@ -4683,12 +4717,10 @@ function populateTeamSelects() {
   var bfmen = document.getElementById('b-fmen');
   if (bfmen) {
     var cur = bfmen.value;
-    bfmen.innerHTML = '<option value="">Toute l\'équipe</option>';
-    DB.team.filter(function(m){ return m.active; })
-      .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
-      .forEach(function(m){
-        bfmen.innerHTML += '<option value="'+escHtml(m.name)+'"'+(m.name===cur?' selected':'')+'>'+escHtml(m.name)+'</option>';
-      });
+    // ⚠️ Les ANCIENS membres sont inclus (2026-08-14) : sans eux, impossible de filtrer
+    // sur quelqu'un qui a quitté l'équipe — c'est ce qui empêchait Hakim de retrouver
+    // les lignes d'Ayman Lesfer. Les rôles sont affichés et les options groupées par métier.
+    bfmen.innerHTML = '<option value="">Toute l\'équipe</option>' + buildMemberOptions(cur, { inactifs:true });
   }
   // t-fcol — filtre collecteur taxe (tous membres + Équipe pour historique)
   var tfcol = document.getElementById('t-fcol');
@@ -4718,15 +4750,31 @@ function populateTeamSelects() {
     DB.business.forEach(function(r){
       if (r.paid_by && payNames.indexOf(r.paid_by) === -1) payNames.push(r.paid_by);
     });
+    // Anciens membres inclus eux aussi (même raison que b-fmen).
+    DB.team.filter(function(m){ return !m.active && payNames.indexOf(m.name) === -1; })
+           .forEach(function(m){ payNames.push(m.name); });
     payNames.sort(function(a,b){ return a.localeCompare(b); });
     bfpay.innerHTML = '<option value="">Tous payeurs</option>';
     payNames.forEach(function(n){
-      bfpay.innerHTML += '<option value="'+escHtml(n)+'"'+(n===curPay?' selected':'')+'>'+escHtml(n)+'</option>';
+      var m = (DB.team||[]).find(function(x){ return x.name === n; });
+      var lbl = m ? memberLabel(m) : n;
+      bfpay.innerHTML += '<option value="'+escHtml(n)+'"'+(n===curPay?' selected':'')+'>'+escHtml(lbl)+'</option>';
     });
   }
 }
 
-var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Avance caisse'];
+// ── CATÉGORIES « BÉNÉFICIAIRE » (2026-08-14) ─────────────────────────────────
+// Salaires et CNSS n'avaient AUCUN champ personne : impossible de dire à qui on paie
+// un salaire (Hakim devait écrire le nom dans la description, cf. Ayman). On ouvre le
+// champ « Bénéficiaire », MAIS ces lignes restent hors du cash terrain :
+//   · exclues de `achatRows` (bloc « Achats avancés ») — un salaire n'est pas un achat
+//     que la personne aurait avancé de sa poche ;
+//   · exclues de `bizPend` (modale Solder) — sinon le bouton Solder paierait le salaire
+//     EN PLUS des ménages, soit un double paiement.
+// Le champ « Payé avec l'avance de caisse de » reste masqué dessus (aucun sens ici).
+// Le flux de Hakim ne change pas : saisie « En attente » avec les charges fixes, puis « Payé ».
+var CATS_BENEFICIAIRE = ['Salaires / Équipe','Charges sociales / CNSS'];
+var CATS_WITH_PAYEUR = ['Ménage','Consommables','Technicien','Intervention','Maintenance','Ameublement / Décoration','Avance caisse'].concat(CATS_BENEFICIAIRE);
 function onBizCatChange(sel) {
   var ffFmen   = document.getElementById('ff-fmen');
   var lblFmen  = document.getElementById('lbl-fmen');
@@ -4741,7 +4789,8 @@ function onBizCatChange(sel) {
   // « Payé par » visible sur toutes les catégories à payeur SAUF l'avance elle-même :
   // c'est ce champ qui permet de dire « cet achat a été réglé avec l'avance de caisse
   // de X » → seule façon de justifier une avance (avant, réservé au Ménage).
-  if (ffPaidBy) ffPaidBy.style.display = (showFmen && !isAvance) ? 'block' : 'none';
+  var isBenef  = CATS_BENEFICIAIRE.indexOf(cat) !== -1;
+  if (ffPaidBy) ffPaidBy.style.display = (showFmen && !isAvance && !isBenef) ? 'block' : 'none';
   var lblPaidBy = document.getElementById('lbl-paid-by');
   if (lblPaidBy) lblPaidBy.textContent = isMenage ? 'Payé par' : 'Payé avec l\'avance de caisse de';
   // Libellé de l'option vide : hors Ménage, « — Hakim (direct) — » ne disait pas ce que
@@ -4752,7 +4801,8 @@ function onBizCatChange(sel) {
     selPaidBy.options[0].textContent = isMenage
       ? '— Hakim (direct) —'
       : '— Non : payé de sa poche (à lui rembourser) —';
-  if (lblFmen) lblFmen.textContent = isAvance ? 'Bénéficiaire' : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
+  if (lblFmen) lblFmen.textContent = (isAvance || isBenef) ? 'Bénéficiaire'
+                                   : isMenage ? 'Femme de ménage' : 'Payé par / avancé par';
   if (fiFmen) fiFmen.innerHTML = isMenage ? buildCleanerOptions(fiFmen.value||'') : buildFmenOptions(fiFmen.value||'');
   bizAvanceAutoLink();
 }
@@ -4774,7 +4824,8 @@ function bizAvanceAutoLink() {
   if (!selCat || !selFmen || !selPaid || !hint) return;
   var cat  = selCat.value;
   var name = selFmen.value;
-  var eligible = CATS_WITH_PAYEUR.indexOf(cat) !== -1 && cat !== 'Avance caisse' && cat !== 'Ménage' && !!name;
+  var eligible = CATS_WITH_PAYEUR.indexOf(cat) !== -1 && cat !== 'Avance caisse' && cat !== 'Ménage'
+              && CATS_BENEFICIAIRE.indexOf(cat) === -1 && !!name;   // jamais sur salaire/CNSS
   var av = eligible ? avanceCaisse(name) : null;
 
   if (!av || av.aJustifier <= 0) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
@@ -7548,7 +7599,22 @@ function avanceCaisse(name) {
   // ni ici (statut ≠ Payé), ni dans « Achats avancés » (qui exclut paid_by === personne)
   // → le montant disparaissait du solde. Aucun risque de double comptage : les deux
   // blocs restent mutuellement exclusifs sur le seul critère `paid_by`.
-  var justRows = DB.business.filter(function(r){ return r.paid_by===name&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'; });
+  // ⚠️ SORTIE DE CAISSE = 2 CAS, et seulement ces deux-là (élargi 2026-08-14) :
+  //   (a) une dépense explicitement marquée « payée avec l'avance de X » (paid_by = X) ;
+  //   (b) un « Règlement terrain » versé PAR X (fmen = X) — quand X paie l'équipe à la
+  //       place de Hakim, ce cash sort bien de sa caisse. C'était compté AVANT le 11/08
+  //       (ancien `depNonMen` : fmen === name, toutes catégories sauf Ménage/Avance) puis
+  //       perdu en corrigeant la fausse dette de Rehma → Ayman est repassé de 68 à 950.
+  // ⛔ CE QUI NE DOIT JAMAIS REVENIR : les prestations que X a elle-même effectuées
+  //    (cat='Ménage' && fmen===X). C'était ça, le bug des 190 MAD du 11/08 : le travail
+  //    d'une femme de ménage n'est pas une dépense de sa caisse, c'est ce qu'on lui doit.
+  // Aucun double comptage : `achatRows` (bloc Achats), `bizPend` (modale Solder) et les
+  // KPIs excluent tous `Règlement terrain` par catégorie — les périmètres restent disjoints.
+  var justRows = DB.business.filter(function(r){
+    if (r.cat === 'Avance caisse') return false;
+    if (r.cat === 'Règlement terrain') return r.fmen === name;   // (b) cash versé à l'équipe
+    return r.paid_by === name;                                    // (a) dépense rattachée
+  });
   var recu  = sum(recuRows,'montant');
   var just  = sum(justRows,'montant');
   var reste = Math.round((recu-just)*100)/100;
@@ -7839,7 +7905,8 @@ function renderWkCards() {
     // → compté dans le bloc Avance de caisse, jamais ici (anti double-comptage).
     var achatRows = DB.business.filter(function(r){
       return inRange(rd(r))&&r.fmen===name&&r.paid_by!==name
-          && r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain';
+          && r.cat!=='Ménage'&&r.cat!=='Avance caisse'&&r.cat!=='Règlement terrain'
+          && CATS_BENEFICIAIRE.indexOf(r.cat)===-1;   // salaire/CNSS ≠ achat avancé (2026-08-14)
     }).sort(trierDesc);
     var achatPendRows = achatRows.filter(function(r){ return r.statut!=='Payé'; });
     var achatTot  = sum(achatRows,'montant');
@@ -8024,17 +8091,46 @@ function renderWkCards() {
 
   // Bandeau permanent des avances de caisse non justifiées — visible dans TOUS les modes,
   // sans filtre de période : un cash remis il y a 3 mois doit continuer à se rappeler à nous.
-  var avAlert = members.map(function(m){
-    var a = avanceCaisse(m.name);
-    return a.aJustifier > 0 ? { nom:m.name, reste:a.aJustifier } : null;
-  }).filter(Boolean);
+  // ── 🏦 ÉTAT DES CAISSES — TOUT LE MONDE, actifs ET anciens (2026-08-14) ──────
+  // L'ancien bandeau ne parcourait que `members` (= membres ACTIFS) et n'affichait que
+  // les avances « à justifier ». Conséquence réelle : les 950 MAD d'Ayman Lesfer, parti
+  // en mai, sont restés INVISIBLES trois mois — Hakim n'avait aucun moyen de le voir.
+  // On balaie donc les personnes depuis les LIGNES de caisse elles-mêmes (jamais depuis
+  // la liste des membres actifs), et on montre les deux sens :
+  //   positif → elle détient encore du cash à nous   ·   négatif → elle a avancé de sa poche.
+  var _caisseNoms = {};
+  DB.business.forEach(function(r){
+    if (r.cat === 'Avance caisse' && r.fmen) _caisseNoms[r.fmen] = 1;
+  });
+  var _roleDe = function(n){
+    var m = (DB.team||[]).find(function(x){ return x.name === n; });
+    return m ? { role: roleLabel(m.role), actif: !!m.active } : { role:'', actif:true };
+  };
+  var avAlert = Object.keys(_caisseNoms).map(function(n){
+    var a = avanceCaisse(n);
+    if (!a.actif) return null;                       // caisse à zéro → rien à signaler
+    var i = _roleDe(n);
+    return { nom:n, reste:a.aJustifier, du:a.depassement, role:i.role, actif:i.actif };
+  }).filter(Boolean).sort(function(a,b){ return (b.reste+b.du) - (a.reste+a.du); });
+
   var WK_BANNER = avAlert.length
     ? '<div style="background:var(--s2);border-left:3px solid var(--or);border-radius:6px;padding:7px 10px;margin:0 0 10px;font-size:12px">'+
-        '<b style="color:var(--or)">⚠️ Avance'+(avAlert.length>1?'s':'')+' de caisse en cours</b> — '+
-        avAlert.map(function(a){ return escHtml(a.nom)+' <b>'+fmt(a.reste)+'</b>'; }).join(' · ')+
-        '<span style="color:var(--td)"> · reste affiché tant que ce n\'est pas justifié</span>'+
+        '<b style="color:var(--or)">🏦 État des caisses</b>'+
+        avAlert.map(function(a){
+          return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0 0">'+
+            '<span>'+escHtml(a.nom)+
+              (a.role ? ' <span style="color:var(--td)">· '+escHtml(a.role)+'</span>' : '')+
+              (a.actif ? '' : ' <span style="color:var(--td)">· ancien membre</span>')+
+            '</span>'+
+            (a.reste > 0
+              ? '<span style="white-space:nowrap"><b style="color:var(--or)">'+fmt(a.reste)+'</b> <span style="color:var(--td)">de ta caisse chez elle/lui</span></span>'
+              : '<span style="white-space:nowrap"><b style="color:var(--bl)">'+fmt(a.du)+'</b> <span style="color:var(--td)">avancés de sa poche → tu lui dois</span></span>')+
+          '</div>';
+        }).join('')+
       '</div>'
-    : '';
+    : '<div style="background:var(--s2);border-radius:6px;padding:6px 10px;margin:0 0 10px;font-size:11px;color:var(--td)">'+
+        '🏦 État des caisses — <b style="color:var(--gr)">tout est à zéro</b> : personne ne détient de cash à toi, tu ne dois d\'avance à personne.'+
+      '</div>';
 
   if (!cards.length) {
     // Le journal reste affiché même quand tout est soldé — c'est justement à ce
@@ -8103,7 +8199,8 @@ function getSoldeData(name) {
   // d'avance, pas du règlement — MÊME FILTRE que la carte (cohérence carte ↔ modale).
   var bizPend = DB.business.filter(function(r){
     return inRange(rd(r)) && r.fmen===name && r.statut==='En attente' && r.paid_by!==name
-        && r.cat!=='Avance caisse' && r.cat!=='Règlement terrain';
+        && r.cat!=='Avance caisse' && r.cat!=='Règlement terrain'
+        && CATS_BENEFICIAIRE.indexOf(r.cat)===-1;   // le bouton Solder ne paie JAMAIS un salaire
   });
   var bizIds = bizPend.map(function(r){ return r.id; });
   var men    = sum(bizPend.filter(function(r){ return r.cat==='Ménage'; }), 'montant');
@@ -10087,13 +10184,17 @@ async function saveBiz() {
   var cat=gv('fi-cat');
   var dateReg=gv('fi-date-reg')||null;
   var fmenName=gv('fi-fmen')||'';
-  var fmenMember=DB.team.find(function(m){return m.name===fmenName&&m.active;});
+  var fmenMember=DB.team.find(function(m){return m.name===fmenName;});   // ancien membre inclus
   var fmenId=fmenMember?fmenMember.id:null;
   // « Payé par » / « Payé avec l'avance de caisse de » : MÊME condition que l'affichage
   // du champ (onBizCatChange) — sinon le choix fait à l'écran est jeté à l'enregistrement
   // et aucune avance de caisse ne peut être justifiée.
-  var paidByName=(CATS_WITH_PAYEUR.indexOf(cat)!==-1&&cat!=='Avance caisse')?(gv('fi-paid-by')||''):'';
-  var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName&&m.active;}):null;
+  // ⚠️ MÊME CONDITION QUE L'AFFICHAGE du champ (onBizCatChange) — règle du 12/08 :
+  // si les deux divergent, le formulaire promet une saisie que l'enregistrement jette
+  // en silence. Le champ est masqué sur Avance caisse ET sur Salaires/CNSS → on n'y lit rien.
+  var paidByName=(CATS_WITH_PAYEUR.indexOf(cat)!==-1&&cat!=='Avance caisse'&&CATS_BENEFICIAIRE.indexOf(cat)===-1)?(gv('fi-paid-by')||''):'';
+  // `active` n'est plus exigé : rouvrir une vieille ligne d'un membre parti doit conserver son id.
+  var paidByMember=paidByName?DB.team.find(function(m){return m.name===paidByName;}):null;
   var paidById=paidByMember?paidByMember.id:null;
   // ── Cohérence « payé avec l'avance de caisse » → forcément DÉJÀ PAYÉ ──────────
   // Si la dépense a été réglée avec le cash de la caisse, l'argent est sorti le jour
