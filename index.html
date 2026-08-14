@@ -7801,14 +7801,20 @@ function wkRegBodyHtml() {
     var s = parPers[p], moy = s.n ? s.tot/s.n : 0, ld = s.last;
     var actif = wkRegNorm(WK_REG_Q) === wkRegNorm(p);
     // Clic sur une personne = filtre sur elle (reclic = retour à tout le monde).
+    // ⚠️ MOBILE : nom tronqué proprement + SEUL le total en `nowrap` ; « dernier le » et la
+    // moyenne passent sur une 2e ligne. Avant, un `nowrap` portait « total · moy. X » ET la
+    // ligne de gauche n'avait pas d'ellipsis → débordement coupé par `overflow-x:clip`.
     return '<div onclick="wkRegPerson(this.dataset.p)" data-p="'+escHtml(p)+'" title="Voir uniquement ses règlements" '+
-      'style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 4px;border-bottom:1px solid var(--br);'+
+      'style="font-size:12px;padding:4px;border-bottom:1px solid var(--br);'+
       'cursor:pointer;border-radius:4px'+(actif?';background:var(--ors)':'')+'">'+
-      '<span>'+(actif?'✓ ':'')+'<b>'+escHtml(p)+'</b> <span style="color:var(--td)">· '+s.n+' règlement'+(s.n>1?'s':'')+
-        (ld.length>=10?' · dernier le '+ld.slice(8,10)+'/'+ld.slice(5,7):'')+'</span></span>'+
-      '<span style="white-space:nowrap;font-family:\'DM Mono\',monospace">'+
-        '<span style="color:var(--gr)">'+fmt(s.tot)+'</span>'+
-        '<span style="color:var(--td)"> · moy. '+fmt(moy)+'</span></span>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'+
+        '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+          (actif?'✓ ':'')+'<b>'+escHtml(p)+'</b> <span style="color:var(--td)">· '+s.n+' règlement'+(s.n>1?'s':'')+'</span>'+
+        '</span>'+
+        '<b style="white-space:nowrap;font-family:\'DM Mono\',monospace;color:var(--gr)">'+fmt(s.tot)+'</b>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--td)">moyenne '+fmt(moy)+
+        (ld.length>=10?' · dernier le '+ld.slice(8,10)+'/'+ld.slice(5,7)+'/'+ld.slice(0,4):'')+'</div>'+
     '</div>';
   }).join('');
 
@@ -8136,15 +8142,23 @@ function renderWkCards() {
   var WK_BANNER = avAlert.length
     ? '<div style="background:var(--s2);border-left:3px solid var(--or);border-radius:6px;padding:7px 10px;margin:0 0 10px;font-size:12px">'+
         '<b style="color:var(--or)">🏦 État des caisses</b>'+
-        avAlert.map(function(a){
-          return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0 0">'+
-            '<span>'+escHtml(a.nom)+
-              (a.role ? ' <span style="color:var(--td)">· '+escHtml(a.role)+'</span>' : '')+
-              (a.actif ? '' : ' <span style="color:var(--td)">· ancien membre</span>')+
-            '</span>'+
-            (a.reste > 0
-              ? '<span style="white-space:nowrap"><b style="color:var(--or)">'+fmt(a.reste)+'</b> <span style="color:var(--td)">de ta caisse chez elle/lui</span></span>'
-              : '<span style="white-space:nowrap"><b style="color:var(--bl)">'+fmt(a.du)+'</b> <span style="color:var(--td)">avancés de sa poche → tu lui dois</span></span>')+
+        // ⚠️ MOBILE : le nom est tronqué proprement (ellipsis) et SEUL le montant est en
+        // `nowrap` — la phrase explicative passe sur sa propre ligne. Une phrase entière en
+        // `nowrap` déborderait, et sur mobile `#app{overflow-x:clip}` la COUPERAIT au lieu
+        // de la rendre défilable : Hakim ne verrait pas le montant. Testé à 320 px.
+        avAlert.map(function(a, i){
+          return '<div style="padding:4px 0 0'+(i?';border-top:1px solid var(--br);margin-top:4px':'')+'">'+
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'+
+              '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+                escHtml(a.nom)+(a.role ? ' <span style="color:var(--td)">· '+escHtml(a.role)+'</span>' : '')+
+              '</span>'+
+              '<b style="white-space:nowrap;color:'+(a.reste>0?'var(--or)':'var(--bl)')+'">'+
+                fmt(a.reste>0 ? a.reste : a.du)+'</b>'+
+            '</div>'+
+            '<div style="font-size:10px;color:var(--td);line-height:1.4">'+
+              (a.reste>0 ? 'de ta caisse, chez elle/lui' : 'avancés de sa poche → tu lui dois')+
+              (a.actif ? '' : ' · ancien membre')+
+            '</div>'+
           '</div>';
         }).join('')+
       '</div>'
