@@ -7717,8 +7717,12 @@ function closeRegModal() {
 // Export CSV du journal — exporte ce qui est À L'ÉCRAN (donc filtré par la recherche
 // si elle est active, sinon tout l'historique). Réutilise `_csvDownload` (BOM UTF-8 +
 // séparateur `;` → s'ouvre directement dans Excel FR sans réglage).
-function wkRegExportCsv() {
-  var rows = wkRegAll().filter(wkRegMatch);
+// `personne` : export du bloc mobile (une seule personne). Sans argument → ce qui est
+// affiché dans la fenêtre (tout, ou le résultat de la recherche en cours).
+function wkRegExportCsv(personne) {
+  var rows = personne
+    ? wkRegAll().filter(function(r){ return r.personne === personne; })
+    : wkRegAll().filter(wkRegMatch);
   if (!rows.length) { showToast('Aucun règlement à exporter'); return; }
   var d2 = function(d){ d = String(d||''); return d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4) : d; };
   var n  = function(v){ return String(Math.round((parseFloat(v)||0)*100)/100).replace('.', ','); };  // décimale FR
@@ -7739,39 +7743,57 @@ function wkRegExportCsv() {
       function(r){ return n(r.avance_recuperee); },
       function(r){ return n(r.avance_depassement); },
       function(r){ return String(r.created_at||'').slice(0,16).replace('T',' '); } ],
-    'nex-estate-reglements-'+today()+(WK_REG_Q ? '-filtre' : '')+'.csv');
+    'nex-estate-reglements-'+(personne ? personne.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-' : '')+today()+((!personne && WK_REG_Q) ? '-filtre' : '')+'.csv');
   showToast(rows.length+' règlement'+(rows.length>1?'s':'')+' exporté'+(rows.length>1?'s':'')+' en CSV');
 }
 
 // Journal des règlements — « soldé quand, combien, sur combien de passages ».
-function wkReglementsHtml(limite) {
+// `personne` (optionnel) : sur MOBILE le bloc n'affiche qu'UNE carte à la fois (carrousel),
+// donc l'historique en dessous doit être CELUI DE CETTE PERSONNE — sinon Hakim lit le
+// règlement de Rabiaa sous la carte d'Amal, information qui ne la concerne pas
+// (demande Hakim 2026-08-14, constatée sur son téléphone).
+// Sur ordinateur les cartes sont côte à côte → aucun nom n'est passé → historique global.
+function wkReglementsHtml(personne) {
   var all = wkRegAll();
+  if (personne) all = all.filter(function(r){ return r.personne === personne; });
+  var qui = personne ? ' — '+escHtml(personne) : '';
 
   // État vide : on l'affiche quand même, sinon Hakim cherche un bloc qui n'existe pas.
   if (!all.length) {
     return '<div style="margin:12px 0 0;background:var(--s2);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--td)">'+
-      '🧾 <b style="color:var(--tm)">Historique des règlements</b> — vide pour l\'instant. '+
-      'Chaque clic sur <b>💳 Solder</b> y écrira automatiquement : la personne, la date, '+
-      'le montant versé, le nombre de passages et d\'achats. Les règlements faits avant le 11/08/2026 '+
-      'n\'ont laissé aucune trace en base et ne peuvent pas être reconstitués.</div>';
+      '🧾 <b style="color:var(--tm)">Historique des règlements'+qui+'</b> — '+
+      (personne
+        ? 'aucun règlement enregistré pour '+escHtml(personne)+' pour l\'instant. Il s\'écrira au premier clic sur <b>💳 Solder</b>.'
+        : 'vide pour l\'instant. Chaque clic sur <b>💳 Solder</b> y écrira automatiquement : la personne, la date, '+
+          'le montant versé, le nombre de passages et d\'achats. Les règlements faits avant le 11/08/2026 '+
+          'n\'ont laissé aucune trace en base et ne peuvent pas être reconstitués.')+
+      (personne ? '<div style="text-align:right;margin-top:6px"><button class="ba" onclick="openRegModal()" style="font-size:11px;padding:4px 11px">📜 Historique complet</button></div>' : '')+
+      '</div>';
   }
 
   // ── Résumé COMPACT dans le bloc (2 lignes) — tout le reste est dans la fenêtre ──
   var totGlobal = all.reduce(function(s,r){ return s+(parseFloat(r.montant)||0); },0);
   var derniers = all.slice(0,3).map(function(r){
     var d = String(r.date||'');
-    return (d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7) : d)+' <b style="color:var(--tm)">'+escHtml(r.personne||'')+'</b> '+fmt(r.montant);
+    // Sur la vue d'une seule personne, répéter son nom à chaque ligne est du bruit :
+    // on affiche le nombre de passages à la place, bien plus utile.
+    var det = personne
+      ? (r.nb_menage ? ' <span style="color:var(--tm)">'+r.nb_menage+' passage'+(r.nb_menage>1?'s':'')+'</span>' : '')
+      : ' <b style="color:var(--tm)">'+escHtml(r.personne||'')+'</b>';
+    return (d.length>=10 ? d.slice(8,10)+'/'+d.slice(5,7) : d)+det+' '+fmt(r.montant);
   }).join(' <span style="color:var(--br)">·</span> ');
   return '<div style="margin:12px 0 0;background:var(--s2);border-radius:8px;padding:8px 11px">'+
       '<div style="font-size:12px;font-weight:600;color:var(--tm)">'+
-        '🧾 Historique des règlements <span style="font-weight:400;color:var(--td)">— '+all.length+' règlement'+(all.length>1?'s':'')+
-        ' · '+fmt(totGlobal)+' versés au total</span></div>'+
+        '🧾 Historique des règlements'+qui+' <span style="font-weight:400;color:var(--td)">— '+all.length+' règlement'+(all.length>1?'s':'')+
+        ' · '+fmt(totGlobal)+' versés'+(personne?'':' au total')+'</span></div>'+
       '<div style="font-size:11px;color:var(--td);margin-top:4px;line-height:1.6">'+derniers+
         (all.length>3 ? ' <span style="color:var(--br)">·</span> …' : '')+'</div>'+
-      '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:7px">'+
+      '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:7px;flex-wrap:wrap">'+
         '<button class="ba" onclick="openRegModal()" style="font-size:11px;padding:4px 11px">📜 Historique complet</button>'+
-        '<button class="ba" onclick="wkRegExportCsv()" style="font-size:11px;padding:4px 11px" '+
-          'title="Télécharger tout l\'historique en CSV (ouvrable dans Excel)">⬇️ CSV</button>'+
+        '<button class="ba" onclick="wkRegExportCsv('+(personne?'this.dataset.p':'')+')" '+
+          (personne?'data-p="'+escHtml(personne)+'" ':'')+
+          'style="font-size:11px;padding:4px 11px" '+
+          'title="'+(personne?'Télécharger les règlements de '+escHtml(personne):'Télécharger tout l\'historique')+' en CSV (ouvrable dans Excel)">⬇️ CSV</button>'+
       '</div>'+
     '</div>';
 }
@@ -7912,6 +7934,10 @@ function renderWkCards() {
     return;
   }
 
+  // Noms des cartes réellement produites, dans le MÊME ordre que `cards` (les membres
+  // sans rien à afficher sortent avant le rendu) → permet de savoir QUI est à l'écran
+  // dans le carrousel mobile, et donc de lui montrer SON historique de règlements.
+  var cardNoms = [];
   var cards = members.map(function(m) {
     var name      = m.name;
     var isCumul   = (WK_MODE === 'cumul');
@@ -8112,6 +8138,7 @@ function renderWkCards() {
         '</div>';
     }
 
+    cardNoms.push(name);          // aligné sur `cards` : on ne pousse QUE si une carte sort
     return html + '</div>';
   }).filter(Boolean);
 
@@ -8210,7 +8237,10 @@ function renderWkCards() {
     + '<button class="nb2"'+btnStyle+(canNext?'':' disabled')+' onclick="wkCardPage(1)" title="Membre suivant">→</button>'
     + '</div>';
 
-  set('wk-cards', WK_BANNER + grid + nav + wkReglementsHtml());
+  // Une seule carte à l'écran (carrousel mobile) → l'historique affiché est le SIEN.
+  // Plusieurs cartes côte à côte → historique global (aucun nom passé).
+  var nomAffiche = (perPage === 1 && cardNoms[start]) ? cardNoms[start] : null;
+  set('wk-cards', WK_BANNER + grid + nav + wkReglementsHtml(nomAffiche));
   var recapSumEl = document.getElementById('recap-summary');
   if (recapSumEl && WB_COLLAPSED['recap']) recapSumEl.textContent = getWbSummary('recap');
 }
