@@ -4828,6 +4828,26 @@ function bizAvanceAutoLink() {
               && CATS_BENEFICIAIRE.indexOf(cat) === -1 && !!name;   // jamais sur salaire/CNSS
   var av = eligible ? avanceCaisse(name) : null;
 
+  // ── EXCEPTION MÉNAGE (demande Hakim 2026-08-14) — le choix reste TOUJOURS ouvert ──
+  // Régler le ménage d'une personne avec l'avance de caisse d'une AUTRE est autorisé, mais
+  // jamais automatique : Hakim doit choisir « Payé par » à la main. On explique seulement
+  // la conséquence. (La règle « les ménages de X ne sortent pas de la caisse de X » vise le
+  // repli automatique sur `fmen` — le bug des 190 — pas un choix explicite de Hakim.)
+  if (cat === 'Ménage') {
+    var payeurMen = selPaid ? selPaid.value : '';
+    if (!payeurMen) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+    var avM = avanceCaisse(payeurMen);
+    hint.style.display = '';
+    hint.innerHTML = '💳 Réglé par <b>'+escHtml(payeurMen)+'</b> → cette ligne passe en <b>« Payé »</b> '+
+      '(la personne qui a fait le ménage a reçu son argent, elle ne sera pas repayée au règlement).<br>'+
+      '<span style="color:var(--td)">'+
+      (avM.aJustifier > 0
+        ? escHtml(payeurMen)+' détient <b>'+fmt(avM.aJustifier)+'</b> de ta caisse → le montant en est déduit ; au-delà, la différence lui est due.'
+        : escHtml(payeurMen)+' ne détient pas de cash à toi → le montant lui sera remboursé au prochain règlement.')+
+      '</span>';
+    return;
+  }
+
   if (!av || av.aJustifier <= 0) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
 
   var fige = selPaid.dataset.touched === '1' || selPaid.dataset.saved === '1';
@@ -9745,7 +9765,7 @@ function buildForm(type, editId) {
       '<div style="background:var(--ors);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--or)">⚡ Dépense globale — portée sur l\'ensemble du portfolio, non répartie par appartement dans les KPIs.</div></div>'+
       '<div class="ff"><label class="fl">Catégorie</label><select class="fse" id="fi-cat" onchange="onBizCatChange(this)">'+CATS_B.map(function(c){return '<option value="'+escHtml(c)+'"'+(v('cat',CATS_B[0])===c?' selected':'')+'>'+escHtml(catLabel(c))+'</option>';}).join('')+'</select></div>'+
       '<div class="ff" id="ff-fmen" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1?'block':'none')+'"><label class="fl" id="lbl-fmen">'+(v('cat',CATS_B[0])==='Avance caisse'?'Bénéficiaire':v('cat',CATS_B[0])==='Ménage'?'Femme de ménage':'Payé par / avancé par')+'</label><select class="fse" id="fi-fmen" onchange="bizAvanceAutoLink()">'+(v('cat',CATS_B[0])==='Ménage'?buildCleanerOptions(v('fmen','')):buildFmenOptions(v('fmen','')))+'</select></div>'+
-      '<div class="ff" id="ff-paid-by" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1&&v('cat',CATS_B[0])!=='Avance caisse'?'block':'none')+'"><label class="fl" id="lbl-paid-by">'+(v('cat',CATS_B[0])==='Ménage'?'Payé par':'Payé avec l\'avance de caisse de')+'</label><select class="fse" id="fi-paid-by" data-saved="'+(rec&&rec.paid_by?'1':'0')+'" onchange="this.dataset.touched=\'1\';bizAvanceAutoLink()"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select>'+
+      '<div class="ff" id="ff-paid-by" style="display:'+(CATS_WITH_PAYEUR.indexOf(v('cat',CATS_B[0]))!==-1&&v('cat',CATS_B[0])!=='Avance caisse'&&CATS_BENEFICIAIRE.indexOf(v('cat',CATS_B[0]))===-1?'block':'none')+'"><label class="fl" id="lbl-paid-by">'+(v('cat',CATS_B[0])==='Ménage'?'Payé par':'Payé avec l\'avance de caisse de')+'</label><select class="fse" id="fi-paid-by" data-saved="'+(rec&&rec.paid_by?'1':'0')+'" onchange="this.dataset.touched=\'1\';bizAvanceAutoLink()"><option value="">— Hakim (direct) —</option>'+buildFmenOptions(v('paid_by',''))+'</select>'+
       '<div id="paid-by-hint" style="display:none;font-size:11px;color:var(--bl);background:var(--s2);border-radius:6px;padding:6px 9px;margin-top:5px;line-height:1.45"></div></div>'+
       fieldFull('Description','fi-desc','text',v('desc',''),'Note optionnelle')+
       '<div class="ff"><label class="fl">Charge récurrente liée <span style="font-size:11px;color:var(--td)">(optionnel — pour le suivi budget)</span></label>'+
@@ -10202,7 +10222,12 @@ async function saveBiz() {
   // à personne pour cette ligne) et laissait un état contradictoire à l'écran.
   // Ne concerne PAS le Ménage, où `paid_by` = qui a réglé la prestation (autre sens).
   var statutSaisi = gv('fi-st');
-  var statutBiz   = (paidByName && cat !== 'Ménage') ? 'Payé' : statutSaisi;
+  // Un « Payé par » renseigné = quelqu'un a DÉJÀ réglé cette ligne → statut Payé, y compris
+  // sur un Ménage (élargi 2026-08-14). Sans ça, un ménage réglé par une collègue avec son
+  // avance de caisse restait « En attente » → déduit de la caisse de la collègue ET encore
+  // affiché comme dû à la femme de ménage : elle aurait été payée DEUX FOIS au bouton Solder.
+  // (Miroir exact du trou du 13/08, où l'argent disparaissait au lieu d'être payé en double.)
+  var statutBiz   = paidByName ? 'Payé' : statutSaisi;
   // ── Cohérence « qui a fait l'achat » (corrigé 2026-08-13) ────────────────────
   // Si l'achat a été réglé avec l'avance de caisse de X, c'est X qui l'a fait :
   // on renseigne `fmen` d'office s'il est vide. Sans ça la ligne n'est rattachée
